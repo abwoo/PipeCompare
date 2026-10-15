@@ -5,6 +5,11 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- Bad channels: a bad channel is left as it is when interpolating it would measurably raise the
+  total error (computed through the reference, epochs, baseline and epoch rejection that follow),
+  typically a measured electrode with noisy neighbours (badchannels `'repair', 'error'`; on in the
+  simple mode and for steps added in the panel). The result names the channels left as they are.
+
 - The bias in the total error also counts eye movements (left minus right eye channel, where a
   blink cancels) and muscle activity (fast activity at the measured electrodes) in the window,
   not only blinks. The Command Window shows the share of trials with each.

@@ -395,6 +395,22 @@ a pipeline that resamples or epochs before its last filter. [`Injection.filterCh
   low-passed at or below that edge, or an edge within 10% of the Nyquist frequency. Line noise on
   one channel, which the pipeline's low-pass removes, otherwise makes that channel bad and
   replaces it by its neighbours (the measured electrode included). [`pipecompare.simple.Presets.detectLowpass`]
+- **Which bad channels are interpolated (`repair` = `'error'`).** Interpolation is linear: with the
+  set *b* interpolated the data are *M*_b *X*, *M*_b EEGLAB's spherical spline, read off by
+  interpolating an identity matrix with `pop_interp` (`ChannelChoice.interpMatrix`; equal to
+  `pop_interp` on the data, `test_engine/testBadChannelsInterpolatedByTheirEffectOnTheError`).
+  Of the steps below, up to the epoch rejection, the re-referencing (a channel map *R*), epoching
+  and baseline removal (per channel, commuting with *M*_b) and the rejection are applied, when they
+  are the same in every pipeline below the step (else every bad channel is interpolated); the
+  filters between are replaced by the band of the detection copy, and ICA is left out, as it
+  differs between pipelines and is not linear. For each *b*: *R M*_b *X* epoched, the total error
+  at the rejection's best limit (`IcThreshold` scoring, sections 9c–9d), the gain from the known-signal
+  copy with the same *b*. Backward from all flagged channels, the channel whose being left gives the
+  lowest objective is left, one at a time; among the sets equivalent to the best (paired bootstrap,
+  equivalence margin), the one interpolating the most is chosen, so a flagged channel stays as it
+  is only when interpolating it measurably raises the error. More than 12 flagged channels: all
+  interpolated. Not re-made on the selecting half in the cross-fitting check (section 3), unlike
+  the choices inside the pipeline after ICA. [`pipecompare.eval.ChannelChoice`]
 - **Event types are matched exactly.** `pop_epoch` selects events with `strmatch(…, 'exact')`, so
   'S 1' and 's 1' are different types. The contract is validated the same way and names the
   near match.

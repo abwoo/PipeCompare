@@ -476,6 +476,10 @@ classdef Executor
                         in.params.threshold = result.cands(idx).steps{k}.thresholdChosen;
                     end
                     cx = ctx;
+                    if isRepairChoice(in) && isfield(result, 'cands') && numel(result.cands) >= idx && numel(result.cands(idx).steps) >= k
+                        % the bad channels the search interpolated on these same data
+                        cx.chosenChannels = result.cands(idx).steps{k}.interpolated;
+                    end
                     if strcmp(in.type, 'icremove') && isequal(in.params.threshold, 'sme') && isfield(result, 'cands') && ...
                             numel(result.cands) >= idx && numel(result.cands(idx).steps) >= k
                         % the components the search chose on these same data
@@ -514,13 +518,15 @@ classdef Executor
             EEG = pipecompare.run.Executor.prepareRoot(EEG, contract, struct('dataUnit', state.unitGuess));
             ctx = struct('contract', contract, 'highpass', rootHighpass(state));
             chosen = @(f) cellfun(@(p) isfield(p, f) && ischar(p.(f)), steps(:, 2));
-            if any(chosen('uv') | chosen('threshold'))
+            repair = cellfun(@(t, p) strcmp(t, 'badchannels') && strcmp(pipecompare.utils.fieldOr(p, 'repair', 'all'), 'error'), ...
+                steps(:, 1), steps(:, 2));
+            if any(chosen('uv') | chosen('threshold') | repair)
                 % a limit or threshold chosen from the data is judged against these data's own trials
                 ctx.ref = pipecompare.eval.Measure.reference(EEG, contract);
             end
             S = []; truth = [];
-            if any(chosen('threshold'))
-                % an ICLabel threshold chosen from the data uses the signal check
+            if any(chosen('threshold') | repair)
+                % an ICLabel threshold or bad channels chosen from the data use the signal check
                 [S, truth] = pipecompare.eval.Injection.prepare(EEG, contract, ctx.ref, opts);
             end
             insts = arrayfun(@(k) struct('type', steps{k, 1}, 'params', steps{k, 2}), 1:size(steps, 1), 'UniformOutput', false);
@@ -529,6 +535,8 @@ classdef Executor
                 cx = ctx;
                 if strcmp(in.type, 'icremove') && ischar(in.params.threshold)
                     cx.after = insts(k+1:end); cx.signal = struct('S', S, 'truth', truth);
+                elseif isRepairChoice(in)
+                    cx.after = linearAfter(insts(k+1:end)); cx.signal = struct('S', S, 'truth', truth);
                 end
                 [EEG, coms, info] = pipecompare.run.Steps.run(in, EEG, cx);
                 for q = 1:numel(coms), EEG = eeg_hist(EEG, coms{q}); end
@@ -813,12 +821,13 @@ function f = stepFacts(in, info)
 % it chose among (curves), with which the ranking's selection check makes
 % the choice again on half of the trials (Rank.crossfit); for a rejection,
 % how far the mean score of the epochs kept is from that of all of them
-% (keptShift, Presets.keptShiftText).
+% (keptShift, Presets.keptShiftText); for bad channels chosen by the total
+% error, those left as they are (leftAsIs).
 f = struct('type', in.type, 'params', in.params, 'interpolated', {{}}, 'removed', {{}}, ...
     'icsRemoved', NaN, 'icsTotal', NaN, 'rejected', NaN, 'epochsBefore', NaN, 'epochsInterpolated', NaN, ...
     'icsBrain', NaN, 'icsOther', NaN, 'otherMedian', NaN, 'icaPoints', NaN, 'uvChosen', NaN, 'thresholdChosen', NaN, 'icsConsidered', NaN, 'icsProtected', NaN, ...
-    'comps', [], 'rejIdx', [], 'cutoffRefined', false, 'weightRatio', NaN, 'trialWeights', [], 'curves', [], 'keptShift', []);
-for n = {'interpolated', 'removed'}
+    'comps', [], 'rejIdx', [], 'cutoffRefined', false, 'weightRatio', NaN, 'trialWeights', [], 'curves', [], 'keptShift', [], 'leftAsIs', {{}});
+for n = {'interpolated', 'removed', 'leftAsIs'}
     if isfield(info, n{1}), f.(n{1}) = cellstr(info.(n{1})); end
 end
 for n = {'icsRemoved', 'icsTotal', 'rejected', 'epochsBefore', 'epochsInterpolated', 'icsBrain', 'icsOther', 'otherMedian', 'icaPoints', 'uvChosen', 'thresholdChosen', 'icsConsidered', 'icsProtected', ...
@@ -849,9 +858,22 @@ function cx = choiceContext(env, node, ctx, S)
 % steps that follow must be the same in every pipeline below it.
 cx = ctx;
 in = env.tree(node).inst;
-if ~(strcmp(in.type, 'icremove') && ischar(in.params.threshold)), return; end
 d = env.tree(node).depth;
 under = leavesUnder(env.tree, node);
+if isRepairChoice(in)
+    % bad channels interpolated by their effect on the total error
+    % (ChannelChoice): the linear steps up to the rejection, when they are
+    % the same in every pipeline below (otherwise all are interpolated)
+    after = linearAfter(env.leaves(under(1)).path(d+1:end));
+    if all(arrayfun(@(li) isequal(plainSteps(linearAfter(env.leaves(li).path(d+1:end))), plainSteps(after)), under))
+        cx.after = after; cx.signal = struct('S', S, 'truth', env.truth);
+    else
+        pipecompare.utils.log(['Bad channels: the pipelines below differ in the reference, epochs or rejection, so the ', ...
+            'channels to interpolate are not chosen by the total error.']);
+    end
+    return;
+end
+if ~(strcmp(in.type, 'icremove') && ischar(in.params.threshold)), return; end
 % the steps it is chosen for: up to the epoch rejection that follows (the
 % steps after that do not change the choice)
 upto = @(path) path(1:min([numel(path) find(cellfun(@(x) strcmp(x.type, 'reject_threshold'), path), 1)]));
@@ -863,6 +885,36 @@ assert(same, 'PipeCompare:IcThreshold', ['An ICLabel threshold chosen from the d
     'after it in separate runs, or set the thresholds (e.g. 0.7 | 0.8 | 0.9).']);
 cx.after = after;
 cx.signal = struct('S', S, 'truth', env.truth);
+end
+
+function tf = isRepairChoice(in)
+% bad channels interpolated by their effect on the total error
+tf = strcmp(in.type, 'badchannels') && strcmp(pipecompare.utils.fieldOr(in.params, 'repair', 'all'), 'error');
+end
+
+function after = linearAfter(path)
+% the steps ChannelChoice applies: re-referencing, epoching and baseline
+% removal up to the epoch rejection, and that rejection
+k = find(cellfun(@(x) strcmp(x.type, 'reject_threshold'), path), 1);
+if ~isempty(k), path = path(1:k); end
+after = path(cellfun(@(x) any(strcmp(x.type, {'reref', 'epoch', 'baseline', 'reject_threshold'})), path));
+end
+
+function p = plainSteps(path)
+p = cellfun(@(x) {x.type, x.params}, path, 'UniformOutput', false);
+end
+
+function cx = pathContext(path, q, cx, S, truth)
+% What a choice made from the data in step q of one pipeline needs: the
+% steps after it and the signal-check copy (as choiceContext for the tree)
+in = path{q};
+if strcmp(in.type, 'icremove') && ischar(in.params.threshold)
+    after = path(q+1:end);
+    after = after(1:min([numel(after) find(cellfun(@(x) strcmp(x.type, 'reject_threshold'), after), 1)]));
+    cx.after = after; cx.signal = struct('S', S, 'truth', truth);
+elseif isRepairChoice(in)
+    cx.after = linearAfter(path(q+1:end)); cx.signal = struct('S', S, 'truth', truth);
+end
 end
 
 function [E2, coms, info] = runStep(in, E, ctx, verbose)
@@ -973,7 +1025,9 @@ try
             E = eeg_checkset(E);
             coms = d.coms; info = struct('ica', d);
         else
-            [E, coms, info] = runStep(in, E, ctx, env.opts.verbose);
+            cx = ctx;
+            if isRepairChoice(in), cx.chosenChannels = c.steps{k}.interpolated; end   % the channels the search interpolated
+            [E, coms, info] = runStep(in, E, cx, env.opts.verbose);
         end
         for q = 1:numel(coms), E = eeg_hist(E, coms{q}); end
         [S, unmatched] = replayCopy(in, S, info, ctx);
@@ -1081,11 +1135,7 @@ for seed = 1:n
                 if tick(env, 0, in), return; end
                 cx = cx0;
                 if strcmp(in.type, 'ica'), cx.icaSeed = seed; end
-                if strcmp(in.type, 'icremove') && ischar(in.params.threshold)
-                    after = path(q+1:end);
-                    after = after(1:min([numel(after) find(cellfun(@(x) strcmp(x.type, 'reject_threshold'), after), 1)]));
-                    cx.after = after; cx.signal = struct('S', S2, 'truth', env.truth);
-                end
+                cx = pathContext(path, q, cx, S2, env.truth);
                 [E, coms, info] = runStep(in, E, cx, env.opts.verbose);
                 [S2, unmatched] = replayCopy(in, S2, info, cx0);
                 [cx0, a] = advance(in, cx0, a, info, coms, unmatched, 0);

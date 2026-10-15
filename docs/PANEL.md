@@ -60,7 +60,7 @@ Two choices (what to measure; for ERP, the event types); the steps are preselect
    outside it (outside the band a filter does not change its power): 9 pipelines for all steps;
    with only the filters ticked their cutoffs are compared. Bad channels are detected
    once (kurtosis, joint probability or noise the other channels do not explain, z = 5, on a 1 Hz high-passed, 40 Hz low-passed copy; the channels are interpolated in the data as
-   they are) and ICA is fitted once, before the filters, so every filter choice shares
+   they are, except one whose interpolation would measurably raise the total error) and ICA is fitted once, before the filters, so every filter choice shares
    one decomposition (fitted on a 1 Hz high-passed copy; filtering and unmixing are linear, so
    their order does not change the data). Non-EEG channels (typed EOG, ECG, … or named so, such
    as VEOG, HEOG, ECG1) are not tested as bad channels and are ignored by epoch rejection. ASR is compared from the panel or a script. The number
@@ -151,7 +151,8 @@ runs on its own copy.
   control alternatives and order. As in the simple mode, an added bad-channel, re-reference or
   epoch-rejection step leaves the non-EEG channels (EOG, ECG, ...) out, and an added bad-channel
   step uses kurtosis, joint probability or noise the other channels do not explain (z = 5) on a 1 Hz
-  high-passed copy of continuous data, low-passed to the band the analysis keeps (40 Hz for ERPs);
+  high-passed copy of continuous data, low-passed to the band the analysis keeps (40 Hz for ERPs),
+  and interpolates a bad channel unless that would measurably raise the total error (`repair` `error`);
   the table shows these values and *Edit values…* changes them. Every epoch-rejection step also
   has `interpolate` (default 0, off): an epoch failed by at most that many channels keeps them,
   interpolated within the epoch, instead of being rejected; several values (e.g. `0 | 3`) are

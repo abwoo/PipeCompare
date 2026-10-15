@@ -698,6 +698,46 @@ verifyEmpty(tc, info.badChannels);
 verifyTrue(tc, contains(txt, 'linearly dependent'), txt);
 end
 
+function testBadChannelsInterpolatedByTheirEffectOnTheError(tc)
+% repair 'error': a bad channel is left as it is only when interpolating
+% it would measurably raise the total error. P8, just noisier, is
+% interpolated; Pz, the measured electrode, also noisier but with very
+% noisy neighbours (not tested), is left as it is: interpolating it would
+% bring their noise in and lose the P3 there. The interpolation the
+% choice computes with is EEGLAB's own.
+EEG = nqc_synth(struct('seconds', 150, 'nPerCond', 40, 'artifactTrials', 0));
+lab = {EEG.chanlocs.labels};
+near = {'P3', 'P4', 'CP1', 'CP2', 'POz', 'PO3', 'PO4'};
+rng(3);
+for k = find(ismember(lab, near)), EEG.data(k, :) = EEG.data(k, :) + single(40 * randn(1, EEG.pnts)); end
+for k = find(ismember(lab, {'P8', 'Pz'})), EEG.data(k, :) = EEG.data(k, :) + single(15 * randn(1, EEG.pnts)); end
+b = find(ismember(lab, {'P8', 'Pz'}));
+M = pipecompare.eval.ChannelChoice.interpMatrix(EEG, b);
+[~, I] = evalc('pop_interp(EEG, b, ''spherical'')');
+verifyEqual(tc, M * double(EEG.data(:, 1:500)), double(I.data(:, 1:500)), 'AbsTol', 1e-3);
+nqc_setBase(EEG);
+c = pipecompare.eval.Contract('conditions', {'target', {'11'}; 'standard', {'31'}}, ...
+    'epoch', [-0.2 1.0], 'baseline', [-0.2 0], 'components', {'P3', [0.30 0.50], {'Pz'}});
+ex = [{'EOG1', 'EOG2'} near];
+p = pipecompare.plan.Plan();
+p = p.add('badchannels', 'measure', 'resid', 'threshold', 5, 'exclude', {ex}, 'detectHighpass', 1, ...
+    'detectLowpass', 40, 'repair', 'error');
+p = p.add('reref', 'mode', 'average', 'exclude', {{'EOG1', 'EOG2'}});
+p = p.add('highpass', 'cutoff', 0.1);
+p = p.add('epoch'); p = p.add('baseline');
+p = p.add('reject_threshold', 'uv', 100, 'exclude', {ex});
+r = pipecompare.PipeCompare.optimize(p, c);
+f = r.cands(1).steps{1};
+verifyEqual(tc, sort(cellstr(f.interpolated)), {'P8'});
+verifyEqual(tc, cellstr(f.leftAsIs), {'Pz'});
+verifyTrue(tc, contains(strjoin(r.cands(1).coms, ' '), 'left as they are'));
+verifyTrue(tc, any(contains(pipecompare.simple.Presets.stepsText(r, 1), 'Pz left as they are')));
+% adopting it replays the same choice
+[~, E] = evalc('pipecompare.run.Executor.replay(r, 1)');
+verifyTrue(tc, contains(E.history, sprintf('pop_interp(EEG, %d, ''spherical'')', find(strcmp(lab, 'P8')))), E.history);
+verifyFalse(tc, contains(E.history, sprintf('pop_interp(EEG, %s', mat2str(sort(b))))));
+end
+
 function testLineNoiseAloneDoesNotMakeAChannelBad(tc)
 % detectLowpass: line noise on one channel (P4), which a later low-pass
 % removes, makes it bad on a copy that keeps it, not on a copy low-passed

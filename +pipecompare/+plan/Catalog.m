@@ -57,7 +57,8 @@ classdef Catalog
                         P('exclude', {}, {}, false, 'channels not tested (e.g. EOG, reference electrodes)'), ...
                         P('detectHighpass', 0, {}, false, 'detect on a copy high-passed at this edge (Hz), interpolate on the data as is; 0 = detect on the data as is'), ...
                         P('detectLowpass', 0, {}, false, 'detect on a copy also low-passed at this edge (Hz), e.g. the band the analysis keeps; 0 = no low-pass'), ...
-                        P('action', 'interpolate', {}, false, '''interpolate'' in place or ''remove'' (restore later)')];
+                        P('action', 'interpolate', {}, false, '''interpolate'' in place or ''remove'' (restore later)'), ...
+                        P('repair', 'all', {}, false, '''all'': interpolate every bad channel; ''error'': leave one as it is when interpolating it would measurably raise the total error (pipecompare.eval.ChannelChoice)')];
                 case 'channels'
                     d.label = 'Named channels: remove or interpolate'; d.dialog = 'pop_select';
                     d.params = [P('labels', {}, {}, false, 'channel labels you name (e.g. known-bad O1, O2)'), ...
@@ -328,7 +329,11 @@ switch type
         elseif isfield(p, 'detectHighpass') && ~(isnumeric(p.detectHighpass) && isscalar(p.detectHighpass) && p.detectHighpass >= 0)
             reason = 'badchannels detectHighpass must be >= 0 (0 = detect on the data as is)';
         elseif isfield(p, 'detectLowpass') && ~(isnumeric(p.detectLowpass) && isscalar(p.detectLowpass) && p.detectLowpass >= 0)
-            reason = 'badchannels detectLowpass must be >= 0 (0 = no low-pass)'; end
+            reason = 'badchannels detectLowpass must be >= 0 (0 = no low-pass)';
+        elseif isfield(p, 'repair') && ~(ischar(p.repair) && any(strcmp(p.repair, {'all', 'error'})))
+            reason = 'badchannels repair must be all or error';
+        elseif strcmp(pipecompare.utils.fieldOr(p, 'repair', 'all'), 'error') && isfield(p, 'action') && ~strcmp(p.action, 'interpolate')
+            reason = 'badchannels repair ''error'' needs action interpolate'; end
     case 'reject_threshold'
         auto = isfield(p, 'uv') && ischar(p.uv) && strcmp(p.uv, 'auto');
         if auto && pipecompare.utils.fieldOr(p, 'interpolate', 0) > 0

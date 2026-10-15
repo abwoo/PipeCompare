@@ -475,6 +475,10 @@ classdef Presets
                         end
                         t = [t '): ' listText(pipecompare.utils.ternary(isempty(f.removed), f.interpolated, f.removed), ...
                             pipecompare.utils.ternary(isempty(f.removed), 'interpolated', 'removed'), 'none found')];
+                        left = pipecompare.utils.fieldOr(f, 'leftAsIs', {});
+                        if ~isempty(left)
+                            t = sprintf('%s; %s left as they are (interpolating them would raise the error)', t, strjoin(left, ', '));
+                        end
                         t = [t notTested(p)];
                     case 'channels'
                         t = sprintf('Named channels %s: %s', pipecompare.utils.ternary(strcmp(p.action, 'remove'), ...
@@ -1015,7 +1019,7 @@ classdef Presets
                 % to the band the analysis keeps (detectLowpass); always
                 % before an average reference
                 if has('badchannels') || strcmp(reference, 'average')
-                    plan = plan.add('badchannels', 'measure', 'kurt+prob+resid', 'threshold', 5, ...
+                    plan = plan.add('badchannels', 'measure', 'kurt+prob+resid', 'threshold', 5, 'repair', 'error', ...
                         'detectHighpass', double(continuous), ...
                         'detectLowpass', pipecompare.simple.Presets.detectLowpass(state, contract), exclusion{:});
                 end

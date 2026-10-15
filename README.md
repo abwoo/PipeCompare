@@ -145,7 +145,16 @@ pipeline, so that the comparison is about the settings that matter.
    (for band power, 5 Hz above the highest band), the band the analysis keeps, so that line noise
    alone, which the low-pass removes, does not make a channel bad. Bad channels are then
    interpolated from their neighbours (spherical interpolation), so the dataset keeps all its
-   channels. EOG, ECG and EMG channels (by channel type, or by name such as VEOG or ECG1) are never
+   channels, **unless interpolating one would make the measure worse**: PipeCompare computes the
+   total error (see [How a pipeline is chosen](#how-a-pipeline-is-chosen)) with each bad channel
+   interpolated or left as it is, through the reference, epochs, baseline and epoch rejection that
+   follow (ICA and the filters compared are left out of this check, the filters replaced by the
+   1–40 Hz band the channels were tested on), and leaves a bad channel as it is only when
+   interpolating it would raise the error measurably. This matters most for a measured electrode:
+   interpolating Pz from noisy neighbours brings their noise in and loses the P3 at Pz. The
+   Command Window and the result name the channels left as they are. In scripts this is the
+   badchannels option `'repair', 'error'` (`'all'`, the default outside the simple mode and the
+   panel, interpolates every bad channel). EOG, ECG and EMG channels (by channel type, or by name such as VEOG or ECG1) are never
    tested. A pipeline that interpolates more than 20 % of the channels is excluded.
 3. **Re-reference** (if you chose the average reference). It comes after the bad channels are
    repaired, so a bad channel cannot spread its noise into every other channel; non-EEG channels

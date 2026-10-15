@@ -155,6 +155,13 @@ classdef IcThreshold
                 numel(cand), size(EEG.icaweights, 1), numel(protected), K, info.equallyGood);
         end
 
+        function [f, u, why, X, M, C] = score(Ek, Sk, rej, chans, contract, ref, opts, sig)
+            % One set's objective at the best limit of the rejection that
+            % follows, and what the bootstrap needs (scoreSet below), for
+            % the other choices made the same way (ChannelChoice).
+            [f, u, why, X, M, C] = scoreSet(Ek, Sk, rej, chans, contract, ref, opts, sig);
+        end
+
         function [t, info] = choose(EEG, q, ctx)
             contract = ctx.contract;
             ref = pipecompare.utils.fieldOr(ctx, 'ref', []);

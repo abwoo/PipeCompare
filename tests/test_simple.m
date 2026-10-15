@@ -348,6 +348,7 @@ verifyEqual(tc, p.Slots(strcmp(ids(p), 'reject_threshold')).alternatives{1}.para
 verifyEqual(tc, p.Slots(1).alternatives{1}.params.detectHighpass, 1);  % bad channels found on a 1 Hz high-passed copy
 verifyEqual(tc, p.Slots(1).alternatives{1}.params.measure, 'kurt+prob+resid');  % spiky, unusual or with noise of its own
 verifyEqual(tc, p.Slots(1).alternatives{1}.params.detectLowpass, 40);  % and low-passed to the band an ERP keeps
+verifyEqual(tc, p.Slots(1).alternatives{1}.params.repair, 'error');   % interpolated unless that raises the total error
 % in Filters only too: the bad channels are interpolated before the average
 p = pipecompare.simple.Presets.recipe('filters', st, c, 'average');
 verifyEqual(tc, ids(p), {'badchannels', 'reref', 'highpass', 'lowpass', 'epoch', 'baseline'});

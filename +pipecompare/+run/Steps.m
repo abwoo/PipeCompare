@@ -297,9 +297,31 @@ classdef Steps
                 end
                 return;
             end
-            coms = {sprintf('%% PipeCompare: bad-channel test (measure %s, threshold %g, norm on, %d channels tested)%s -> bad channels [%s] interpolated in place', ...
-                p.measure, p.threshold, numel(elec), on, strjoin(labels, ' '))};
-            info.interpolated = labels;
+            done = sprintf('[%s] interpolated in place', strjoin(labels, ' '));
+            if strcmp(pipecompare.utils.fieldOr(p, 'repair', 'all'), 'error') && ~isempty(bad)
+                % interpolated only where that does not measurably raise
+                % the total error (pipecompare.eval.ChannelChoice)
+                if nargin > 2 && isfield(ctx, 'chosenChannels')
+                    % re-running a pipeline: the channels the search interpolated
+                    keep = bad(ismember(lower(labels), lower(ctx.chosenChannels)));
+                elseif nargin > 2 && isfield(ctx, 'after') && isfield(ctx, 'contract') && pipecompare.eval.Threshold.applies(ctx.contract)
+                    [keep, info.channelChoice] = pipecompare.eval.ChannelChoice.choose(EEG, src, bad, ctx);
+                else
+                    keep = bad;
+                    pipecompare.utils.log(['Bad channels: every bad channel interpolated (whether interpolating one would ', ...
+                        'raise the total error needs mean amplitudes or band power and the steps that follow).']);
+                end
+                if numel(keep) < numel(bad)
+                    done = sprintf(['[%s]: [%s] interpolated in place, [%s] left as they are (interpolating them ', ...
+                        'would raise the total error)'], strjoin(labels, ' '), strjoin({EEG.chanlocs(keep).labels}, ' '), ...
+                        strjoin({EEG.chanlocs(setdiff(bad, keep)).labels}, ' '));
+                end
+                info.leftAsIs = {EEG.chanlocs(setdiff(bad, keep)).labels};
+                bad = keep; info.badIdx = bad;
+            end
+            coms = {sprintf('%% PipeCompare: bad-channel test (measure %s, threshold %g, norm on, %d channels tested)%s -> bad channels %s', ...
+                p.measure, p.threshold, numel(elec), on, done)};
+            info.interpolated = {EEG.chanlocs(bad).labels};
             if ~isempty(bad)
                 requireLocations(EEG.chanlocs(bad), 'badchannels');
                 EEG = pop_interp(EEG, bad, 'spherical');   % returns no command from the command line
