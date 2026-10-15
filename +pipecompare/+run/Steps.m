@@ -203,20 +203,37 @@ classdef Steps
             if isfield(p, 'exclude') && ~isempty(p.exclude)   % e.g. EOG / reference channels are not tested
                 elec = find(~ismember(lower({EEG.chanlocs.labels}), lower(presentChannels(EEG, p.exclude, 'badchannels exclude'))));
             end
-            % measure: one pop_rejchan measure, or several joined by '+'
-            % (e.g. 'kurt+prob'): a channel is bad when any of them flags it
+            % measure: one measure, or several joined by '+' (e.g.
+            % 'kurt+prob+resid'): a channel is bad when any of them flags it.
+            % kurt, prob and spec are pop_rejchan's; resid is
+            % PipeCompare's (residualZ: noise the other channels do not
+            % explain), which finds what kurtosis and joint probability
+            % cannot see: both depend only on the shape of a channel's
+            % values, not their size, so a channel that is just noisier
+            % (poor contact) passes them.
             measures = strsplit(p.measure, '+');
             % Detect on a high-passed copy (slow drifts distort kurtosis
-            % and probability), interpolate or remove on the data as they are.
+            % and probability), and low-passed (detectLowpass, the band
+            % the analysis keeps: line noise alone that a later low-pass
+            % removes does not make a channel bad); interpolate or remove
+            % on the data as they are.
             hp = pipecompare.utils.fieldOr(p, 'detectHighpass', 0);
+            lp = pipecompare.utils.fieldOr(p, 'detectLowpass', 0);
             applied = 0; if nargin > 2 && isfield(ctx, 'highpass'), applied = ctx.highpass; end
-            copy = hp > 0 && hp > applied;
+            doHp = hp > 0 && hp > applied;
+            doLp = lp > 0 && lp < EEG.srate / 2;
+            copy = doHp || doLp;
             src = EEG; on = '';
-            if copy
+            if doHp
                 fa = fftArgs(EEG, hp);
-                src = pop_eegfiltnew(EEG, 'locutoff', hp, 'plotfreqz', 0, fa{:});
-                on = sprintf(' on a %g Hz high-passed copy', hp);
+                src = pop_eegfiltnew(src, 'locutoff', hp, 'plotfreqz', 0, fa{:});
+                on = sprintf(' on a %g Hz high-passed', hp);
             end
+            if doLp
+                src = pop_eegfiltnew(src, 'hicutoff', lp, 'plotfreqz', 0);
+                on = [pipecompare.utils.ternary(doHp, [on ','], ' on a') sprintf(' %g Hz low-passed', lp)];
+            end
+            if copy, on = [on ' copy']; end
             % Flat channels (no signal) are bad whatever the measures say:
             % kurtosis and probability are undefined on a constant, and left
             % in, they would also spoil the normalisation over the others.
@@ -227,12 +244,27 @@ classdef Steps
             end
             bad = [];
             for m = measures
-                args = {'elec', elec, 'threshold', p.threshold, 'norm', 'on', 'measure', m{1}};
-                if strcmp(m{1}, 'spec'), args = [args {'freqrange', [1 min(50, EEG.srate/2 - 1)]}]; end
-                [EEGrem, b, ~, com] = pop_rejchan(src, args{:});
+                if strcmp(m{1}, 'resid')
+                    z = pipecompare.run.Steps.residualZ(src.data(elec, :, :));
+                    if isempty(z)
+                        pipecompare.utils.log(['Bad channels: the noise the other channels do not explain is not ', ...
+                            'tested (the channels are linearly dependent, e.g. already average-referenced or interpolated).']);
+                        continue
+                    end
+                    b = find(z > p.threshold);
+                    if ~isempty(b)
+                        pipecompare.utils.log('Bad channel(s) by their noise the other channels do not explain: %s', ...
+                            strjoin(arrayfun(@(k) sprintf('%s (z = %.1f)', EEG.chanlocs(elec(k)).labels, z(k)), b, ...
+                            'UniformOutput', false), ', '));
+                    end
+                else
+                    args = {'elec', elec, 'threshold', p.threshold, 'norm', 'on', 'measure', m{1}};
+                    if strcmp(m{1}, 'spec'), args = [args {'freqrange', [1 min(50, EEG.srate/2 - 1)]}]; end
+                    [EEGrem, b, ~, com] = pop_rejchan(src, args{:});
+                end
                 bad = union(bad, b(:)');
             end
-            bad = elec(bad);   % pop_rejchan indexes the tested channels (it removes opt.elec(indelec) itself)
+            bad = elec(bad);   % both index the tested channels (pop_rejchan removes opt.elec(indelec) itself)
             on = [on pipecompare.utils.ternary(isempty(flat), '', sprintf('; flat channels [%s] bad', ...
                 strjoin({EEG.chanlocs(flat).labels}, ' ')))];
             bad = sort([bad flat]);
@@ -240,12 +272,12 @@ classdef Steps
             info.badChannels = labels; info.badIdx = bad;
             if strcmp(p.action, 'remove')
                 info.removed = labels;
-                if ~copy && isscalar(measures) && isempty(flat)
+                if ~copy && isscalar(measures) && ~strcmp(measures{1}, 'resid') && isempty(flat)
                     EEG = EEGrem;
                     coms = {com};
                     return;
                 end
-                coms = {sprintf('%% PipeCompare: pop_rejchan(measure %s, threshold %g, norm on, %d channels tested)%s -> bad channels [%s] removed', ...
+                coms = {sprintf('%% PipeCompare: bad-channel test (measure %s, threshold %g, norm on, %d channels tested)%s -> bad channels [%s] removed', ...
                     p.measure, p.threshold, numel(elec), on, strjoin(labels, ' '))};
                 if ~isempty(bad)
                     [EEG, com2] = pop_select(EEG, 'nochannel', bad);
@@ -253,7 +285,7 @@ classdef Steps
                 end
                 return;
             end
-            coms = {sprintf('%% PipeCompare: pop_rejchan(measure %s, threshold %g, norm on, %d channels tested)%s -> bad channels [%s] interpolated in place', ...
+            coms = {sprintf('%% PipeCompare: bad-channel test (measure %s, threshold %g, norm on, %d channels tested)%s -> bad channels [%s] interpolated in place', ...
                 p.measure, p.threshold, numel(elec), on, strjoin(labels, ' '))};
             info.interpolated = labels;
             if ~isempty(bad)
@@ -261,6 +293,44 @@ classdef Steps
                 EEG = pop_interp(EEG, bad, 'spherical');   % returns no command from the command line
                 coms{end+1} = sprintf('EEG = pop_interp(EEG, %s, ''spherical'');', mat2str(bad(:)'));
             end
+        end
+
+        function z = residualZ(X)
+            % For each row of X (channels x samples [x epochs]): how far its
+            % noise that the other rows do not explain stands out, as a
+            % robust z (median and MAD over the rows, MAD at least 0.1) of
+            % the log SD of what is left of it after its least-squares
+            % prediction from all the others (leave one out:
+            % SD^2 / (C^-1)_ii for the covariance C). Brain activity and
+            % artifacts reach neighbouring electrodes too (volume
+            % conduction), so the others predict most of a good channel;
+            % noise of its own (poor contact, a broken lead) they cannot.
+            % Size differences the others share (alpha, blinks, a nearby
+            % reference) are predicted, so they do not count. Samples where
+            % any row is beyond 6 robust SDs of its own (blinks, movement)
+            % are left out, unless that is over half of them. [] when the
+            % rows are linearly dependent (average-referenced or
+            % interpolated): every row is then predicted exactly. Fewer
+            % than 8 rows: no outlier can be told, z is all zeros. Epochs:
+            % each epoch's mean is removed first.
+            n = size(X, 1);
+            z = zeros(1, n);
+            if n < 8, return; end
+            if size(X, 3) > 1, X = X - mean(X, 2); end              % epochs: each one's offset removed
+            X = reshape(X, n, []);
+            X = double(X(:, 1:max(1, ceil(size(X, 2) / 2e5)):end));   % at most 2e5 samples
+            X = X - median(X, 2);
+            mad = 1.4826 * median(abs(X), 2);
+            keep = max(abs(X) ./ max(mad, eps), [], 1) < 6;
+            if mean(keep) >= 0.5, X = X(:, keep); end
+            X = X - mean(X, 2);
+            C = (X * X') / size(X, 2);
+            sd = sqrt(diag(C));
+            R = C ./ (sd * sd');
+            ev = eig((R + R') / 2);
+            if min(ev) < 1e-6 * max(ev), z = []; return; end
+            r = log(sd' ./ sqrt(diag(inv(R))'));   % the residual SD: sd * sqrt(1 - R^2)
+            z = (r - median(r)) / max(0.1, 1.4826 * median(abs(r - median(r))));
         end
 
         function flat = flatChannels(X)

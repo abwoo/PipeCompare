@@ -5,6 +5,14 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- Bad channels: a third test, noise the other channels do not explain (measure `resid`): a
+  least-squares fit of each channel on all the others, bad when what is left of it stands out
+  (robust z over 5). Kurtosis and joint probability depend only on the shape of a channel's
+  values, not their size, so they missed channels that are just noisier (poor contact) or lost
+  their gain; one such channel could cost half the epochs in epoch rejection. The simple mode and
+  the panel detect with `kurt+prob+resid`. Bad channels are also found on a copy low-passed to the
+  band the analysis keeps (`detectLowpass`, 40 Hz for ERPs), so line noise alone no longer makes a
+  channel bad. Method: docs/METHODS.md, section 5.
 - Pipelines are ranked by their total error, √(noise² + bias²), instead of the noise alone. The
   noise is the gain-corrected SME as before. The bias is what moves the mean the same way in
   every set of trials, which the SME cannot see: what the trials with a blink add to each

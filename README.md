@@ -119,14 +119,27 @@ pipeline, so that the comparison is about the settings that matter.
 1. **Channels removed earlier are put back** (only with the average reference). If you deleted EEG
    channels before PipeCompare, they are interpolated back first, so that the average is taken
    over the whole montage.
-2. **Bad channels are found and repaired.** A channel is marked bad when its signal is much
-   spikier (kurtosis) or much noisier (joint probability, e.g. a poorly connected electrode) than
-   the other channels, more than 5 standard deviations away. A **flat channel** (no signal, as when
+2. **Bad channels are found and repaired.** A channel is marked bad when, more than 5 standard
+   deviations away from the other channels, its signal is much spikier (kurtosis), its values are
+   unusually distributed (joint probability), or it carries **noise of its own** that the other
+   channels do not explain. The last test is PipeCompare's: brain activity and artifacts reach
+   neighbouring electrodes too, so the other channels predict most of a good channel (a
+   least-squares fit of each channel on all the others); a poorly connected or broken electrode
+   adds noise they cannot predict. Kurtosis and joint probability look only at the shape of a
+   channel's values, not their size, so a channel that is just two to five times noisier passes
+   them (in simulations they found almost none of these; the new test finds most of them, with few
+   few false alarms), and one such channel can cost half the epochs at a 100 µV rejection limit.
+   Size differences the channels share (strong alpha, blinks, a nearby reference) are predicted,
+   so they do not count, and the test needs no channel locations. It is left out (and said in the
+   Command Window) when the channels are linearly dependent, as after an average reference. A
+   **flat channel** (no signal, as when
    an electrode is disconnected: its spread is zero or under 1 % of the median spread of the
-   channels tested) is always bad; it is set aside before the two measures, which cannot be
+   channels tested) is always bad; it is set aside before the measures, which cannot be
    computed on a constant and would otherwise be thrown off for all the other channels too. The
    test looks at a copy of the data
-   high-passed at 1 Hz, so slow drifts are not mistaken for bad channels. Bad channels are then
+   high-passed at 1 Hz, so slow drifts are not mistaken for bad channels, and low-passed at 40 Hz
+   (for band power, 5 Hz above the highest band), the band the analysis keeps, so that line noise
+   alone, which the low-pass removes, does not make a channel bad. Bad channels are then
    interpolated from their neighbours (spherical interpolation), so the dataset keeps all its
    channels. EOG, ECG and EMG channels (by channel type, or by name such as VEOG or ECG1) are never
    tested. A pipeline that interpolates more than 20 % of the channels is excluded.
@@ -523,10 +536,11 @@ on GitHub…**.
    only the filters to compare their cutoffs.
 
    Bad channels are detected once and ICA is fitted once, before the filters, so every filter
-   setting shares one decomposition. A channel is bad when its kurtosis (spiky) or joint
-   probability (noisy, e.g. poor contact) is more than 5 SD from the other channels', or when it is
-   flat (no signal). Both steps
-   look at a 1 Hz high-passed copy, so slow drifts do not mislead them; the data themselves are
+   setting shares one decomposition. A channel is bad when its kurtosis (spiky), its joint
+   probability (unusual values) or its noise the other channels do not explain (e.g. poor
+   contact) is more than 5 SD from the other channels', or when it is flat (no signal). Both steps
+   look at a 1 Hz high-passed copy (bad channels: also low-passed at 40 Hz), so slow drifts and
+   line noise do not mislead them; the data themselves are
    filtered only by the settings being compared. EOG, ECG
    and EMG channels (by type or by name, such as VEOG) are not tested as bad channels and do not
    count in epoch rejection. The dialog shows how many pipelines will run before you
@@ -631,7 +645,7 @@ steps ran; select another row to see that pipeline's steps instead. Each line gi
 settings and what it decided on these data, for example:
 
 ```
-1. Bad channels (kurtosis or joint probability over 5 SD, found on a 1 Hz high-passed copy): O1, O2 interpolated (not tested: VEOG, HEOG)
+1. Bad channels (kurtosis or joint probability or noise the other channels do not explain over 5 SD, found on a 1-40 Hz band-passed copy): O1, O2 interpolated (not tested: VEOG, HEOG)
 2. Average reference (left out: VEOG, HEOG)
 3. ICA (extended runica), fitted on a 1 Hz high-passed copy and applied to the data (the fit leaves out stretches far noisier than the rest)
 4. High-pass filter 0.5 Hz

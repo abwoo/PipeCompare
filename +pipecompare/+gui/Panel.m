@@ -385,9 +385,11 @@ classdef Panel < handle
             % As in the simple mode: non-EEG channels (EOG, ECG, ...) and
             % ear/mastoid channels (A1, A2, M1, M2) are left out of
             % bad-channel detection, the average and epoch rejection, and
-            % bad channels are kurtosis or joint probability
-            % (z = 5), detected on a 1 Hz high-passed copy of continuous
-            % data. Shown in the table; Edit values... changes them.
+            % bad channels are kurtosis, joint probability or noise the
+            % other channels do not explain (z = 5), detected on a 1 Hz
+            % high-passed copy of continuous data, low-passed to the band
+            % the analysis keeps. Shown in the table; Edit values...
+            % changes them.
             type = obj.TypeDrop.Value; args = {};
             EEG = pipecompare.live.Session.current();
             if ~isempty(EEG)
@@ -396,7 +398,10 @@ classdef Panel < handle
                     args = {'exclude', ex};
                 end
                 if strcmp(type, 'badchannels')
-                    args = [{'measure', 'kurt+prob', 'threshold', 5, 'detectHighpass', double(EEG.trials == 1)} args];
+                    try, c = obj.contract(); catch, c = struct('analysis', 'erp'); end
+                    lp = pipecompare.simple.Presets.detectLowpass(pipecompare.live.DataState.fromEEG(EEG), c);
+                    args = [{'measure', 'kurt+prob+resid', 'threshold', 5, 'detectHighpass', double(EEG.trials == 1), ...
+                        'detectLowpass', lp} args];
                 end
             end
             obj.Plan = obj.Plan.add(type, args{:});

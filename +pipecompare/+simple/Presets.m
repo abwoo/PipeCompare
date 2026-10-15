@@ -462,10 +462,16 @@ classdef Presets
                         t = sprintf('%s filter %g Hz', pipecompare.utils.ternary(strcmp(f.type, 'highpass'), 'High-pass', 'Low-pass'), p.cutoff);
                         if pipecompare.utils.fieldOr(f, 'cutoffRefined', false), t = [t ' (fine-tuned from these data)']; end
                     case 'badchannels'
-                        how = strrep(strrep(strrep(p.measure, 'kurt', 'kurtosis'), 'prob', 'joint probability'), '+', ' or ');
+                        how = strrep(strrep(strrep(strrep(p.measure, 'kurt', 'kurtosis'), 'prob', 'joint probability'), ...
+                            'resid', 'noise the other channels do not explain'), '+', ' or ');
                         t = sprintf('Bad channels (%s over %g SD', how, p.threshold);
-                        if pipecompare.utils.fieldOr(p, 'detectHighpass', 0) > 0
-                            t = sprintf('%s, found on a %g Hz high-passed copy', t, p.detectHighpass);
+                        hp = pipecompare.utils.fieldOr(p, 'detectHighpass', 0); lp = pipecompare.utils.fieldOr(p, 'detectLowpass', 0);
+                        if hp > 0 && lp > 0
+                            t = sprintf('%s, found on a %g-%g Hz band-passed copy', t, hp, lp);
+                        elseif hp > 0
+                            t = sprintf('%s, found on a %g Hz high-passed copy', t, hp);
+                        elseif lp > 0
+                            t = sprintf('%s, found on a %g Hz low-passed copy', t, lp);
                         end
                         t = [t '): ' listText(pipecompare.utils.ternary(isempty(f.removed), f.interpolated, f.removed), ...
                             pipecompare.utils.ternary(isempty(f.removed), 'interpolated', 'removed'), 'none found')];
@@ -782,6 +788,25 @@ classdef Presets
                 pipecompare.utils.ternary(numel(top) > 1, 'them', 'it'), pipecompare.utils.ternary(numel(top) > 1, 'them', 'it'));
         end
 
+        function lp = detectLowpass(state, contract)
+            % The low-pass of the copy bad channels are found on: the band
+            % the analysis keeps (40 Hz for ERPs, the highest low-pass
+            % compared, whose stop band begins at 50 Hz; above the highest
+            % band for band power), so that line noise alone, which a later
+            % low-pass removes, does not make a channel bad. 0 (none) for
+            % epoched data, a band near the Nyquist frequency, or data
+            % already low-passed at or below it.
+            lp = 0;
+            if state.isEpoched, return; end
+            edge = 40;
+            if strcmp(contract.analysis, 'bandpower')
+                f = vertcat(contract.bands.freq); edge = max(40, max(f(:, 2)) + 5);
+            end
+            done = pipecompare.utils.fieldOr(pipecompare.utils.fieldOr(state, 'filters', struct()), 'lowpass', []);
+            if edge >= 0.9 * state.srate / 2 || (~isempty(done) && min(done) <= edge), return; end
+            lp = edge;
+        end
+
         function t = biasText(result)
             % The bias in the recommended pipeline's total error, in words
             % (Rank step 3b): what blinks add to each measure's mean and
@@ -962,13 +987,18 @@ classdef Presets
                 end
                 % fixed: a searched step before ICA would multiply the
                 % decompositions; kurtosis flags spiky channels, joint
-                % probability noisy ones (e.g. poor contact), so either
-                % marks a channel bad; on continuous data detected on a
-                % 1 Hz high-passed copy (slow drifts distort both), as
-                % ICA is fitted; always before an average reference
+                % probability channels whose values are unusually
+                % distributed, resid channels with noise of their own
+                % (e.g. poor contact: just noisier, which the other two
+                % cannot see), so any of them marks a channel bad; on
+                % continuous data detected on a 1 Hz high-passed copy
+                % (slow drifts distort them), as ICA is fitted, low-passed
+                % to the band the analysis keeps (detectLowpass); always
+                % before an average reference
                 if has('badchannels') || strcmp(reference, 'average')
-                    plan = plan.add('badchannels', 'measure', 'kurt+prob', 'threshold', 5, ...
-                        'detectHighpass', double(continuous), exclusion{:});
+                    plan = plan.add('badchannels', 'measure', 'kurt+prob+resid', 'threshold', 5, ...
+                        'detectHighpass', double(continuous), ...
+                        'detectLowpass', pipecompare.simple.Presets.detectLowpass(state, contract), exclusion{:});
                 end
                 plan = addReference(plan, reference, exclude);
                 if has('ica')

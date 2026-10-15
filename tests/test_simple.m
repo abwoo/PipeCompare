@@ -346,7 +346,8 @@ verifyEqual(tc, p.Slots(2).alternatives{1}.params.exclude, {'VEOG'});   % non-EE
 verifyEqual(tc, p.Slots(1).alternatives{1}.params.exclude, {'VEOG'});   % nor tested for bad channels
 verifyEqual(tc, p.Slots(strcmp(ids(p), 'reject_threshold')).alternatives{1}.params.exclude, {'VEOG'}); % nor for the epoch threshold
 verifyEqual(tc, p.Slots(1).alternatives{1}.params.detectHighpass, 1);  % bad channels found on a 1 Hz high-passed copy
-verifyEqual(tc, p.Slots(1).alternatives{1}.params.measure, 'kurt+prob');  % spiky or noisy
+verifyEqual(tc, p.Slots(1).alternatives{1}.params.measure, 'kurt+prob+resid');  % spiky, unusual or with noise of its own
+verifyEqual(tc, p.Slots(1).alternatives{1}.params.detectLowpass, 40);  % and low-passed to the band an ERP keeps
 % in Filters only too: the bad channels are interpolated before the average
 p = pipecompare.simple.Presets.recipe('filters', st, c, 'average');
 verifyEqual(tc, ids(p), {'badchannels', 'reref', 'highpass', 'lowpass', 'epoch', 'baseline'});
@@ -369,6 +370,7 @@ verifyTrue(tc, any(contains(notes, 'a bad channel spreads into every channel')))
 verifyFalse(tc, any(ismember({'highpass', 'lowpass', 'epoch'}, ids(p))));
 verifyTrue(tc, any(contains(notes, 'already epoched')));
 verifyEqual(tc, p.Slots(1).alternatives{1}.params.detectHighpass, 0);  % no high-pass on short epochs
+verifyEqual(tc, p.Slots(1).alternatives{1}.params.detectLowpass, 0);   % nor a low-pass
 verifyError(tc, @() pipecompare.simple.Presets.recipe('full', st, c), 'PipeCompare:Simple');   % ASR: panel or script
 % ICA already run and components removed (history): not compared again
 done = st; done.process = struct('step', {'highpass', 'ica', 'icremove'});

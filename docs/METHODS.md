@@ -344,6 +344,35 @@ a pipeline that resamples or epochs before its last filter. [`Injection.filterCh
   undefined on a constant, and `pop_rejchan` normalises them over the channels tested, so such a
   channel is set aside before the measures and marked bad by the `badchannels` step. The data
   line names flat EEG channels before a run (first 60 s). [`pipecompare.run.Steps.flatChannels`]
+- **Bad channels by their own noise (measure `resid`).** `pop_rejchan`'s kurtosis and joint
+  probability are invariant to a channel's scale: kurtosis is a ratio of moments, and joint
+  probability bins each channel between its own minimum and maximum (`realproba`, 1000 bins), so
+  multiplying a channel by any factor changes neither. A channel that is only noisier (Gaussian
+  noise of its own, as with poor contact), or that lost its gain, therefore passes both. `resid`
+  measures, for each tested channel $i$ with covariance matrix $C$ over the tested channels, the SD
+  of what is left of it after its least-squares prediction from all the others,
+  $r_i = \sqrt{C_{ii}(1 - R_i^2)} = \sqrt{C_{ii} / (C_{ii}\,(C^{-1})_{ii})}$, computed for all
+  channels from one inverse of the correlation matrix. A channel is bad when the robust z of
+  $\log r_i$ (median and MAD over the channels, the MAD at least 0.1) is above the threshold. Shared
+  activity (volume conduction: brain rhythms, blinks, a nearby reference) is predicted by the
+  neighbours and does not count; noise of the channel's own is not predicted. Samples where any
+  channel is beyond 6 robust SDs of its own (blinks, movement) are left out of $C$, unless that is
+  over half of them; at most 2·10⁵ samples are used; epochs have their mean removed. The test is
+  skipped (and said) when the correlation matrix is singular (smallest eigenvalue below 10⁻⁶ of the
+  largest: average-referenced or interpolated channels, each predicted exactly), and needs at
+  least 8 channels. In simulations (64 and 32 channels, spatially smooth sources plus sensor
+  noise, strong occipital alpha, frontal blinks, a vertex reference), kurtosis + joint probability
+  found 0–12% of channels 1.5 to 5 times noisier than the rest, `resid` 75–100%, with 0–0.1 false
+  alarms per recording against 3–8 for kurtosis + joint probability, which flagged blink-laden
+  frontal channels. One missed channel three times noisier left 52% of the epochs under a 100 µV
+  limit. The simple mode and the panel detect with `kurt+prob+resid`.
+  [`pipecompare.run.Steps.residualZ`]
+- **Bad channels are found in the analysis band (`detectLowpass`).** The copy the bad channels are
+  found on is also low-passed: at 40 Hz for ERPs (the highest low-pass compared; its stop band
+  starts at 50 Hz), 5 Hz above the highest band for band power, none on epoched data, data already
+  low-passed at or below that edge, or an edge within 10% of the Nyquist frequency. Line noise on
+  one channel, which the pipeline's low-pass removes, otherwise makes that channel bad and
+  replaces it by its neighbours (the measured electrode included). [`pipecompare.simple.Presets.detectLowpass`]
 - **Event types are matched exactly.** `pop_epoch` selects events with `strmatch(…, 'exact')`, so
   'S 1' and 's 1' are different types. The contract is validated the same way and names the
   near match.

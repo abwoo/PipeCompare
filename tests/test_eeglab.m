@@ -937,7 +937,8 @@ nqc_setBase(EEG);
 app = pipecompare.gui.Panel(); cleanup = onCleanup(@() delete(app)); %#ok<NASGU>
 app.TypeDrop.Value = 'badchannels'; app.addStep();
 p = app.Plan.Slots(1).alternatives{1}.params;
-verifyEqual(tc, p.measure, 'kurt+prob'); verifyEqual(tc, p.threshold, 5); verifyEqual(tc, p.detectHighpass, 1);
+verifyEqual(tc, p.measure, 'kurt+prob+resid'); verifyEqual(tc, p.threshold, 5); verifyEqual(tc, p.detectHighpass, 1);
+verifyEqual(tc, p.detectLowpass, 40);   % the band an ERP keeps (the data are not low-passed yet)
 verifyEqual(tc, p.exclude, {'EOG1', 'EOG2'});
 app.TypeDrop.Value = 'reref'; app.addStep();
 verifyEqual(tc, app.Plan.Slots(2).alternatives{1}.params.exclude, {'EOG1', 'EOG2'});

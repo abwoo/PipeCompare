@@ -672,6 +672,49 @@ verifyFalse(tc, any(ismember(info.badChannels, {E.chanlocs.labels})));
 verifyEqual(tc, E.nbchan, EEG.nbchan - numel(info.badChannels));
 end
 
+function testAChannelThatIsJustNoisierIsBad(tc)
+% resid: a channel with noise of its own (P8 with several times the
+% noise, no spikes) is bad, as the other channels cannot predict it
+% (kurtosis and joint probability depend only on the shape of a channel's
+% values, not their size); no good channel is flagged. Data whose channels
+% are linearly dependent (average-referenced) are not tested, which is
+% said.
+EEG0 = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
+EEG = EEG0; k = find(strcmp({EEG.chanlocs.labels}, 'P8'));
+rng(2); EEG.data(k, :) = EEG.data(k, :) + single(25 * randn(1, EEG.pnts));
+p = struct('measure', 'resid', 'threshold', 5, 'exclude', {{'EOG1', 'EOG2'}}, ...
+    'detectHighpass', 1, 'detectLowpass', 40, 'action', 'interpolate');
+[E, coms, info] = pipecompare.run.Steps.badChannels(EEG, p, struct('highpass', 0));
+verifyEqual(tc, info.badChannels, {'P8'});
+verifyTrue(tc, contains(coms{1}, 'on a 1 Hz high-passed, 40 Hz low-passed copy'), coms{1});
+verifyEqual(tc, info.interpolated, {'P8'});
+verifyNotEqual(tc, E.data(k, :), EEG.data(k, :));
+[~, ~, info] = pipecompare.run.Steps.badChannels(EEG0, p, struct('highpass', 0));
+verifyEmpty(tc, info.badChannels);
+eog = find(ismember({EEG0.chanlocs.labels}, {'EOG1', 'EOG2'}));
+[~, A] = evalc('pop_reref(EEG0, [], ''exclude'', eog)');
+[txt, ~, ~, info] = evalc('pipecompare.run.Steps.badChannels(A, p, struct(''highpass'', 0))');
+verifyEmpty(tc, info.badChannels);
+verifyTrue(tc, contains(txt, 'linearly dependent'), txt);
+end
+
+function testLineNoiseAloneDoesNotMakeAChannelBad(tc)
+% detectLowpass: line noise on one channel (P4), which a later low-pass
+% removes, makes it bad on a copy that keeps it, not on a copy low-passed
+% to the band the analysis keeps.
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20));
+k = find(strcmp({EEG.chanlocs.labels}, 'P4'));
+EEG.data(k, :) = EEG.data(k, :) + single(40 * sin(2 * pi * 50 * (0:EEG.pnts - 1) / EEG.srate));
+p = struct('measure', 'kurt+prob+resid', 'threshold', 5, 'exclude', {{'EOG1', 'EOG2'}}, ...
+    'detectHighpass', 1, 'action', 'interpolate');
+[~, ~, info] = pipecompare.run.Steps.badChannels(EEG, p, struct('highpass', 0));
+verifyTrue(tc, ismember('P4', info.badChannels), strjoin(info.badChannels, ' '));
+p.detectLowpass = 40;
+[~, coms, info] = pipecompare.run.Steps.badChannels(EEG, p, struct('highpass', 0));
+verifyFalse(tc, ismember('P4', info.badChannels), strjoin(info.badChannels, ' '));
+verifyTrue(tc, contains(coms{1}, '40 Hz low-passed copy'), coms{1});
+end
+
 function testFlatChannelsAreBad(tc)
 % A channel with no signal (a constant, or almost nothing) is bad whatever
 % the measures say, and does not keep the others from being detected; the
