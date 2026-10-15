@@ -735,7 +735,7 @@ verifyTrue(tc, any(contains(pipecompare.simple.Presets.stepsText(r, 1), 'Pz left
 % adopting it replays the same choice
 [~, E] = evalc('pipecompare.run.Executor.replay(r, 1)');
 verifyTrue(tc, contains(E.history, sprintf('pop_interp(EEG, %d, ''spherical'')', find(strcmp(lab, 'P8')))), E.history);
-verifyFalse(tc, contains(E.history, sprintf('pop_interp(EEG, %s', mat2str(sort(b))))));
+verifyFalse(tc, contains(E.history, sprintf('pop_interp(EEG, %s', mat2str(sort(b)))));
 end
 
 function testLineNoiseAloneDoesNotMakeAChannelBad(tc)

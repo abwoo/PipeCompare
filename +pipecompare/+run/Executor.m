@@ -239,6 +239,7 @@ classdef Executor
             end
             result.icaSeeds = [];
             if pipecompare.utils.fieldOr(opts, 'icaSeeds', 0) > 0 && isempty(notRun)
+                env.leaves = result.leaves;   % with a pipeline added by fine-tuning the cutoffs
                 result.icaSeeds = icaSeedCheck(env, root, S, ctx0, acc0, allc, R, ref, opts);
             end
             result.cands = allc;
