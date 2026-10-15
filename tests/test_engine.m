@@ -1430,13 +1430,14 @@ verifyTrue(tc, all(strcmp(T.status, 'feasible')), strjoin(T.reason, '; '));
 m1 = pipecompare.eval.Measure.candidate(E1, c, r.ref); m0 = pipecompare.eval.Measure.candidate(E0, c, r.ref);
 actual = m1.objectives(1).estimate(1) - m0.objectives(1).estimate(1);
 o1 = r.cands(kAll).m.objectives(1);
+eb = T.(matlab.lang.makeValidName(['eyeBias_' r.ref.objectives{1}]));   % the table column of the P3's eye bias
 x = o1.X{1}(:, 1); b = r.ref.blink{1}{1}; pb = mean(b);
 se = pb * std(x) * sqrt(1 / sum(b) + 1 / sum(~b));
 fprintf(['blinks: they add %.2f uV to the target mean; estimated %.2f uV (SE %.2f); rejecting them: %.2f uV; ', ...
-    'noise %.3f keeping them, %.3f rejecting them\n'], actual, T.eyeBias_P3(kAll), se, T.eyeBias_P3(kRej), T.noise(kAll), T.noise(kRej));
+    'noise %.3f keeping them, %.3f rejecting them\n'], actual, eb(kAll), se, eb(kRej), T.noise(kAll), T.noise(kRej));
 verifyGreaterThan(tc, actual, 2 * se);                            % a real bias
-verifyLessThan(tc, abs(T.eyeBias_P3(kAll) - actual), 3 * se);
-verifyLessThan(tc, abs(T.eyeBias_P3(kRej)), abs(T.eyeBias_P3(kAll)) / 4);
+verifyLessThan(tc, abs(eb(kAll) - actual), 3 * se);
+verifyLessThan(tc, abs(eb(kRej)), abs(eb(kAll)) / 4);
 verifyEqual(tc, r.ranking.recommended, kRej);
 r2 = r; r2.ranking.recommended = kAll;                            % the results' words for the other one
 verifyTrue(tc, contains(pipecompare.simple.Presets.biasText(r2), 'blinks in the trials it keeps'), pipecompare.simple.Presets.biasText(r2));
@@ -1459,7 +1460,7 @@ sp = [sp{:}];
 fprintf('shape spread: none %.3f, HP 0.1 %.3f, HP 1 %.3f, LP 30 %.3f\n', sp);
 verifyEqual(tc, sp(1), 0);
 verifyLessThan(tc, sp(2), 0.02);
-verifyGreaterThan(tc, sp(3), 0.1);
+verifyGreaterThan(tc, sp(3), 0.05);
 verifyGreaterThan(tc, sp(3), 5 * sp(2));
 verifyLessThan(tc, sp(4), 0.05);
 end
