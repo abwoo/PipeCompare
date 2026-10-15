@@ -32,6 +32,7 @@ gh = findall(w.Fig, 'Type', 'uimenu', 'Text', 'PipeCompare on GitHub');
 verifyNumElements(tc, gh, 1);                                   % Help > PipeCompare on GitHub
 verifyTrue(tc, isa(gh.MenuSelectedFcn, 'function_handle'));
 verifyTrue(tc, pipecompare.start() == w);                      % one window: opening again shows it
+verifyTrue(tc, pipecompare() == w);                            % the short command: the same window
 w.showPage(5);
 verifyTrue(tc, logical(w.Pages(5).Visible) && ~logical(w.Pages(1).Visible));
 verifyTrue(tc, contains(w.ExportData.Text, 'nqc_synth'));
