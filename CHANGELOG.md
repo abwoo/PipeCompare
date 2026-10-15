@@ -5,6 +5,18 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- The selection check now also holds out the choices made inside each pipeline: a rejection limit,
+  an ICLabel threshold or components chosen from the data are chosen again on the half of the
+  trials used to choose (nested cross-fitting), so their advantage by chance no longer flatters
+  the reported noise or favours pipelines with more such choices. `crossfit.nested` counts the
+  pipelines this applied to. Method: docs/METHODS.md, section 3.
+- ICA components chosen by their effect on the noise no longer include components that carry
+  clear time-locked activity into the measured window (|t| > 3 and a shift above half the SME),
+  except those ICLabel calls Eye: real brain activity ICLabel did not recognise is kept. Method:
+  docs/METHODS.md, section 9g.
+- The signal check with the recording's own waveform falls back to the bump when an eye channel
+  has the same shape over the window and is more than twice as large (a blink locked to the
+  stimulus). Method: docs/METHODS.md, section 4.
 - Signal check with the recording's own waveform (`'signalTemplate', 'data'`, on in the simple
   mode, *Options… > Signal check with own waveform* in the advanced panel): the known signal takes
   the shape of the data's own average at each component's ROI over its window (faded to zero

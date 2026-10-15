@@ -410,6 +410,7 @@ classdef Steps
                 else
                     [comps, info.icSme] = pipecompare.eval.IcThreshold.chooseBySme(EEG, cand, ctx);
                     info.icsProtected = numel(info.icSme.protected);   % kept: time-locked activity in a measured window
+                    info.curves = info.icSme.curves;   % for the ranking's selection check (Rank.crossfit)
                 end
                 nIc = size(EEG.icaweights, 1);
                 EEG.reject.gcompreject = false(1, nIc); EEG.reject.gcompreject(comps) = true;
@@ -427,6 +428,7 @@ classdef Steps
                     q = max(P, [], 2);
                     [p.threshold, info.icThreshold] = pipecompare.eval.IcThreshold.choose(EEG, q, ctx);
                     info.thresholdChosen = p.threshold;
+                    info.curves = info.icThreshold.curves;
                     info.icsConsidered = info.icThreshold.sets - 1;   % components over IcThreshold.MinProbability
                 end
                 T = nan(7, 2);
@@ -471,6 +473,7 @@ classdef Steps
                         m = pipecompare.run.Steps.limitStat(EEG, chans, p);
                         [uv, th] = pipecompare.eval.Threshold.choose(EEG, m, ctx);
                         p.uv = uv; info.threshold = th; info.uvChosen = uv;
+                        info.curves = th.curves;
                     end
                     if pp
                         EEG = pipecompare.run.Steps.markPeakToPeak(EEG, chans, p.uv, win);

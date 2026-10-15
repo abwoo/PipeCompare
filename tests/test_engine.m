@@ -922,6 +922,7 @@ rec = r.ranking.recommended;
 verifyTrue(tc, contains(r.labels{rec}, 'auto'), r.labels{rec});
 st = r.cands(rec).steps{end};
 verifyTrue(tc, isfinite(st.uvChosen) && st.uvChosen < 1000);
+verifyEqual(tc, r.ranking.byStratum.crossfit.nested, 1);         % its limit chosen again in the selection check
 L = pipecompare.simple.Presets.stepsText(r, rec);
 verifyTrue(tc, any(contains(L, sprintf('+/-%g uV', st.uvChosen)) & contains(L, 'limit chosen from these data')), strjoin(L, newline));
 pipecompare.PipeCompare.adopt(r);
@@ -1233,6 +1234,7 @@ verifyEqual(tc, r.cands(1).status, 'ok', r.cands(1).message);
 st = r.cands(1).steps{3};
 verifyEqual(tc, st.type, 'icremove');
 verifyTrue(tc, isfinite(st.thresholdChosen) && st.thresholdChosen > 0 && st.thresholdChosen <= 1);
+verifyEqual(tc, r.ranking.byStratum.crossfit.nested, 1);         % its threshold chosen again in the selection check
 L = pipecompare.simple.Presets.stepsText(r, 1);
 verifyTrue(tc, any(contains(L, 'threshold chosen from these data')), strjoin(L, newline));
 pipecompare.PipeCompare.adopt(r, 1, true);
@@ -1265,6 +1267,7 @@ verifyEqual(tc, r.cands(1).status, 'ok', r.cands(1).message);
 st = r.cands(1).steps{3};
 verifyEqual(tc, st.type, 'icremove');
 verifyTrue(tc, isfinite(st.icsConsidered));
+verifyEqual(tc, r.ranking.byStratum.crossfit.nested, 1);         % its components chosen again in the selection check
 L = pipecompare.simple.Presets.stepsText(r, 1);
 verifyTrue(tc, any(contains(L, 'effect on the noise')), strjoin(L, newline));
 pipecompare.PipeCompare.adopt(r, 1, true);

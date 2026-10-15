@@ -579,7 +579,10 @@ data are not cleaned more than they need to be. The result then says whether the
 pipeline's noise is within 5 % of the best one's (a negligible difference) or whether the data are
 too few to tell, with how much noisier it could be. It also says how the best pipeline does on
 trials that were not used to choose it: either *its advantage is not luck*, or its noise there is
-about X % higher than it looks (see [How a pipeline is chosen](#how-a-pipeline-is-chosen)). Last, it
+about X % higher than it looks. The automatic settings inside each pipeline (the rejection limit,
+the ICLabel threshold, the components chosen by their effect on the noise) are chosen again on
+the trials used to choose, so their luck is left out of that number too; the sentence then says
+*trials not used to choose it or to set its automatic settings* (see [How a pipeline is chosen](#how-a-pipeline-is-chosen)). Last, it
 says how often the same pipeline would be recommended with the trials drawn again at random, for
 example *this pipeline is recommended 85% of the time: a stable choice* (70 % or more), or *45% of
 the time, No. 7 30% of the time: the data do not single out one pipeline clearly*; then the
@@ -867,7 +870,14 @@ option ticked (*also choose the components by their effect on the noise*), every
 also run with the components chosen by what removing them does to the measure:
 
 1. The components that may be removed are all those whose likeliest ICLabel class is not
-   *Brain*: a component ICLabel takes for brain activity is never removed.
+   *Brain*: a component ICLabel takes for brain activity is never removed. A component that
+   carries clear time-locked activity into the measured window is not removed either, even when
+   ICLabel calls it *Other*: removing it alone would move a condition's average in the window by
+   more than half its SME, with a t value above 3 across trials. The noise measure counts real
+   brain activity that varies from trial to trial as noise, so without this a P3 component that
+   ICLabel did not recognise could be removed for lowering it. Components ICLabel calls *Eye* are
+   not kept this way, since blinks can be time-locked to the stimulus too. The steps of the
+   pipeline say how many were kept for this reason.
 2. Starting from removing nothing, the component whose removal gives the lowest SME is added to
    the set, then the next one together with it, and so on (forward selection). Each set is scored
    exactly as in [ICLabel threshold chosen from the data](#iclabel-threshold-chosen-from-the-data):
@@ -983,6 +993,11 @@ recording, before any pipeline runs:
    look alike over that stretch (split-half reliability, stepped up to all epochs with the
    Spearman-Brown formula, at least 0.8), and it must be one deflection of one sign in the window.
    A noisy average would make the check test noise instead of your component.
+   It must also not look like a **blink**: in many tasks people blink right after a target, at
+   about the P3's latency, and such a blink is as reliable as a component. So the eye channels
+   (EOG by type or name, for example EYEL/EYER; without them Fp1, Fp2 and FPz) are averaged the
+   same way, and when one of them has the same shape (similarity above 0.8) and is more than twice
+   as large, the bump is used and the result says it looks like eye activity.
 4. It is scaled to a peak of 5 µV in the window and checked exactly as the bump would be.
 
 When the average is not reliable enough (in a simulation with a 6 µV P3 in 8 µV noise: about half
@@ -1230,7 +1245,9 @@ and constraints and ranking options in `help pipecompare.eval.Rank`.
 
 The ICLabel threshold and the epoch-rejection limit of the *Standard* recipe (and, with that option,
 the ICA components chosen by their effect on the noise) are chosen inside each pipeline, before
-this ranking, with the same SME, constraints and bootstrap (see
+this ranking, with the same SME, constraints and bootstrap. The check on trials not used to choose
+makes these choices again on the half used to choose, so neither the choice between pipelines
+nor the choices inside them flatter the result (see
 [ICLabel threshold chosen from the data](#iclabel-threshold-chosen-from-the-data),
 [ICA components chosen by their effect on the noise](#ica-components-chosen-by-their-effect-on-the-noise) and
 [Rejection limit chosen from the data](#rejection-limit-chosen-from-the-data)).

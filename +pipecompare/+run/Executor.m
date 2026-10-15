@@ -758,16 +758,19 @@ function f = stepFacts(in, info)
 % whether its cutoff was fine-tuned from the data (cutoffRefined); for
 % weighted epochs, how much more the cleanest counts than the noisiest
 % (weightRatio) and the weights (trialWeights), which fine-tuning the
-% cutoffs also holds fixed.
+% cutoffs also holds fixed; for a choice made from the data (rejection
+% limit, ICLabel threshold, components by SME), the scores of every option
+% it chose among (curves), with which the ranking's selection check makes
+% the choice again on half of the trials (Rank.crossfit).
 f = struct('type', in.type, 'params', in.params, 'interpolated', {{}}, 'removed', {{}}, ...
     'icsRemoved', NaN, 'icsTotal', NaN, 'rejected', NaN, 'epochsBefore', NaN, 'epochsInterpolated', NaN, ...
     'icsBrain', NaN, 'icsOther', NaN, 'otherMedian', NaN, 'icaPoints', NaN, 'uvChosen', NaN, 'thresholdChosen', NaN, 'icsConsidered', NaN, 'icsProtected', NaN, ...
-    'comps', [], 'rejIdx', [], 'cutoffRefined', false, 'weightRatio', NaN, 'trialWeights', []);
+    'comps', [], 'rejIdx', [], 'cutoffRefined', false, 'weightRatio', NaN, 'trialWeights', [], 'curves', []);
 for n = {'interpolated', 'removed'}
     if isfield(info, n{1}), f.(n{1}) = cellstr(info.(n{1})); end
 end
 for n = {'icsRemoved', 'icsTotal', 'rejected', 'epochsBefore', 'epochsInterpolated', 'icsBrain', 'icsOther', 'otherMedian', 'icaPoints', 'uvChosen', 'thresholdChosen', 'icsConsidered', 'icsProtected', ...
-        'comps', 'rejIdx', 'cutoffRefined', 'weightRatio', 'trialWeights'}
+        'comps', 'rejIdx', 'cutoffRefined', 'weightRatio', 'trialWeights', 'curves'}
     if isfield(info, n{1}), f.(n{1}) = info.(n{1}); end
 end
 end

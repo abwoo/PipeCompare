@@ -212,9 +212,35 @@ the objective of the pipeline chosen by minimum objective; reported against the 
 objective on all trials, as `crossfit.overstatement = honest / apparent − 1`. A choice made on
 half the trials is somewhat worse than one made on all of them, so the overstatement is, if
 anything, too large. For segments of one recording (band power), consecutive segments are
-dependent, so the halves are the earlier and the later half (*S* = 1). The data-driven decisions
-of the candidates (bad channels, ICA, rejected epochs) were made on all trials; only the choice
-between candidates is held out. In simulation (`test_statistics`), with 24 candidates of equal
+dependent, so the halves are the earlier and the later half (*S* = 1).
+
+*Nested.* A candidate also makes choices from the objective itself: a rejection limit (section
+9c), an ICLabel threshold (9d) or components chosen by the SME (9g). Chosen on all trials, they
+flatter its objective in the same way, and more so the more such choices it has, so they would
+favour pipelines with many of them. Each such step stores, for every option it chose among (one
+for a limit; one per component set for 9d and 9g), the scores of the reference trials divided by
+the gain and the limit statistic *m* of each trial (`curves`). Removing components and rejecting
+epochs are decisions followed by linear steps, so these stored scores are exactly what the
+candidate would have with any option and limit. On the selecting half *H* the choice is made
+again: per option, its best limit on *H* (a fixed limit: that one; feasibility with the trial
+limits scaled to the half); the first option (fewest components) whose objective is within the
+equivalence margin of the best option's; and in it the most lenient limit within the margin of
+its best. The point margin stands in for the bootstrap equivalence of sections 9c–9d, so on the
+half the choice is if anything more lenient. That choice is then scored on *H* (to compare
+candidates) and on the other half (the held-out score), with the candidate's trial weights
+(section 9f; a trial it did not keep gets the median weight; the weighted SME does not depend on
+the weights' scale). Only the last such step of a candidate is made again; components chosen
+before a rejection limit come first, as their options already contain every limit. A candidate is
+nested only when its own choice's stored scores reproduce its scores: the trials kept are those
+up to one limit and the cosine of the centred scores is at least 0.999 (otherwise a step after
+the choice changed the scores). `crossfit.nested` counts the nested candidates. The other
+data-driven decisions (bad channels, the ICA decomposition, trial weights and cutoffs fine-tuned
+afterwards, section 9e) are still made on all trials. In simulation (`test_statistics`: one
+candidate whose limit is chosen on a rejection statistic unrelated to the scores, 60 trials), the
+nested check finds the limit's chance advantage, about 3 %, where holding the kept trials fixed
+finds none.
+
+In simulation (`test_statistics`), with 24 candidates of equal
 true noise and 60 trials, the apparent best objective was below the true SME by more than 5 %,
 while the cross-fitted value was within 5 % of it. [`pipecompare.eval.Rank.crossfit`]
 
@@ -264,7 +290,12 @@ when (i) its split-half reliability over the stretch is at least 0.8: *r* = ⟨*
 (‖*a*_odd‖ ‖*a*_even‖) for the tapered averages of the odd and even epochs (uncentred, since the
 stretch starts and ends at zero), stepped up to all epochs, 2*r*/(1 + *r*) (Spearman-Brown); and
 (ii) the window holds one deflection of one sign (|mean| ≥ half the largest absolute value),
-which keeps the gain's denominator away from zero. Otherwise, and for contralateral-minus-ipsilateral
+which keeps the gain's denominator away from zero; and (iii) it does not look like eye
+activity: for every eye channel *e* (EOG by type or by a name with EOG or EYE; without one, Fp1,
+Fp2 and FPz), averaged the same way over the same stretch, not both |⟨*a*_e, *a*⟩| / (‖*a*_e‖ ‖*a*‖) >
+0.8 and ‖*a*_e‖ > 2 ‖*a*‖. A blink time-locked to the stimulus (common in oddball tasks, and at the
+P3's latency) would otherwise pass every other test, since it is as reliable as a component, and
+the check would then test how a pipeline keeps the blink. Otherwise, and for contralateral-minus-ipsilateral
 components and band power, the Gaussian above. Any shape is a valid test signal: the copy is
 noise-free and every operation is linear given the decisions, so the check measures exactly how
 the pipeline transfers that shape. The data's shape only makes the test closer to the real
@@ -618,6 +649,18 @@ selection is greedy, so the best set on the path need not be the best subset; wh
 is that every set on the path is scored exactly, that each step takes the component that lowers
 the objective most given those already removed (unlike a threshold, which orders components by
 probability), and that the threshold's own sets are not needed: both are compared in the ranking.
+
+**Time-locked components are not candidates.** The SME counts every trial-to-trial variation as
+noise, real brain activity that varies from trial to trial included, so removing a brain component
+lowers it too. ICLabel's Brain class protects only the components it recognises. So before the
+path, for each candidate *k* and condition *c*, the component's part of each trial's score is
+*d*_i = ā_k · (S̄_k,i(window) − S̄_k,i(baseline)), with ā_k the mean of its scalp map over the
+ROI and S̄ the window and baseline means of its activation in trial *i* (exact for a mean
+amplitude: the score is linear in the components). *k* is protected (`info.protected`) when in
+some condition |*t*| = |mean *d*| / (SD *d* / √*n*) > 3 and |mean *d*| > 0.5 SME of the scores:
+clearly time-locked, and large enough to change the measure. Components whose likeliest ICLabel
+class is Eye are not protected, as blinks can be time-locked. Mean amplitudes only;
+contralateral-minus-ipsilateral components and band power are not checked.
 
 **Choice.** As in section 9d: the sets on the path are compared with the same paired bootstrap and
 simultaneous max statistic, and among those shown equivalent to the best the one removing the

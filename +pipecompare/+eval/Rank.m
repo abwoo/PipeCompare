@@ -58,7 +58,11 @@ classdef Rank
     %      choose it: the trials of each condition are split in halves,
     %      the pipeline best on one half is scored on the other (rescaled
     %      to the full number of trials), and back; opts.nSplits random
-    %      splits (consecutive halves for segments of one recording).
+    %      splits (consecutive halves for segments of one recording). A
+    %      choice a pipeline makes from the measure itself (a rejection
+    %      limit, an ICLabel threshold or components chosen from the data)
+    %      is made again on the selecting half too (nested cross-fitting),
+    %      so its advantage by chance is held out as well.
     %   5. Among candidates the data do not distinguish from the best, the
     %      recommendation is the least aggressive: highest minimum trial
     %      retention, then smallest signal distortion, then best objective.
@@ -292,9 +296,18 @@ classdef Rank
             % made on half the trials is somewhat worse than one made on all,
             % so the overstatement is, if anything, too large. [] when a
             % condition has fewer than 4 trials or nSplits is 0.
-            % The data-driven decisions of each pipeline (bad channels, ICA,
-            % rejected epochs) were made on all trials; only the selection
-            % among pipelines is held out.
+            % The choices a pipeline makes from the measure itself (a
+            % rejection limit, an ICLabel threshold or components chosen by
+            % the SME: the steps that store the scores of every option they
+            % chose among, 'curves') are made again on the selecting half
+            % (nestedHalf), so their advantage by chance is held out too
+            % (nested cross-fitting); nested: how many candidates had one.
+            % A candidate is not nested when the stored scores of its own
+            % choice do not reproduce its scores (a step after the choice
+            % changed them, or its cutoffs were fine-tuned afterwards).
+            % The other data-driven decisions (bad channels, the ICA
+            % decomposition, fine-tuned cutoffs, trial weights) were made
+            % on all trials.
             cf = [];
             if nargin < 5, apparent = NaN; end
             opts = pipecompare.utils.withDefaults(opts, pipecompare.eval.Rank.defaults());
@@ -304,6 +317,8 @@ classdef Rank
             segmented = isfield(ref, 'segmented') && ref.segmented;
             nS = opts.nSplits; if segmented, nS = 1; end
             honest = []; inSample = [];
+            inner = arrayfun(@(c) innerOf(c, ref, objName), cands, 'UniformOutput', false);
+            nest = find(~cellfun(@isempty, inner));
             for sp = 1:nS
                 WA = cell(1, nC); WB = cell(1, nC); scA = ones(1, nC); scB = ones(1, nC);
                 for c = 1:nC
@@ -315,16 +330,22 @@ classdef Rank
                 end
                 vA = combine(perObjective(cands, ref, opts, WA, scA), objName, ref);
                 vB = combine(perObjective(cands, ref, opts, WB, scB), objName, ref);
-                vA(~isfinite(vA)) = NaN; vB(~isfinite(vB)) = NaN;
-                if all(isnan(vA)) || all(isnan(vB)), continue; end
-                [~, ia] = min(vA); [~, ib] = min(vB);
-                honest = [honest vB(ia) vA(ib)]; inSample = [inSample vA(ia) vB(ib)]; %#ok<AGROW>
+                % vXY: chosen on half X, scored on half Y
+                vAA = vA; vAB = vB; vBB = vB; vBA = vA;
+                for k = nest(:)'
+                    [vAA(k), vAB(k)] = nestedHalf(inner{k}, WA, WB, scA, scB, ref, opts);
+                    [vBB(k), vBA(k)] = nestedHalf(inner{k}, WB, WA, scB, scA, ref, opts);
+                end
+                vAA(~isfinite(vAA)) = NaN; vBB(~isfinite(vBB)) = NaN;
+                if all(isnan(vAA)) || all(isnan(vBB)), continue; end
+                [~, ia] = min(vAA); [~, ib] = min(vBB);
+                honest = [honest vAB(ia) vBA(ib)]; inSample = [inSample vAA(ia) vBB(ib)]; %#ok<AGROW>
             end
             ok = isfinite(honest);
             if ~any(ok), return; end
             h = mean(honest(ok));
             cf = struct('apparent', apparent, 'honest', h, 'overstatement', h / apparent - 1, ...
-                'halfInSample', mean(inSample(ok)), 'nSplits', nS);
+                'halfInSample', mean(inSample(ok)), 'nSplits', nS, 'nested', numel(nest));
         end
 
         function T = marginal(R, leaves, searched)
@@ -450,8 +471,9 @@ classdef Rank
                 if ~isempty(b.crossfit)
                     pipecompare.utils.log(['Selection check: the pipeline best on half of the trials has objective %.4g on the ', ...
                         'other half (rescaled to all trials), against %.4g for the best on all trials: the best looks %.0f%% ', ...
-                        'better than it is (%d split(s), both directions).'], b.crossfit.honest, b.crossfit.apparent, ...
-                        100 * b.crossfit.overstatement, b.crossfit.nSplits);
+                        'better than it is (%d split(s), both directions; the limits, thresholds or components chosen ', ...
+                        'from the data made again on the selecting half for %d pipeline(s)).'], b.crossfit.honest, b.crossfit.apparent, ...
+                        100 * b.crossfit.overstatement, b.crossfit.nSplits, pipecompare.utils.fieldOr(b.crossfit, 'nested', 0));
                 end
             end
             if numel(R.byStratum) > 1
@@ -621,4 +643,122 @@ if strcmp(name, 'composite')
 else
     v = per(:, :, strcmp(ref.objectives, name));
 end
+end
+
+function in = innerOf(c, ref, objName)
+% The choice candidate c made from the measure itself, for nestedHalf: the
+% scores of every option of the last such step (components chosen before
+% a rejection limit come first: their options cover the limit too),
+% divided by the gain, with zeros where a trial is absent (M: NaN), the
+% options that passed the signal check (ok) and c's trial weights (w, {}
+% when not weighted; trials c did not keep get the median weight). []
+% when c has none, its cutoffs were fine-tuned after it, or the stored
+% scores of its own choice do not reproduce c's scores: the same trials
+% kept (those up to one limit) and the same scores (cosine of the centred
+% scores at least 0.999).
+in = [];
+if ~strcmp(c.status, 'ok') || ~isfield(c, 'steps') || isempty(c.steps), return; end
+ty = cellfun(@(st) st.type, c.steps, 'UniformOutput', false);
+has = cellfun(@(st) isfield(st, 'curves') && ~isempty(st.curves), c.steps);
+refined = cellfun(@(st) isfield(st, 'cutoffRefined') && isequal(st.cutoffRefined, true), c.steps);
+if ~any(has) || any(refined), return; end
+k = find(has & strcmp(ty, 'icremove'), 1, 'last');
+if isempty(k), k = find(has, 1, 'last'); end
+cv = c.steps{k}.curves;
+nO = numel(ref.objectives);
+use = 1:nO;
+if ~strcmp(objName, 'composite'), use = find(strcmp(ref.objectives, objName)); end
+O = cv.options{cv.chosen};
+objs = c.m.objectives(use);
+if ~isequal(O.use(:)', use(:)') || ~all(strcmp({objs.kind}, 'scalar')), return; end
+g = gainOf(c, nO); g = g(use);
+if ~all(g > 0), return; end
+nC = numel(ref.ids);
+for q = 1:nC
+    kept = ~isnan(objs(1).X{q}(:, 1)); pres = ~isnan(O.M{q});
+    if nnz(kept) < 2 || any(kept & ~pres), return; end
+    drop = pres & ~kept;
+    if any(drop) && ~(max(O.M{q}(kept)) < min(O.M{q}(drop))), return; end
+    for j = 1:numel(use)
+        a = objs(j).X{q}(kept, 1); b = O.X{q}(kept, j);
+        a = a - mean(a); b = b - mean(b);
+        if norm(a) > 0 && (a' * b) / max(norm(a) * norm(b), eps) < 0.999, return; end
+    end
+end
+w = {};
+if isfield(objs(1), 'w') && ~isempty(objs(1).w)
+    w = objs(1).w;
+    for q = 1:nC
+        w{q}(isnan(w{q})) = median(w{q}(~isnan(w{q})));
+    end
+end
+opt = cv.options;
+for j = 1:numel(opt)
+    for q = 1:nC
+        X = opt{j}.X{q};
+        if ~opt{j}.gained, X = X ./ g; end
+        X(isnan(X)) = 0; opt{j}.X{q} = X;
+    end
+end
+in = struct('options', {opt}, 'ok', logical(cv.ok), 'w', {w});
+end
+
+function [vH, vO] = nestedHalf(in, H, O, scH, scO, ref, opts)
+% The candidate's choice (innerOf) made again on the trials of half H
+% (H{c}: 1 for the reference trials in it), as its step makes it on all
+% of them, with the margin in place of the bootstrap: per option its best
+% limit (a fixed limit: that one), the first option (fewest components)
+% within equivalenceMargin of the best option, and in it the most lenient
+% limit within equivalenceMargin of its best. Its objective on H (vH) and
+% on the other half O (vO), rescaled by scH and scO like perObjective;
+% NaN when no option keeps enough trials of H.
+vH = NaN; vO = NaN;
+nC = numel(ref.ids); nOpt = numel(in.options);
+need = max(opts.minTrials, ceil(opts.minRetention * ref.n - 1e-9));
+mg = 1 + opts.equivalenceMargin;
+objs = cell(1, nOpt); lims = cell(1, nOpt); best = inf(1, nOpt);
+for j = find(in.ok(:)')
+    P = in.options{j};
+    v = P.v;
+    if isempty(v)
+        v = [];
+        for q = 1:nC, v = [v; P.M{q}(H{q} > 0)]; end %#ok<AGROW>
+        v = unique(v(~isnan(v)))';
+    end
+    if isempty(v), continue; end
+    v = v(:)';
+    ok = true(1, numel(v)); acc = zeros(1, numel(v));
+    for q = 1:nC
+        K = double(P.M{q}(:) <= v) .* H{q}(:);           % trials x limits
+        n = sum(K, 1);
+        ok = ok & n >= max(ceil(need(q) * sum(H{q}) / ref.n(q) - 1e-9), 2);
+        for o = 1:size(P.X{q}, 2)
+            x = P.X{q}(:, o);
+            s1 = x' * K; s2 = (x .^ 2)' * K;
+            acc = acc + max((s2 - s1 .^ 2 ./ n) ./ (n - 1), 0) ./ n;
+        end
+    end
+    obj = sqrt(acc / (nC * size(P.X{1}, 2)));
+    obj(~ok | ~isfinite(obj)) = Inf;
+    objs{j} = obj; lims{j} = v; best(j) = min(obj);
+end
+if ~any(isfinite(best)), return; end
+j = find(best <= mg * min(best), 1);
+u = lims{j}(find(objs{j} <= mg * best(j), 1, 'last'));
+P = in.options{j};
+vH = scoredAt(P, u, H, scH, in.w, opts); vO = scoredAt(P, u, O, scO, in.w, opts);
+end
+
+function v = scoredAt(P, u, W, sc, w, opts)
+% The objective of option P with the trials kept at limit u, under the
+% trial weights W (Measure.smeBoot, rescaled by sc; RMS over the measures)
+nC = numel(P.X); per = zeros(1, size(P.X{1}, 2));
+for o = 1:numel(per)
+    X = cell(1, nC);
+    for q = 1:nC
+        X{q} = P.X{q}(:, o); X{q}(~(P.M{q} <= u)) = NaN;
+    end
+    per(o) = pipecompare.eval.Measure.smeBoot(struct('kind', 'scalar', 'X', {X}, 'w', {w}), W, opts, 0, sc);
+end
+v = sqrt(mean(per .^ 2));
 end

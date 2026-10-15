@@ -272,6 +272,44 @@ verifyGreaterThan(tc, mean(ho ./ ap - 1), 0.05);
 verifyLessThan(tc, abs(mean(one)), 0.04);
 end
 
+function testCrossfitHoldsOutTheLimitChosenFromTheData(tc)
+% One pipeline whose rejection limit was chosen from the data (uv 'auto')
+% on rejection statistics unrelated to the scores: the limit's advantage
+% is pure chance. Without its stored scores the selection check holds the
+% kept trials fixed and finds no overstatement; with them (nested) it
+% chooses the limit again on each half and finds the chance advantage
+% (simulated in Python: about 3% against 0%).
+rs = RandStream('mt19937ar', 'Seed', 41);
+N = 60; sims = 30; ref = nqc_ref(N);
+o = pipecompare.eval.Rank.defaults(); o.nBoot = 200; o.nSplits = 10;
+ovN = zeros(1, sims); ovP = zeros(1, sims);
+for k = 1:sims
+    x = randn(rs, N, 1); M = rand(rs, N, 1);
+    v = unique(M)'; obj = inf(size(v));
+    for j = 1:numel(v)
+        kp = M <= v(j);
+        if sum(kp) >= 30, obj(j) = std(x(kp)) / sqrt(sum(kp)); end
+    end
+    u = v(find(obj <= (1 + o.equivalenceMargin) * min(obj), 1, 'last'));   % the most lenient within the margin
+    xc = x; xc(M > u) = NaN;
+    plain = nqc_cand(xc); plain.steps = {};
+    nested = plain;
+    C = struct('X', {{x - mean(x)}}, 'M', {{M}}, 'use', 1, 'v', [], 'gained', false);
+    nested.steps = {struct('type', 'reject_threshold', 'cutoffRefined', false, ...
+        'curves', struct('options', {{C}}, 'ok', true, 'chosen', 1))};
+    cP = pipecompare.eval.Rank.crossfit(plain, ref, o, 'composite', plain.m.objectives.agg);
+    cN = pipecompare.eval.Rank.crossfit(nested, ref, o, 'composite', nested.m.objectives.agg);
+    verifyEqual(tc, [cP.nested cN.nested], [0 1]);
+    ovP(k) = cP.overstatement; ovN(k) = cN.overstatement;
+end
+fprintf('limit chosen from the data: overstatement %.3f nested, %.3f with the kept trials fixed\n', mean(ovN), mean(ovP));
+verifyGreaterThan(tc, mean(ovN) - mean(ovP), 0.015);
+verifyLessThan(tc, abs(mean(ovP)), 0.02);
+% a stored choice that does not reproduce the candidate's scores is not used
+bad = nested; bad.steps{1}.curves.options{1}.X{1} = randn(rs, N, 1);
+verifyEqual(tc, pipecompare.eval.Rank.crossfit(bad, ref, o, 'composite', 1).nested, 0);
+end
+
 function testCrossfitNeedsEnoughTrialsAndCanBeOff(tc)
 x = randn(3, 1); ref = nqc_ref(3); o = pipecompare.eval.Rank.defaults(); o.nBoot = 100; o.minTrials = 2;
 R = pipecompare.eval.Rank.run([nqc_cand(x) nqc_cand(2 * x)], ref, o);

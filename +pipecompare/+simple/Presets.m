@@ -584,11 +584,17 @@ classdef Presets
             end
             cf = b.crossfit;
             if ~isempty(cf) && isfinite(cf.overstatement)
-                if cf.overstatement < 0.02
-                    u = 'Checked on trials not used to choose it, the best pipeline''s noise is as low as it looks here: its advantage is not luck.';
+                if pipecompare.utils.fieldOr(cf, 'nested', 0) > 0
+                    % its automatic limits, thresholds or components were chosen again on those trials' other half
+                    on = 'trials not used to choose it or to set its automatic settings';
                 else
-                    u = sprintf(['Checked on trials not used to choose it, the best pipeline''s noise is about %.0f%% higher than ', ...
-                        'it looks here: part of its advantage over the others is luck.'], 100 * cf.overstatement);
+                    on = 'trials not used to choose it';
+                end
+                if cf.overstatement < 0.02
+                    u = sprintf('Checked on %s, the best pipeline''s noise is as low as it looks here: its advantage is not luck.', on);
+                else
+                    u = sprintf(['Checked on %s, the best pipeline''s noise is about %.0f%% higher than ', ...
+                        'it looks here: part of its advantage over the others is luck.'], on, 100 * cf.overstatement);
                 end
                 t = strtrim(sprintf('%s %s', t, u));
             end

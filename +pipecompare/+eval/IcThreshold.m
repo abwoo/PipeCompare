@@ -66,6 +66,10 @@ classdef IcThreshold
     %   so without this a brain component that ICLabel does not recognise
     %   could be removed for lowering it. Components whose likeliest
     %   ICLabel class is Eye are exempt (blinks can be time-locked).
+    %
+    %   Both: info.curves holds the scores of every set (fewest components
+    %   first), with which Rank.crossfit makes the choice again on half of
+    %   the trials.
 
     properties (Constant)
         MinProbability = 0.5   % lowest threshold compared
@@ -100,8 +104,8 @@ classdef IcThreshold
             protected = cand(ev.protect);
             cand = cand(~ev.protect);
             % the path: nothing removed, then one component more at a time
-            [f, u, why, X, M] = scoreSet(Ep, Sp, rej, chans, contract, ref, opts, sig);
-            sets = {zeros(1, 0)}; why = {why}; X = {X}; M = {M};
+            [f, u, why, X, M, C] = scoreSet(Ep, Sp, rej, chans, contract, ref, opts, sig);
+            sets = {zeros(1, 0)}; why = {why}; X = {X}; M = {M}; C = {C};
             cur = zeros(1, 0); base = P.PX; baseS = []; if ~isempty(PS), baseS = PS.PX; end
             for step = 1:min(numel(cand), pipecompare.eval.IcThreshold.MaxRemoved)
                 left = setdiff(cand, cur, 'stable');
@@ -110,15 +114,15 @@ classdef IcThreshold
                     Ek = withData(Ep, P, base - P.A(:, c) * P.S(c, :));
                     Sk = [];
                     if ~isempty(PS), Sk = withData(Sp, PS, baseS - PS.A(:, c) * PS.S(c, :)); end
-                    [fc, uc, wc, Xc, Mc] = scoreSet(Ek, Sk, rej, chans, contract, ref, opts, sig);
-                    if fc < fb, fb = fc; kb = c; out = {uc, wc, Xc, Mc}; end
+                    [fc, uc, wc, Xc, Mc, Cc] = scoreSet(Ek, Sk, rej, chans, contract, ref, opts, sig);
+                    if fc < fb, fb = fc; kb = c; out = {uc, wc, Xc, Mc, Cc}; end
                 end
                 if kb == 0, break; end                       % no further set passes
                 cur(end+1) = kb; %#ok<AGROW>
                 base = base - P.A(:, kb) * P.S(kb, :);
                 if ~isempty(PS), baseS = baseS - PS.A(:, kb) * PS.S(kb, :); end
                 sets{end+1} = cur; f(end+1) = fb; u(end+1) = out{1}; %#ok<AGROW>
-                why{end+1} = out{2}; X{end+1} = out{3}; M{end+1} = out{4}; %#ok<AGROW>
+                why{end+1} = out{2}; X{end+1} = out{3}; M{end+1} = out{4}; C{end+1} = out{5}; %#ok<AGROW>
                 if fb > (1 + 2 * opts.equivalenceMargin) * min(f), break; end   % well past the best
             end
             K = numel(sets);
@@ -143,6 +147,7 @@ classdef IcThreshold
                 info.objectiveBest = f(best); info.objectiveChosen = f(chosen);
             end
             comps = sort(sets{chosen});
+            info.curves = struct('options', {C}, 'ok', isfinite(f), 'chosen', chosen);   % for Rank.crossfit
             info.removedBest = numel(sets{best}); info.removedChosen = numel(comps);
             pipecompare.utils.log(['ICA components chosen by their effect on the SME: %d removed (best %d; %d of %d ', ...
                 'components could be removed, %d kept because they carry time-locked activity into the measured ', ...
@@ -173,13 +178,13 @@ classdef IcThreshold
             R = [{false(size(qr))} arrayfun(@(x) qr >= x, c, 'UniformOutput', false)];   % a threshold in [lo(k), hi(k)) removes R{k} (q > t)
             chans = [];
             if ~isempty(rej), chans = pipecompare.run.Steps.testedChannels(Ep, rej.params); end
-            f = nan(1, K); u = nan(1, K); why = repmat({''}, 1, K); X = cell(1, K); M = cell(1, K);
+            f = nan(1, K); u = nan(1, K); why = repmat({''}, 1, K); X = cell(1, K); M = cell(1, K); C = cell(1, K);
             for k = 1:K
                 comps = find(R{k});
                 Ek = Ep; Ek.data = removeComponents(EEG, Ep.data, comps);
                 Sk = [];
                 if ~isempty(Sp), Sk = Sp; Sk.data = removeComponents(EEG, Sp.data, comps); end
-                [f(k), u(k), why{k}, X{k}, M{k}] = scoreSet(Ek, Sk, rej, chans, contract, ref, opts, sig);
+                [f(k), u(k), why{k}, X{k}, M{k}, C{k}] = scoreSet(Ek, Sk, rej, chans, contract, ref, opts, sig);
             end
             % per set (fewest components first): its objective at its best
             % limit (NaN: not a candidate, why says why) and the number removed
@@ -204,6 +209,7 @@ classdef IcThreshold
                 info.notDistinguished = sum(keep); info.equallyGood = sum(equiv);
                 info.objectiveBest = f(best); info.objectiveChosen = f(chosen);
             end
+            info.curves = struct('options', {C}, 'ok', isfinite(f), 'chosen', chosen);   % for Rank.crossfit
             t = roundIn(lo(chosen), hi(chosen), qr, R{chosen});
             info.thresholdBest = roundIn(lo(best), hi(best), qr, R{best}); info.thresholdChosen = t;
             info.removedBest = sum(R{best}); info.removedChosen = sum(R{chosen});
@@ -291,12 +297,13 @@ X2(P.ch, :) = Y;
 E.data = reshape(X2, P.sz);
 end
 
-function [f, u, why, X, M] = scoreSet(Ek, Sk, rej, chans, contract, ref, opts, sig)
+function [f, u, why, X, M, C] = scoreSet(Ek, Sk, rej, chans, contract, ref, opts, sig)
 % One set of components removed (Ek: the data without them; Sk: the
 % known-signal copy without them, [] = no signal check): its objective at
 % the best limit of the rejection that follows (NaN when it fails the
 % signal check or keeps too few trials; why says why), that limit, and
-% the scores and limit statistics of Threshold.curve for the bootstrap.
+% the scores and limit statistics of Threshold.curve for the bootstrap
+% (C: aligned with the reference trials, for Rank.crossfit).
 f = NaN; u = NaN; why = ''; g = [];
 if ~isempty(Sk)
     r = pipecompare.eval.Injection.compare(Sk, contract, sig.truth, {});
@@ -312,7 +319,7 @@ else
     v = [];                                     % every limit (uv 'auto')
     if ~ischar(rej.params.uv), v = rej.params.uv; end
 end
-[v, ok, obj, X, M] = pipecompare.eval.Threshold.curve(Ek, m, contract, ref, opts, g, v);
+[v, ok, obj, X, M, C] = pipecompare.eval.Threshold.curve(Ek, m, contract, ref, opts, g, v);
 if ~any(ok)
     if isempty(why), why = 'too few trials kept'; end
     return;
