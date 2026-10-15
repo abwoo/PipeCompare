@@ -546,6 +546,14 @@ classdef Steps
                 pipecompare.utils.log('%d/%d epochs rejected; channels most often over the limit: %s', ...
                     numel(idx), n0, info.topChannels);
             end
+            % whether the epochs kept differ in the measured window from all
+            % of them (a low limit can reject epochs for their large real
+            % activity there, which makes the average smaller)
+            info.keptShift = [];
+            if ~isempty(idx) && numel(idx) < n0 && nargin > 3 && isfield(ctx, 'contract') && ~isempty(ctx.contract) && ...
+                    strcmp(ctx.contract.analysis, 'erp')
+                info.keptShift = keptShift(EEG, idx, ctx.contract);
+            end
             coms = {c1, cInterp};
             if ~isempty(idx)
                 assert(numel(idx) < n0, 'PipeCompare:AllRejected', 'every epoch would be rejected');
@@ -899,5 +907,35 @@ r1 = rank(x);
 r = sum(diag(D) > 1e-7);
 if r1 ~= r
     if takeMin, r = min(r1, r); else, r = max(r1, r); end
+end
+end
+
+function s = keptShift(EEG, idx, contract)
+% For each mean-amplitude component (not contralateral minus ipsilateral)
+% and condition: the mean score of the epochs kept against that of all of
+% them, as z = (kept - all) / (SD * sqrt(1/nKept - 1/n)), the spread that
+% difference has when the rejected epochs are a random draw, signed so
+% that z < 0 means the kept epochs have less of the component (a smaller
+% positive or a smaller negative deflection). s: the component and
+% condition with the lowest z; [] when none is measured.
+s = [];
+T = pipecompare.eval.Measure.trials(EEG, contract);
+rej = ismember(T.epoch, idx);
+for j = 1:numel(contract.components)
+    comp = contract.components(j);
+    if contract.isLateral(j) || ~strcmp(comp.measure, 'mean'), continue; end
+    sg = 1; if strcmp(comp.polarity, 'negative'), sg = -1; end
+    x = double(T.data{j}(:, 1));
+    for c = unique(T.cond(:))'
+        r = T.cond == c; k = r & ~rej;
+        n = sum(r); nk = sum(k);
+        if nk < 2 || nk == n, continue; end
+        d = mean(x(k)) - mean(x(r));
+        z = sg * d / max(std(x(r)) * sqrt(1 / nk - 1 / n), eps);
+        if isempty(s) || z < s.z
+            s = struct('z', z, 'component', comp.name, 'condition', contract.conditions(c).name, ...
+                'kept', mean(x(k)), 'all', mean(x(r)), 'nKept', nk, 'n', n);
+        end
+    end
 end
 end

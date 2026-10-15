@@ -39,6 +39,13 @@ classdef Measure
     %   w = pipecompare.eval.Measure.epochWeights(EEG)
     %   The weight of each epoch (1 x trials; all 1 without weighting): the
     %   weighted average is sum(EEG.data .* reshape(w, 1, 1, []), 3) / sum(w).
+    %
+    %   A = pipecompare.eval.Measure.weightedAverages(EEG, contract)
+    %   That weighted average of each condition: A.data (channels x samples
+    %   x conditions), A.conditions, A.labels, A.times (ms), A.trials and
+    %   A.sumWeights per condition. EEGLAB's and ERPLAB's own averages count
+    %   every epoch equally, so they do not give the ERP a weighted
+    %   pipeline was scored on.
 
     methods (Static)
         function o = defaults()
@@ -220,6 +227,21 @@ classdef Measure
             if isfield(EEG, 'etc') && isstruct(EEG.etc) && isfield(EEG.etc, 'pipecompare') && ...
                     isfield(EEG.etc.pipecompare, 'trialWeights')
                 tw = EEG.etc.pipecompare.trialWeights;
+            end
+        end
+
+        function A = weightedAverages(EEG, contract)
+            T = pipecompare.eval.Measure.trials(EEG, contract, true);
+            w = pipecompare.eval.Measure.epochWeights(EEG);
+            nC = numel(contract.conditions);
+            A = struct('conditions', {{contract.conditions.name}}, 'labels', {{EEG.chanlocs.labels}}, ...
+                'times', 1000 * (EEG.xmin + (0:EEG.pnts-1) / EEG.srate), 'data', nan(EEG.nbchan, EEG.pnts, nC), ...
+                'trials', zeros(1, nC), 'sumWeights', zeros(1, nC));
+            for c = 1:nC
+                ep = T.epoch(T.cond == c); wc = w(ep);
+                A.trials(c) = numel(ep); A.sumWeights(c) = sum(wc);
+                if isempty(ep), continue; end
+                A.data(:, :, c) = sum(double(EEG.data(:, :, ep)) .* reshape(wc, 1, 1, []), 3) / sum(wc);
             end
         end
 

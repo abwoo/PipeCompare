@@ -111,6 +111,10 @@ classdef SimpleResults < handle
             if ~isempty(prior), t = sprintf('%s %s', t, prior); end
             tpl = pipecompare.simple.Presets.templateText(obj.Result);
             if ~isempty(tpl), t = sprintf('%s %s', t, tpl); end
+            ks = pipecompare.simple.Presets.keptShiftText(obj.Result);
+            if ~isempty(ks), t = sprintf('%s %s', t, ks); end
+            wt = pipecompare.simple.Presets.weightsText(obj.Result);
+            if ~isempty(wt), t = sprintf('%s %s', t, wt); end
         end
 
         function showSteps(obj)

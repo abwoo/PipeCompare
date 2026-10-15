@@ -1616,6 +1616,10 @@ prior = pipecompare.simple.Presets.priorFilterText(r);
 if ~isempty(prior), lines{end+1} = prior; end
 tpl = pipecompare.simple.Presets.templateText(r);
 if ~isempty(tpl), lines{end+1} = tpl; end
+ks = pipecompare.simple.Presets.keptShiftText(r);
+if ~isempty(ks), lines{end+1} = ks; end
+wt = pipecompare.simple.Presets.weightsText(r);
+if ~isempty(wt), lines{end+1} = wt; end
 end
 
 function t = presetText(p)

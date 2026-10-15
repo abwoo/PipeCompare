@@ -63,6 +63,7 @@ classdef Presets
         IcaMinK = 20         % ICA check: ICA needs at least this x (components)^2 data points
         PeakToPeakUv = {100, 150, 200}   % peaktopeak: the limits compared (uV, peak-to-peak)
         RejectOneChannel = 0.5   % one channel over the limit in at least this share of the rejected epochs is named
+        KeptShiftZ = 3           % kept epochs this many standard errors below all epochs in the window: a warning
     end
 
     methods (Static)
@@ -779,6 +780,60 @@ classdef Presets
                 c.rejectedEpochs, c.id, pipecompare.utils.ternary(numel(top) > 1, 'These channels', 'This channel'), ...
                 pipecompare.utils.ternary(numel(top) > 1, 'them', 'it'), pipecompare.utils.ternary(numel(top) > 1, 'they are', 'it is'), ...
                 pipecompare.utils.ternary(numel(top) > 1, 'them', 'it'), pipecompare.utils.ternary(numel(top) > 1, 'them', 'it'));
+        end
+
+        function t = keptShiftText(result)
+            % A warning when a rejection step of the recommended pipeline
+            % kept epochs with clearly less of a measured component than all
+            % epochs had (keptShift z below -KeptShiftZ): the rejection may
+            % remove epochs for their large real activity in the window,
+            % not only for artifacts, which makes the average smaller. ''
+            % otherwise.
+            t = '';
+            if ~isfield(result, 'ranking') || ~isfield(result.ranking, 'recommended') || ...
+                    isempty(result.ranking.recommended) || ~isfield(result, 'cands'), return; end
+            c = result.cands([result.cands.id] == result.ranking.recommended);
+            if isempty(c) || ~isfield(c, 'steps'), return; end
+            for q = 1:numel(c.steps)
+                s = pipecompare.utils.fieldOr(c.steps{q}, 'keptShift', []);
+                if isempty(s) || ~(s.z < -pipecompare.simple.Presets.KeptShiftZ), continue; end
+                t = sprintf(['In pipeline %d, the epochs the rejection rejected had more %s than those it kept ', ...
+                    '(%s: %.2f %s in the %d epochs kept, %.2f %s in all %d). The limit may reject epochs for their ', ...
+                    'large real activity in the window, not only for artifacts, which makes the average smaller. A ', ...
+                    'higher limit, or not testing the measured electrodes, avoids that; if the rejected epochs ', ...
+                    'are artifacts, nothing needs to change.'], c.id, s.component, s.condition, s.kept, ...
+                    result.ref.units{1}, s.nKept, s.all, result.ref.units{1}, s.n);
+                return;
+            end
+        end
+
+        function t = weightsText(result)
+            % When the recommended pipeline weights its epochs: where the
+            % weighted averages are, and the same pipeline with equal
+            % weights when it is among the passing ones ('' otherwise).
+            t = '';
+            if ~isfield(result, 'ranking') || ~isfield(result.ranking, 'recommended') || ...
+                    isempty(result.ranking.recommended), return; end
+            k = result.ranking.recommended;
+            path = result.leaves(k).path;
+            isW = cellfun(@(in) strcmp(in.type, 'weight_trials'), path);
+            if ~any(isW), return; end
+            t = ['This pipeline weights epochs by their noise. EEGLAB''s and ERPLAB''s own averages count every ', ...
+                'epoch equally, so they would not give the ERP it was scored on: when you use it (or run its saved ', ...
+                'script), the weighted average of each condition is stored in EEG.etc.pipecompare.weightedERP.'];
+            slot = path{find(isW, 1)}.slot;
+            key = @(p) strjoin(cellfun(@(in) in.key, p(~cellfun(@(in) strcmp(in.slot, slot), p)), ...
+                'UniformOutput', false), ' > ');   % the steps other than the weighting
+            me = key(path);
+            T = result.ranking.table;
+            for j = 1:numel(result.leaves)
+                if j == k || ~strcmp(T.status{j}, 'feasible'), continue; end
+                p = result.leaves(j).path;
+                if ~any(cellfun(@(in) strcmp(in.type, 'weight_trials'), p)) && strcmp(key(p), me)
+                    t = sprintf('%s To average in EEGLAB or ERPLAB as usual, use pipeline %d instead: the same steps with equal weights.', t, j);
+                    break;
+                end
+            end
         end
 
         function t = templateText(result)

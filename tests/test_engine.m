@@ -1207,6 +1207,21 @@ for k = 1:2
     sel = pipecompare.eval.Measure.lockingEvents(E, c.conditions(k).events) > 0;
     verifyEqual(tc, r.cands(kw).m.objectives(1).estimate(k), sum(w(sel) .* score(sel)) / sum(w(sel)), 'RelTol', 1e-6);
 end
+% the weighted average of each condition gives the same estimates
+A = pipecompare.eval.Measure.weightedAverages(E, c);
+verifyEqual(tc, size(A.data), [E.nbchan E.pnts 2]);
+for k = 1:2
+    verifyEqual(tc, mean(mean(A.data(roi, win, k), 1), 2), r.cands(kw).m.objectives(1).estimate(k), 'RelTol', 1e-6);
+end
+% adopting it stores them; the results say so, and name the unweighted twin
+pipecompare.PipeCompare.adopt(r, kw, true);
+adopted = evalin('base', 'EEG');
+verifyEqual(tc, adopted.etc.pipecompare.weightedERP.data, A.data, 'AbsTol', 1e-4);
+r.ranking.recommended = kw;
+t = pipecompare.simple.Presets.weightsText(r);
+verifyTrue(tc, contains(t, 'weightedERP') && contains(t, sprintf('pipeline %d', k0)), t);
+r.ranking.recommended = k0;
+verifyEmpty(tc, pipecompare.simple.Presets.weightsText(r));
 % the recorded command weights the epochs again
 com = r.cands(kw).coms{find(contains(r.cands(kw).coms, 'weightTrials'), 1)};
 EEG = before; eval(com);
@@ -1299,6 +1314,39 @@ in.params.interpolate = 3;                                       % repaired like
 [~, ~, c] = pipecompare.run.Steps.run(in, E, x);
 verifyFalse(tc, ismember(9, c.rejIdx));
 verifyGreaterThan(tc, c.epochsInterpolated, 0);
+end
+
+function testRejectingEpochsForTheirLargeComponentIsReported(tc)
+% A limit low enough to reject epochs for their large P3 at the measured
+% electrodes keeps epochs with less P3 than all of them: the rejection
+% reports it (keptShift) and the results warn. Rejecting the same number
+% of epochs for a deflection at a far channel does not.
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20, 'artifactTrials', 0, 'blinkRate', 0));
+[~, E] = evalc('nqc_epoched(EEG)');
+c = nqc_c(); x = struct('contract', c, 'highpass', 0);
+labs = lower({E.chanlocs.labels});
+roi = ismember(labs, lower(c.components(1).roi));
+eeg = ~pipecompare.simple.Presets.isNonEeg(E.chanlocs(:)');
+uv = ceil(max(abs(double(E.data(:))))) + 1;                  % over the limit: none yet
+times = E.xmin + (0:E.pnts - 1) / E.srate; win = times >= 0.3 & times <= 0.5;
+T = pipecompare.eval.Measure.trials(E, c, true);
+ep = T.epoch(T.cond == 1); ep = ep(1:6);
+in = struct('type', 'reject_threshold', 'params', struct('uv', uv, 'exclude', {{}}), 'key', 'rej', 'slot', 'rej', 'label', 'rej');
+A = E; A.data(roi, win, ep) = A.data(roi, win, ep) + uv + 20;    % a large P3 in 6 target epochs
+[~, ~, a] = pipecompare.run.Steps.run(in, A, x);
+verifyEqual(tc, sort(a.rejIdx(:))', sort(ep(:))');
+verifyLessThan(tc, a.keptShift.z, -pipecompare.simple.Presets.KeptShiftZ);
+verifyEqual(tc, a.keptShift.condition, 't');
+r = struct('ranking', struct('recommended', 1), 'cands', struct('id', 1, 'steps', {{a}}), 'ref', struct('units', {{'uV'}}));
+t = pipecompare.simple.Presets.keptShiftText(r);
+verifyTrue(tc, contains(t, 'had more P3 than those it kept'), t);
+far = find(eeg & ~roi, 1, 'last');
+B = E; B.data(far, win, ep) = B.data(far, win, ep) + uv + 20;    % the same epochs, for a far channel
+[~, ~, b] = pipecompare.run.Steps.run(in, B, x);
+verifyEqual(tc, sort(b.rejIdx(:))', sort(ep(:))');
+verifyGreaterThan(tc, b.keptShift.z, -pipecompare.simple.Presets.KeptShiftZ);
+r.cands.steps = {b};
+verifyEmpty(tc, pipecompare.simple.Presets.keptShiftText(r));
 end
 
 function testIcaIsFittedWithoutExtremeStretches(tc)

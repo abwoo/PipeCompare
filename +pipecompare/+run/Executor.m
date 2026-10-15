@@ -503,6 +503,7 @@ classdef Executor
             end
             [EEG, com] = pipecompare.run.Executor.selectEligible(EEG, contract);
             if ~isempty(com), EEG = eeg_hist(EEG, com); end
+            EEG = storeWeightedAverages(EEG, contract);
         end
 
         function [elig, EEG] = eligibleUrevents(EEG, contract)
@@ -606,6 +607,7 @@ classdef Executor
                     'adopt(result, %d, true) to store it anyway.'], idx, idx);
                 if ~same, pipecompare.utils.log('WARNING: storing a rebuilt candidate that differs from the evaluated one.'); end
             end
+            EEG = storeWeightedAverages(EEG, result.contract);
             EEG.setname = sprintf('%s PipeCompare#%d', result.state.setname, idx);
             assignin('base', 'PIPECOMPARE_ADOPT__', EEG);
             evalin('base', ['[ALLEEG, EEG, CURRENTSET] = pop_newset(ALLEEG, PIPECOMPARE_ADOPT__, CURRENTSET, ', ...
@@ -658,6 +660,20 @@ classdef Executor
 end
 
 % ---------------------------------------------------------------------
+function EEG = storeWeightedAverages(EEG, contract)
+% Epochs weighted by weight_trials: their weighted average per condition in
+% EEG.etc.pipecompare.weightedERP (Measure.weightedAverages), since EEGLAB's
+% and ERPLAB's own averages would count every epoch equally.
+if isempty(pipecompare.eval.Measure.storedWeights(EEG)) || ~strcmp(contract.analysis, 'erp') || ...
+        isempty(contract.conditions) || EEG.trials < 2
+    return;
+end
+EEG.etc.pipecompare.weightedERP = pipecompare.eval.Measure.weightedAverages(EEG, contract);
+pipecompare.utils.log(['The epochs are weighted by their noise: the weighted average of each condition is in ', ...
+    'EEG.etc.pipecompare.weightedERP.data (channels x times x conditions). EEGLAB''s and ERPLAB''s own ', ...
+    'averages count every epoch equally and do not give the ERP this pipeline was scored on.']);
+end
+
 function c = emptyCand()
 % One evaluated pipeline. Every field is set here and only here; the
 % producers and consumers are:
@@ -761,16 +777,18 @@ function f = stepFacts(in, info)
 % cutoffs also holds fixed; for a choice made from the data (rejection
 % limit, ICLabel threshold, components by SME), the scores of every option
 % it chose among (curves), with which the ranking's selection check makes
-% the choice again on half of the trials (Rank.crossfit).
+% the choice again on half of the trials (Rank.crossfit); for a rejection,
+% how far the mean score of the epochs kept is from that of all of them
+% (keptShift, Presets.keptShiftText).
 f = struct('type', in.type, 'params', in.params, 'interpolated', {{}}, 'removed', {{}}, ...
     'icsRemoved', NaN, 'icsTotal', NaN, 'rejected', NaN, 'epochsBefore', NaN, 'epochsInterpolated', NaN, ...
     'icsBrain', NaN, 'icsOther', NaN, 'otherMedian', NaN, 'icaPoints', NaN, 'uvChosen', NaN, 'thresholdChosen', NaN, 'icsConsidered', NaN, 'icsProtected', NaN, ...
-    'comps', [], 'rejIdx', [], 'cutoffRefined', false, 'weightRatio', NaN, 'trialWeights', [], 'curves', []);
+    'comps', [], 'rejIdx', [], 'cutoffRefined', false, 'weightRatio', NaN, 'trialWeights', [], 'curves', [], 'keptShift', []);
 for n = {'interpolated', 'removed'}
     if isfield(info, n{1}), f.(n{1}) = cellstr(info.(n{1})); end
 end
 for n = {'icsRemoved', 'icsTotal', 'rejected', 'epochsBefore', 'epochsInterpolated', 'icsBrain', 'icsOther', 'otherMedian', 'icaPoints', 'uvChosen', 'thresholdChosen', 'icsConsidered', 'icsProtected', ...
-        'comps', 'rejIdx', 'cutoffRefined', 'weightRatio', 'trialWeights', 'curves'}
+        'comps', 'rejIdx', 'cutoffRefined', 'weightRatio', 'trialWeights', 'curves', 'keptShift'}
     if isfield(info, n{1}), f.(n{1}) = info.(n{1}); end
 end
 end
