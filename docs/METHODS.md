@@ -847,6 +847,21 @@ mean that is real brain activity (a larger P3 in the trials with a blink) is cou
 using the blink's size only to select the trials, not as a regressor, keeps frontal brain activity
 that correlates with the measured electrodes from being read as eye activity.
 
+**Eye movements and muscle.** Two more kinds of trials are found the same way (robust *z* > 3 over
+all trials, per component) and counted with the blinks (a trial with any of them is in B):
+- *eye movements*: |window mean − baseline mean| of *h* = left − right, the difference of two eye
+  channels on either side (EOG channels by position, EEGLAB's *Y* axis pointing left, |*Y*|/‖·‖ >
+  0.2; else by names ending in L and R; else F7 − F8, when neither is measured). A blink, about the
+  same on both sides, cancels in *h*; a horizontal movement, opposite on the two sides, doubles.
+  `Measure.blinks` reports it as `blinkInfo.horizontal`;
+- *muscle*: log of the largest, over the component's measured electrodes, SD of the first
+  difference *x*ₜ₊₁ − *x*ₜ in the window: a high-pass that the slow ERP hardly passes and EMG
+  (20–150 Hz) does.
+
+Since *e* = *p*(*m*_B − *m*_N) = ȳ − *m*_N, it is the distance of the mean from the mean of the trials
+with none of the three; trials flagged by chance carry no bias and only add to its variance, which
+is taken off. `blinkInfo.kindShare` gives the share of each kind.
+
 **What the signal's shape changes (*s*).** The gain *g* (section 2) is measured with one known
 shape (section 4). The real component's shape is not known, and a filter changes the gain of a
 broad or slow component more than that of a narrow one. Simulated with EEGLAB's default
@@ -874,6 +889,9 @@ more trials is no reason to keep what they carry in.
 **Simulation.** `test_engine/testBlinksCountInTheTotalError`: blinks after 30 % of the targets;
 the estimated *e* is within 3 standard errors of what the blinks add in fact (the same data
 without them), rejecting the blink trials leaves almost none, and that pipeline is recommended.
+`test_engine/testEyeMovementsAndMuscleCountInTheBias`: leftward eye movements in 30 % of the targets
+and muscle bursts in 15 % of all trials, measured at F3: over 80 % of each are found, under 10 % of
+the other trials, and *e* is within 3 standard errors of what the eye movements add.
 `test_engine/testShapeSpreadGrowsWithTheHighPass`: *s* is 0 without a filter, below 2 % at 0.1 Hz,
 above 10 % at 1 Hz.
 

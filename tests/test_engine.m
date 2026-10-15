@@ -1459,9 +1459,54 @@ verifyLessThan(tc, abs(eb(kAll) - actual), 3 * se);
 verifyLessThan(tc, abs(eb(kRej)), abs(eb(kAll)) / 4);
 verifyEqual(tc, r.ranking.recommended, kRej);
 r2 = r; r2.ranking.recommended = kAll;                            % the results' words for the other one
-verifyTrue(tc, contains(pipecompare.simple.Presets.biasText(r2), 'blinks in the trials it keeps'), pipecompare.simple.Presets.biasText(r2));
+verifyTrue(tc, contains(pipecompare.simple.Presets.biasText(r2), 'muscle activity in the trials it keeps'), pipecompare.simple.Presets.biasText(r2));
 % the total error: noise and bias together
 verifyEqual(tc, T.objective, sqrt(T.noise .^ 2 + T.bias .^ 2), 'RelTol', 1e-9);
+end
+
+function testEyeMovementsAndMuscleCountInTheBias(tc)
+% Simulation: in 30% of the target trials the eyes move to the left
+% during the window (left minus right EOG), and in 15% of all trials a
+% muscle burst falls in it, measured at F3. The eye movements are found
+% in the difference of the left and right EOG channels (where a blink
+% cancels), the muscle bursts from the fast activity at F3; what the
+% trials with them add to the target mean is estimated close to what the
+% eye movements add in fact (the same data without them).
+o = struct('seconds', 300, 'nPerCond', 80, 'lockedSaccades', 0.3, 'lockedSaccadeUv', 100, ...
+    'lockedEmg', 0.15, 'lockedEmgUv', 30, 'artifactTrials', 0, 'blinkRate', 0);
+[EEG, truth] = nqc_synth(o);
+o.lockedSaccades = 0; EEG0 = nqc_synth(o);
+nqc_setBase(EEG);
+c = pipecompare.eval.Contract('conditions', {'target', {'11'}; 'standard', {'31'}}, ...
+    'epoch', [-0.2 1.0], 'baseline', [-0.2 0], 'components', {'P3', [0.30 0.50], {'F3'}});
+p = pipecompare.plan.Plan();
+p = p.add('epoch'); p = p.add('baseline');
+p = p.add('reject_threshold', 'uv', {1000, 150}, 'exclude', {{'EOG1', 'EOG2'}});
+r = pipecompare.PipeCompare.optimize(p, c);
+bi = r.ref.blinkInfo;
+verifyEqual(tc, bi.horizontal, 'EOG2-EOG1');
+verifyEqual(tc, bi.kinds, {'blinks', 'eye movements', 'muscle'});
+% the trials found, against the trials simulated (both conditions in event order)
+tgt = strcmp(truth.types, '11');
+b = false(1, numel(tgt)); b(tgt) = r.ref.blink{1}{1}; b(~tgt) = r.ref.blink{1}{2};
+verifyGreaterThan(tc, mean(b(truth.lockedSaccade)), 0.8);
+verifyGreaterThan(tc, mean(b(truth.lockedEmg)), 0.8);
+verifyLessThan(tc, mean(b(~truth.lockedSaccade & ~truth.lockedEmg)), 0.1);
+verifyGreaterThan(tc, bi.kindShare(1, 2), 0.1);
+verifyGreaterThan(tc, bi.kindShare(1, 3), 0.1);
+% what they add to the target mean of the pipeline keeping every trial
+T = r.ranking.table;
+kAll = find(contains(r.labels, '1000'));
+[~, E1] = evalc('nqc_epoched(EEG)'); [~, E0] = evalc('nqc_epoched(EEG0)');
+m1 = pipecompare.eval.Measure.candidate(E1, c, r.ref); m0 = pipecompare.eval.Measure.candidate(E0, c, r.ref);
+actual = m1.objectives(1).estimate(1) - m0.objectives(1).estimate(1);
+eb = T.(matlab.lang.makeValidName(['eyeBias_' r.ref.objectives{1}]));
+x = r.cands(kAll).m.objectives(1).X{1}(:, 1); bb = r.ref.blink{1}{1};
+in = ~isnan(x); x = x(in); bb = bb(in);
+se = mean(bb) * std(x) * sqrt(1 / sum(bb) + 1 / sum(~bb));
+fprintf('eye movements: they add %.2f uV to the target mean at F3; estimated %.2f uV (SE %.2f)\n', actual, eb(kAll), se);
+verifyGreaterThan(tc, abs(actual), 2 * se);
+verifyLessThan(tc, abs(eb(kAll) - actual), 3 * se);
 end
 
 function testShapeSpreadGrowsWithTheHighPass(tc)

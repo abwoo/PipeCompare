@@ -840,7 +840,7 @@ classdef Presets
             for o = 1:numel(ref.objectives)
                 col = matlab.lang.makeValidName(['eyeBias_' ref.objectives{o}]);
                 if ismember(col, T.Properties.VariableNames) && abs(T.(col)(k)) > 0
-                    parts{end+1} = sprintf('blinks in the trials it keeps add about %.2g %s to the %s mean', ...
+                    parts{end+1} = sprintf('blinks, eye movements and muscle activity in the trials it keeps add about %.2g %s to the %s mean', ...
                         T.(col)(k), ref.units{o}, ref.objectives{o}); %#ok<AGROW>
                 end
                 col = matlab.lang.makeValidName(['shapeSpread_' ref.objectives{o}]);

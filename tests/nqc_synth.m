@@ -10,11 +10,18 @@ function [EEG, truth] = nqc_synth(opts)
 %   lockedBlinks: the share of target trials with a blink (lockedBlinkUv
 %   at FPz) at the P3's latency, time-locked to the stimulus
 %   (truth.lockedBlink per trial).
+%   lockedSaccades: the share of target trials with a leftward eye
+%   movement (lockedSaccadeUv, left minus right EOG) held from 0.25 to
+%   0.55 s; lockedEmg: the share of all trials with a muscle burst
+%   (lockedEmgUv, fast noise, near F3) from 0.25 to 0.55 s
+%   (truth.lockedSaccade, truth.lockedEmg). Each is drawn from its own
+%   random stream, so turning one off leaves the others as they were.
 if nargin < 1, opts = struct(); end
 d = struct('srate', 250, 'seconds', 400, 'nPerCond', 90, 'seed', 7, 'p3', 6, ...
     'noise', 8, 'drift', 25, 'line', 4, 'blinkRate', 0.25, 'artifactTrials', 0.15, ...
     'p3Jitter', 0, 'p3AmpSd', 0, 'noisyChannels', {{}}, 'noisyUv', 60, 'alphaUv', 0, ...
-    'lockedBlinks', 0, 'lockedBlinkUv', 200);
+    'lockedBlinks', 0, 'lockedBlinkUv', 200, 'lockedSaccades', 0, 'lockedSaccadeUv', 100, ...
+    'lockedEmg', 0, 'lockedEmgUv', 30);
 for f = fieldnames(d)', if ~isfield(opts, f{1}), opts.(f{1}) = d.(f{1}); end, end
 rng(opts.seed, 'twister');
 locfile = fullfile(fileparts(which('eeglab')), 'sample_data', 'eeglab_chan32.locs');
@@ -90,6 +97,29 @@ if opts.lockedBlinks > 0   % after the rest: the other draws stay the same
     for k = find(truth.lockedBlink)
         at = lat(k) + round(truth.p3Latency * fs);
         data(:, at + bw) = data(:, at + bw) + blinkTopo' * (opts.lockedBlinkUv / 120 * blink);
+    end
+end
+truth.lockedSaccade = false(1, nTrials);
+if opts.lockedSaccades > 0
+    rs = RandStream('mt19937ar', 'Seed', opts.seed + 101);
+    truth.lockedSaccade = rand(rs, 1, nTrials) < opts.lockedSaccades & strcmp(types, '11');
+    sTopo = topo('EOG2', 0.5) - topo('EOG1', 0.5);   % EOG2 is on the left, EOG1 on the right
+    hold = round(0.25 * fs):round(0.55 * fs);
+    step = ones(1, numel(hold)); r = min(numel(hold), round(0.02 * fs));
+    step(1:r) = (1:r) / r; step(end-r+1:end) = (r:-1:1) / r;
+    for k = find(truth.lockedSaccade)
+        data(:, lat(k) + hold) = data(:, lat(k) + hold) + sTopo' * (opts.lockedSaccadeUv * step);
+    end
+end
+truth.lockedEmg = false(1, nTrials);
+if opts.lockedEmg > 0
+    rs = RandStream('mt19937ar', 'Seed', opts.seed + 202);
+    truth.lockedEmg = rand(rs, 1, nTrials) < opts.lockedEmg;
+    eTopo = topo('F3', 0.3);
+    hold = round(0.25 * fs):round(0.55 * fs);
+    for k = find(truth.lockedEmg)
+        x = diff(randn(rs, 1, numel(hold) + 1)) / sqrt(2);   % fast: most of its power above 30 Hz
+        data(:, lat(k) + hold) = data(:, lat(k) + hold) + eTopo' * (opts.lockedEmgUv * x);
     end
 end
 truth.alphaUv = opts.alphaUv;

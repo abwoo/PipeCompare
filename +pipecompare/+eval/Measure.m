@@ -76,53 +76,83 @@ classdef Measure
         end
 
         function [B, info] = blinks(EEG, contract, ref)
-            % Which reference trials have a blink (or other eye movement)
-            % in each mean-amplitude component's score: B{j}{c} (ref.n(c) x
-            % 1 logical) for component j and condition c, {} when it cannot
-            % be told (band power, or no eye channel). An epoch's eye
-            % activity in component j is the largest, over the eye channels
-            % (Injection.eyeChannels: EOG by type or name, else Fp1, Fp2,
-            % FPz; never a measured electrode), of the absolute window mean
-            % minus the baseline mean of the data as they are (before any
-            % processing): what an eye artifact adds to the score is
-            % carried by that difference. It is a blink when its robust z
-            % (median and MAD over all reference trials) exceeds BlinkZ.
-            % info: channels (labels), share (of the trials, per component).
-            B = {}; info = struct('channels', {{}}, 'share', []);
+            % Which reference trials have an artifact that can move the mean
+            % of a mean-amplitude component's score: B{j}{c} (ref.n(c) x 1
+            % logical) for component j and condition c, {} when it cannot
+            % be told (band power, or no channel to tell it from). Three
+            % kinds, in the data as they are (before any processing), each
+            % found when its robust z (median and MAD over all reference
+            % trials) exceeds BlinkZ; a trial with any of them counts:
+            %   blinks: the largest, over the eye channels
+            %   (Injection.eyeChannels: EOG by type or name, else Fp1, Fp2,
+            %   FPz; never a measured electrode), of the absolute window
+            %   mean minus the baseline mean (what an eye artifact adds to
+            %   the score is carried by that difference);
+            %   eye movements: the same of the difference of a left and a
+            %   right channel (horizontalPair), in which a blink, the same
+            %   on both sides, cancels and a horizontal movement doubles;
+            %   muscle: the log of the largest, over the measured
+            %   electrodes, SD of the first difference in the window (fast
+            %   activity, which a slow ERP hardly has).
+            % info: channels (eye channels' labels), horizontal ('L-R' or
+            % ''), share (of the trials, per component), kinds and
+            % kindShare (components x kinds).
+            kinds = {'blinks', 'eye movements', 'muscle'};
+            B = {}; info = struct('channels', {{}}, 'horizontal', '', 'share', [], 'kinds', {kinds}, 'kindShare', []);
             if ~strcmp(contract.analysis, 'erp') || isempty(contract.components), return; end
-            eyes = pipecompare.eval.Injection.eyeChannels(EEG.chanlocs);
-            eyes = setdiff(eyes, find(ismember(lower({EEG.chanlocs.labels}), lower(contract.allRoi()))));
-            if isempty(eyes), return; end
+            labs = lower({EEG.chanlocs.labels});
+            roi = find(ismember(labs, lower(contract.allRoi())));
+            eyes = setdiff(pipecompare.eval.Injection.eyeChannels(EEG.chanlocs), roi);
+            [hl, hr] = horizontalPair(EEG.chanlocs, eyes, roi);
+            use = unique([eyes hl hr roi]);
+            if isempty(use), return; end
             info.channels = {EEG.chanlocs(eyes).labels};
+            if ~isempty(hl), info.horizontal = sprintf('%s-%s', EEG.chanlocs(hl).labels, EEG.chanlocs(hr).labels); end
             E = EEG; E.icaact = []; E.icaweights = []; E.icasphere = []; E.icawinv = []; E.icachansind = [];
-            [~, E] = evalc('pop_select(E, ''channel'', eyes)');
+            [~, E] = evalc('pop_select(E, ''channel'', use)');
             if E.trials == 1
                 [~, E] = evalc('pop_epoch(E, contract.allEvents(), contract.epoch, ''epochinfo'', ''yes'')');
             end
             T = pipecompare.eval.Measure.trials(E, contract, true);
             times = E.xmin + (0:E.pnts-1) / E.srate;
             D = double(E.data);
+            De = D(ismember(use, eyes), :, :); Dh = [];
+            if ~isempty(hl), Dh = D(use == hl, :, :) - D(use == hr, :, :); end
             if ~isempty(contract.baseline)
                 bsel = times >= contract.baseline(1) - 1e-9 & times <= contract.baseline(2) + 1e-9;
-                if any(bsel), D = D - mean(D(:, bsel, :), 2); end
+                if any(bsel)
+                    De = De - mean(De(:, bsel, :), 2);
+                    if ~isempty(Dh), Dh = Dh - mean(Dh(:, bsel, :), 2); end
+                end
             end
+            z = @(v) (v - median(v)) / max(1.4826 * median(abs(v - median(v))), eps);
+            perTrial = @(v) reshape(v, [], 1);
             nJ = numel(contract.components); nC = numel(ref.ids);
-            B = cell(1, nJ); info.share = nan(1, nJ);
+            B = cell(1, nJ); info.share = nan(1, nJ); info.kindShare = nan(nJ, numel(kinds));
             for j = 1:nJ
                 B{j} = arrayfun(@(c) false(ref.n(c), 1), 1:nC, 'UniformOutput', false);
                 comp = contract.components(j);
                 w = times >= comp.window(1) - 1e-9 & times <= comp.window(2) + 1e-9;
                 if ~strcmp(comp.measure, 'mean') || ~any(w), continue; end
-                v = reshape(max(abs(mean(D(:, w, :), 2)), [], 1), [], 1);
-                v = v(T.epoch);
-                mad = max(1.4826 * median(abs(v - median(v))), eps);
-                isB = (v - median(v)) / mad > pipecompare.eval.Measure.BlinkZ;
-                for c = 1:nC
-                    r = find(T.cond == c);
-                    [tf, loc] = ismember(T.id(r), ref.ids{c});
-                    B{j}{c}(loc(tf)) = isB(r(tf));
+                K = false(numel(T.epoch), numel(kinds));
+                if ~isempty(De)
+                    v = perTrial(max(abs(mean(De(:, w, :), 2)), [], 1)); K(:, 1) = z(v(T.epoch)) > pipecompare.eval.Measure.BlinkZ;
                 end
-                info.share(j) = mean(isB);
+                if ~isempty(Dh)
+                    v = perTrial(abs(mean(Dh(:, w, :), 2))); K(:, 2) = z(v(T.epoch)) > pipecompare.eval.Measure.BlinkZ;
+                end
+                r = ismember(use, roi(ismember(labs(roi), lower(comp.roi))));
+                if any(r) && sum(w) > 2
+                    v = perTrial(log(max(std(diff(D(r, w, :), 1, 2), 0, 2), [], 1) + eps));
+                    K(:, 3) = z(v(T.epoch)) > pipecompare.eval.Measure.BlinkZ;
+                end
+                isB = any(K, 2);
+                for c = 1:nC
+                    rr = find(T.cond == c);
+                    [tf, loc] = ismember(T.id(rr), ref.ids{c});
+                    B{j}{c}(loc(tf)) = isB(rr(tf));
+                end
+                info.share(j) = mean(isB); info.kindShare(j, :) = mean(K, 1);
             end
         end
 
@@ -493,3 +523,31 @@ if strcmp(o.polarity, 'negative'), [a, i] = min(avgs, [], 2); else, [a, i] = max
 if strcmp(o.kind, 'peakLatency'), v = reshape(o.times(i), [], 1); else, v = a; end
 end
 
+function [l, r] = horizontalPair(chanlocs, eyes, roi)
+% The left and the right channel whose difference shows horizontal eye
+% movements: of the EOG channels, the leftmost and the rightmost by
+% position (EEGLAB's Y axis points to the left ear) when they lie on
+% either side, else those whose names end in L and R (e.g. EYEL and EYER);
+% without EOG channels, or when those give no pair, F7 and F8. Empty when
+% there is none or one of them is measured.
+l = []; r = [];
+eog = [];
+if numel(eyes) >= 2, eog = eyes(pipecompare.simple.Presets.isNonEeg(chanlocs(eyes))); end
+if numel(eog) >= 2
+    y = nan(1, numel(eog));
+    for k = 1:numel(eog)
+        c = chanlocs(eog(k));
+        if isfield(c, 'Y') && ~isempty(c.X) && ~isempty(c.Y) && ~isempty(c.Z)
+            y(k) = c.Y / max(norm([c.X c.Y c.Z]), eps);
+        end
+    end
+    [ym, a] = max(y); [yn, b] = min(y);
+    if ym > 0.2 && yn < -0.2, l = eog(a); r = eog(b); return; end
+    labs = upper(strtrim({chanlocs(eog).labels}));
+    a = find(~cellfun(@isempty, regexp(labs, 'L$', 'once'))); b = find(~cellfun(@isempty, regexp(labs, 'R$', 'once')));
+    if isscalar(a) && isscalar(b), l = eog(a); r = eog(b); return; end
+end
+labs = upper({chanlocs.labels});
+a = find(strcmp(labs, 'F7')); b = find(strcmp(labs, 'F8'));
+if isscalar(a) && isscalar(b) && ~any(ismember([a b], roi)), l = a; r = b; end
+end

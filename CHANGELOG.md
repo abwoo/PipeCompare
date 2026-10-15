@@ -5,6 +5,10 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- The bias in the total error also counts eye movements (left minus right eye channel, where a
+  blink cancels) and muscle activity (fast activity at the measured electrodes) in the window,
+  not only blinks. The Command Window shows the share of trials with each.
+
 - ICA's random start: the pipelines that decide the recommendation, when they have ICA, run again
   with ICA started in other ways (the samples in another order), and the result says whether the
   recommendation stays the same. On in the simple mode (2 seeds); *Options… > Check ICA's random

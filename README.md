@@ -1306,8 +1306,14 @@ and constraints and ranking options in `help pipecompare.eval.Rank`.
      raise the SME. PipeCompare finds the trials with a blink in the eye channels of the data as
      they are (EOG channels, else Fp1/Fp2/FPz when they are not measured: an epoch whose eye
      activity in the window, relative to the baseline, is more than 3 robust SDs above the
-     others'), and for each pipeline computes what the blink trials it keeps add to its mean
-     (their share times the difference of their mean from the other trials'). A pipeline that
+     others'). The same is done for two other artifacts that can be locked to the stimulus: eye
+     movements, in the difference of a left and a right eye channel (left and right EOG by
+     position or by names ending in L and R, e.g. EYEL/EYER; else F7 and F8), where a blink
+     cancels and a horizontal movement doubles; and muscle activity, the fast activity (the SD of
+     the sample-to-sample change) in the window at the measured electrodes. A trial with any of
+     the three counts. For each pipeline PipeCompare computes what those trials it keeps add to
+     its mean (their share times the difference of their mean from the other trials'). The
+     Command Window shows the share of trials with each kind. A pipeline that
      removed the eye activity, by ICA or by rejecting those trials, adds about nothing. The
      estimate's own noise is taken off its square, so a bias the data do not show counts about 0.
      Second, what the signal's shape changes: the gain is measured with one known shape, and a
@@ -1316,7 +1322,7 @@ and constraints and ranking options in `help pipecompare.eval.Rank`.
      largest change of the gain (the worst case) times the measured mean counts as bias.
    - The rejection limit, ICLabel threshold and components chosen from the data minimize the same
      total error (without the shape part, which they do not change). The results table shows the
-     total error (*error (noise + bias)*); the result says how much blinks add in the recommended
+     total error (*error (noise + bias)*); the result says how much blinks, eye movements and muscle activity add in the recommended
      pipeline, how much its filters could change the measure for another shape, or that there is
      no eye channel to check blinks with. In the table of the ranking: `objective` (total error),
      `noise`, `bias`, and per measure `eyeBias_…` (µV, the condition where it is largest) and
