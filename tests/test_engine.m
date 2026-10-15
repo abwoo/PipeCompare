@@ -1034,7 +1034,8 @@ ctx = struct('contract', c);
 f = find(ismember(types, {'highpass', 'lowpass'}));
 env = struct('contract', c, 'ref', r.ref, 'rank', r.options, 'S', S, 'truth', truth, 'grid', {{[0.1 0.3 0.5], [20 30 40]}});
 [~, info] = pipecompare.eval.Cutoff.search(D, path(f(1):end), dec, struct('m', cand.m, 'gain', cand.signal.gain), env);
-verifyEqual(tc, info.pairs, 9);
+own = cellfun(@(i) i.params.cutoff, path(f));   % the recommended may itself be a fine-tuned pipeline
+verifyEqual(tc, info.pairs, numel(unique([0.1 0.3 0.5 own(1)])) * numel(unique([20 30 40 own(2)])));
 verifyEqual(tc, info.reproduced, info.objectiveBase, 'RelTol', 1e-4);
 % 0.3 Hz and 30 Hz: every channel filtered by EEGLAB, the same decisions,
 % the gain from the known-signal copy processed the same way
