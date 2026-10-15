@@ -22,6 +22,9 @@ w = openWindow(tc);
 verifyEqual(tc, w.Nav.Items, {'1. Import', '2. Settings', '3. Run', '4. Results', '5. Export'});
 verifyTrue(tc, any(contains(w.DataText.Value, 'nqc_synth')));
 verifyTrue(tc, contains(w.LocText.Text, 'All 32 channels have positions'));
+verifyEqual(tc, size(w.ChanTable.Data), [32 4]);               % the channels, editable
+verifyNumElements(tc, findobj(w.DataView.Axes, 'Type', 'line'), 32);   % the data plotted, one trace per channel
+verifyEqual(tc, w.DataList.Value, evalin('base', 'CURRENTSET'));   % the datasets, the current one selected
 verifyClass(tc, w.Simple, 'pipecompare.gui.SimpleDialog');     % the simple mode, in the Simple tab
 verifyEqual(tc, ancestor(w.Simple.Grid, 'figure'), w.Fig);
 verifyEmpty(tc, findall(w.Fig, 'Type', 'uibutton', 'Text', 'Cancel'));   % in the window: no Cancel
@@ -54,6 +57,16 @@ verifyGreaterThanOrEqual(tc, s.nLocated, 30);                   % EOG1 and EOG2 
 verifyTrue(tc, contains(evalin('base', 'EEG.history'), 'pop_chanedit'));
 verifyFalse(tc, startsWith(w.LocText.Text, 'None'));
 verifyEqual(tc, evalin('base', 'numel(ALLEEG)'), n + 1);       % stored in place of the current dataset
+d = w.ChanTable.Data; d{1, 3} = 'EOG'; d{2, 2} = 'TEST2'; w.ChanTable.Data = d;
+evalc('w.applyChannelEdits()');                                 % labels and types corrected in the table
+L = evalin('base', 'EEG.chanlocs');
+verifyEqual(tc, L(1).type, 'EOG'); verifyEqual(tc, L(2).labels, 'TEST2');
+verifyTrue(tc, contains(evalin('base', 'EEG.history'), 'changefield'));
+verifyNumElements(tc, w.DataList.Items, n + 1);                 % the datasets, under the steps
+evalc('w.selectDataset(n)');                                    % clicking one makes it current
+verifyEqual(tc, evalin('base', 'CURRENTSET'), n);
+verifyEqual(tc, evalin('base', 'EEG.setname'), 'nqc_synth');
+verifyTrue(tc, any(contains(w.DataText.Value, 'nqc_synth')));
 end
 
 function testSimpleRunShowsProgressAndResultsInTheWindow(tc)
@@ -72,6 +85,9 @@ verifyEqual(tc, char(w.Nav.Enable), 'on');
 verifyEqual(tc, numel(w.Result.cands), 12);
 verifyTrue(tc, startsWith(strjoin(w.Results.Headline.Value, ' '), sprintf('Use pipeline %d', w.Result.ranking.recommended)));
 verifyEmpty(tc, w.RunBox.Children);                             % the progress is gone
+evalc('w.plotPipeline()');                                      % the recommended pipeline's ERP
+verifyNumElements(tc, findobj(w.ResultView.Axes, 'Type', 'line'), 2);   % one line per condition
+verifyEqual(tc, w.ResultView.Names, {sprintf('pipeline %d', w.Result.ranking.recommended)});
 f = [tempname '.m']; tc.addTeardown(@() deleteIf(f));
 evalc('w.saveScript(f)');
 verifyTrue(tc, isfile(f));
@@ -98,6 +114,8 @@ w.Tabs.SelectedTab = w.AdvancedTab; w.tabChanged();
 verifyClass(tc, w.Advanced, 'pipecompare.gui.Panel');           % the panel, in the Advanced tab
 verifyEqual(tc, w.Advanced.Root.Parent, w.AdvancedTab);
 first = w.Advanced;
+open = ~isempty(findobj(groot, 'Tag', 'EEGLAB'));
+verifyEqual(tc, char(first.MenuStepButton.Enable), pipecompare.utils.ternary(open, 'on', 'off'));   % EEGLAB's menus: only with its window
 d = w.Simple;
 d.EventList.Value = {'11', '31'}; d.MeasureDrop.Value = 'P3'; d.measureChanged();
 evalc('w.openAdvanced(d)');

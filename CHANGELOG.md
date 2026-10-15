@@ -9,10 +9,13 @@ release has a git tag `vX.Y.Z`.
   every step in one window, with or without EEGLAB's main window. On the left the steps in order,
   Import, Settings, Run, Results, Export; Import opens a recording with EEGLAB's own import (.set;
   EDF, BDF, GDF through BIOSIG; other formats through FILE-IO) and adds channel locations
-  (standard 10-05 positions looked up by label, a locations file, or EEGLAB's channel editor);
+  (standard 10-05 positions looked up by label, or a locations file) and corrects channel labels
+  and types in a table, next to a plot of the data;
   Settings holds the simple mode and the advanced panel as two tabs; the progress, the results
-  and saving the dataset and the script are pages of the same window. The EEGLAB menus and
-  dialogs are unchanged.
+  (with a plot of the selected pipelines' ERPs or spectra, to compare them) and saving the
+  dataset and the script are pages of the same window; the datasets open are listed under the
+  steps. No EEGLAB dialog is needed (the Advanced tab keeps its EEGLAB buttons as an option). The
+  EEGLAB menus and dialogs are unchanged.
 - `pop_pipecompare` option `progress`: a container in which the progress and Stop are shown
   instead of a window of their own (the results window is then not opened).
 - *Use this pipeline* no longer opens EEGLAB's main window when it is closed (it only refreshes it

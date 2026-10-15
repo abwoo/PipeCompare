@@ -38,6 +38,7 @@ classdef Panel < handle
         Options = struct('dataUnit', 'auto', 'checkpoint', '', ...
             'parallel', false)
         ResultTable; StatusLabel; DetailArea
+        MenuStepButton            % Add EEGLAB menu step... (needs EEGLAB's main window)
     end
 
     methods
@@ -100,7 +101,7 @@ classdef Panel < handle
             b1.ColumnWidth = {'1.3x', '0.6x', '1.7x', '0.9x', '0.6x', '0.7x', '0.7x', '0.9x'};
             obj.TypeDrop = uidropdown(b1, 'Items', setdiff(pipecompare.plan.Catalog.types(), {'native'}, 'stable'));
             uibutton(b1, 'Text', 'Add', 'ButtonPushedFcn', @(~, ~) obj.addStep());
-            uibutton(b1, 'Text', 'Add EEGLAB menu step...', 'Tooltip', ...
+            obj.MenuStepButton = uibutton(b1, 'Text', 'Add EEGLAB menu step...', 'Tooltip', ...
                 ['Any operation of EEGLAB''s menus (plugins included): its own dialog opens on the data as the plan ', ...
                  'has them at the end, and the command it returns becomes a step'], ...
                 'ButtonPushedFcn', @(~, ~) obj.addEeglabStep());
@@ -251,6 +252,14 @@ classdef Panel < handle
         % ------------------------------------------------------------- live
         function refreshLive(obj, force)
             if isempty(obj.Root) || ~isvalid(obj.Root), return; end
+            if ~isempty(obj.Host)
+                % in the PipeCompare window EEGLAB's main window may be closed:
+                % its menus are what this button offers
+                open = ~isempty(findobj(groot, 'Tag', 'EEGLAB'));
+                obj.MenuStepButton.Enable = pipecompare.utils.ternary(open, 'on', 'off');
+                obj.MenuStepButton.Tooltip = pipecompare.utils.ternary(open, ['Any operation of EEGLAB''s menus ', ...
+                    '(plugins included) as a step'], 'Needs EEGLAB''s main window (type eeglab); every other step works without it');
+            end
             % Two levels: every second only the quick signature (its cost does
             % not grow with events or history); the full fingerprint when it
             % changed, and otherwise every 5 s, so an edit that keeps every

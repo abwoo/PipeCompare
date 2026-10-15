@@ -5,13 +5,15 @@ classdef Main < handle
     %   pipecompare.start                (or EEGLAB > Tools > PipeCompare > PipeCompare window)
     %   w = pipecompare.gui.Main.open()  the window (the one already open, if any)
     %
-    %   On the left, the steps in order; each shows its page on the right:
+    %   On the left, the steps in order, each showing its page on the right,
+    %   and under them the datasets open (clicking one makes it current):
     %   1. Import    open a data file (.set; EDF, BDF and GDF through
     %                EEGLAB's BIOSIG import; other formats through its
     %                FILE-IO import), or use the dataset already current in
     %                EEGLAB; add channel locations (the standard 10-05
-    %                positions looked up by channel label, a locations file,
-    %                or EEGLAB's channel editor).
+    %                positions looked up by channel label, or a locations
+    %                file); correct channel labels and types in a table; a
+    %                plot of the data (pipecompare.gui.DataView).
     %   2. Settings  two tabs: Simple (the simple mode's choices,
     %                pipecompare.gui.SimpleDialog) and Advanced (the full
     %                panel, pipecompare.gui.Panel); Advanced... in Simple
@@ -20,7 +22,9 @@ classdef Main < handle
     %   4. Results   the recommendation in plain words, the pipelines, Use
     %                this pipeline and Save script
     %                (pipecompare.gui.SimpleResults), also after a search of
-    %                the Advanced tab (whose own table has the details).
+    %                the Advanced tab (whose own table has the details); a
+    %                plot of the selected pipeline's ERP (or spectrum), to
+    %                compare pipelines.
     %   5. Export    save the current dataset (after Use this pipeline: the
     %                cleaned data) as a .set file, and the pipeline as a
     %                script for other recordings.
@@ -34,9 +38,12 @@ classdef Main < handle
     properties
         Fig
         Nav                     % the list of steps
-        DataLabel               % the dataset, under the list
+        DataList                % the datasets open in EEGLAB, under the steps
         Pages                   % one panel per step
         DataText; LocText; LocButtons
+        ChanTable               % channel labels and types, editable
+        DataView                % plot of the current dataset (Import)
+        ResultView              % plot of pipelines (Results)
         Tabs; SimpleTab; AdvancedTab; SimpleNote; SimpleBox
         Simple = []             % pipecompare.gui.SimpleDialog in the Simple tab
         Advanced = []           % pipecompare.gui.Panel in the Advanced tab
@@ -139,11 +146,13 @@ classdef Main < handle
                 'Position', pipecompare.utils.onScreen([40 40 1500 900]), 'CloseRequestFcn', @(~, ~) delete(obj));
             setappdata(obj.Fig, 'PipeCompareMain', obj);
             g = uigridlayout(obj.Fig, [1 2]); g.ColumnWidth = {170, '1x'};
-            left = uigridlayout(g, [3 1]); left.Padding = [0 0 0 0]; left.RowHeight = {30, 130, '1x'};
+            left = uigridlayout(g, [4 1]); left.Padding = [0 0 0 0]; left.RowHeight = {30, 130, 22, '1x'};
             uilabel(left, 'Text', 'PipeCompare', 'FontWeight', 'bold', 'FontSize', 16);
             obj.Nav = uilistbox(left, 'Items', obj.PageNames, 'ItemsData', 1:numel(obj.PageNames), 'Value', 1, ...
                 'ValueChangedFcn', @(h, ~) obj.showPage(h.Value));
-            obj.DataLabel = uilabel(left, 'Text', '', 'WordWrap', 'on', 'VerticalAlignment', 'top', 'FontColor', [0.3 0.3 0.3]);
+            uilabel(left, 'Text', 'Datasets', 'FontWeight', 'bold');
+            obj.DataList = uilistbox(left, 'Items', {}, 'Tooltip', 'The datasets open (in EEGLAB too); click one to use it', ...
+                'ValueChangedFcn', @(h, ~) obj.selectDataset(h.Value));
             right = uigridlayout(g, [1 1]); right.Padding = [0 0 0 0];
             obj.Pages = gobjects(1, numel(obj.PageNames));
             for k = 1:numel(obj.PageNames)   % all in one place; the one shown is visible
@@ -165,7 +174,9 @@ classdef Main < handle
         % ------------------------------------------------------------ pages
         function buildImport(obj)
             grey = [0.3 0.3 0.3];
-            g = uigridlayout(obj.Pages(1), [8 1]); g.RowHeight = {'fit', 30, 160, 22, 'fit', 30, '1x', 30};
+            two = uigridlayout(obj.Pages(1), [1 2]); two.ColumnWidth = {'1x', '1.3x'};
+            g = uigridlayout(two, [9 1]); g.Padding = [0 0 0 0]; g.RowHeight = {'fit', 30, 120, 22, 'fit', 30, '1x', 30, 30};
+            obj.DataView = pipecompare.gui.DataView(two);
             uilabel(g, 'WordWrap', 'on', 'Text', ['PipeCompare works on one EEG recording: open its file here, or load ', ...
                 'it in EEGLAB (this window uses the dataset that is current in EEGLAB). Start from the raw recording: ', ...
                 'PipeCompare compares the filters, reference, bad channels, ICA and epoch rejection itself.']);
@@ -176,15 +187,21 @@ classdef Main < handle
             obj.DataText = uitextarea(g, 'Editable', 'off', 'Value', {''});
             uilabel(g, 'Text', 'Channel locations', 'FontWeight', 'bold');
             obj.LocText = uilabel(g, 'Text', '', 'WordWrap', 'on');
-            l = uigridlayout(g, [1 4]); l.Padding = [0 0 0 0]; l.ColumnWidth = {220, 150, 150, '1x'};
+            l = uigridlayout(g, [1 3]); l.Padding = [0 0 0 0]; l.ColumnWidth = {200, 120, '1x'};
             obj.LocButtons = [ ...
                 uibutton(l, 'Text', 'Look up standard positions', 'Tooltip', ['The positions of the standard 10-05 system, ', ...
                     'found by channel label (EEGLAB''s channel lookup)'], 'ButtonPushedFcn', @(~, ~) obj.setLocations('standard')), ...
                 uibutton(l, 'Text', 'From a file...', 'Tooltip', 'The locations file of your cap (.ced, .elc, .elp, .sfp, .loc, ...)', ...
-                    'ButtonPushedFcn', @(~, ~) obj.setLocations('file')), ...
-                uibutton(l, 'Text', 'Edit in EEGLAB...', 'Tooltip', 'EEGLAB''s channel editor', ...
-                    'ButtonPushedFcn', @(~, ~) obj.setLocations('edit'))];
-            uilabel(g, 'Text', '');
+                    'ButtonPushedFcn', @(~, ~) obj.setLocations('file'))];
+            uilabel(l, 'Text', '');
+            obj.ChanTable = uitable(g, 'ColumnName', {'#', 'label', 'type', 'position'}, 'RowName', {}, ...
+                'ColumnEditable', [false true true false], 'ColumnWidth', {35, 'auto', 'auto', 70}, 'Tooltip', ...
+                ['Correct a label (then look up the positions again) or a type (EOG, ECG, EMG, REF: not used as scalp ', ...
+                 'channels); Apply stores the changes']);
+            n = uigridlayout(g, [1 3]); n.Padding = [0 0 0 0]; n.ColumnWidth = {200, '1x', 170};
+            obj.LocButtons(end+1) = uibutton(n, 'Text', 'Apply label and type changes', 'ButtonPushedFcn', @(~, ~) obj.applyChannelEdits());
+            uilabel(n, 'Text', '');
+            uilabel(n, 'Text', '');
             n = uigridlayout(g, [1 2]); n.Padding = [0 0 0 0]; n.ColumnWidth = {'1x', 170};
             uilabel(n, 'Text', '');
             uibutton(n, 'Text', 'Next: 2. Settings', 'ButtonPushedFcn', @(~, ~) obj.showPage(2));
@@ -211,11 +228,19 @@ classdef Main < handle
         end
 
         function buildResults(obj)
-            g = uigridlayout(obj.Pages(4), [1 1]); g.Padding = [0 0 0 0];
+            g = uigridlayout(obj.Pages(4), [1 2]); g.Padding = [0 0 0 0]; g.ColumnWidth = {'1.15x', '1x'};
             obj.ResultsNote = uilabel(g, 'Text', 'No comparison yet (2. Settings, then Run).', 'HorizontalAlignment', 'center');
             obj.ResultsBox = uipanel(g, 'BorderType', 'none');
             obj.ResultsNote.Layout.Row = 1; obj.ResultsNote.Layout.Column = 1;
             obj.ResultsBox.Layout.Row = 1; obj.ResultsBox.Layout.Column = 1;
+            p = uigridlayout(g, [2 1]); p.RowHeight = {30, '1x'}; p.Layout.Row = 1; p.Layout.Column = 2;
+            b = uigridlayout(p, [1 3]); b.Padding = [0 0 0 0]; b.ColumnWidth = {170, 100, '1x'};
+            uibutton(b, 'Text', 'Plot selected pipeline', 'Tooltip', ['Runs the selected pipeline (else the ', ...
+                'recommended one) again and plots its ERP or spectrum next to those plotted before'], ...
+                'ButtonPushedFcn', @(~, ~) obj.plotPipeline());
+            uibutton(b, 'Text', 'Clear plot', 'ButtonPushedFcn', @(~, ~) obj.ResultView.clearPlot());
+            uilabel(b, 'Text', '');
+            obj.ResultView = pipecompare.gui.DataView(p);
         end
 
         function buildExport(obj)
@@ -280,10 +305,12 @@ classdef Main < handle
             if ~isempty(obj.Simple) && isvalid(obj.Simple), delete(obj.Simple); end
             obj.Simple = [];
             [on, off] = deal('on', 'off');
+            obj.showDatasets();
+            obj.ChanTable.Data = obj.channelRows(EEG);
+            obj.DataView.showData(EEG);
             if isempty(EEG)
                 obj.DataText.Value = {'No dataset yet: open a data file.'};
                 obj.LocText.Text = '';
-                obj.DataLabel.Text = 'No data yet';
                 obj.ExportData.Text = 'No dataset yet.';
                 set(obj.LocButtons, 'Enable', off);
                 obj.SimpleNote.Text = 'Open a data file first (1. Import).'; obj.SimpleNote.Visible = on;
@@ -293,7 +320,6 @@ classdef Main < handle
             obj.DataText.Value = obj.dataText(EEG, s);
             obj.LocText.Text = obj.locationsText(s);
             set(obj.LocButtons, 'Enable', on);
-            obj.DataLabel.Text = sprintf('Data: %s', s.setname);
             obj.ExportData.Text = sprintf('Current dataset: %s (%s). Save it to keep it: it is in memory only until saved.', ...
                 s.setname, obj.shapeText(s));
             try
@@ -302,6 +328,71 @@ classdef Main < handle
             catch ME
                 obj.SimpleNote.Text = ME.message; obj.SimpleNote.Visible = on;
             end
+        end
+
+        function showDatasets(obj)
+            % the datasets in EEGLAB's ALLEEG, the current one selected
+            names = {}; idx = [];
+            try
+                if evalin('base', 'exist(''ALLEEG'', ''var'') && exist(''CURRENTSET'', ''var'')')
+                    A = evalin('base', 'ALLEEG'); cur = evalin('base', 'CURRENTSET');
+                    idx = find(arrayfun(@(e) isfield(e, 'data') && ~isempty(e.data), A));
+                    names = arrayfun(@(k) sprintf('%d: %s', k, char(string(A(k).setname))), idx, 'UniformOutput', false);
+                end
+            catch
+            end
+            obj.DataList.Items = names; obj.DataList.ItemsData = idx;
+            if ~isempty(idx) && isscalar(cur) && ismember(cur, idx), obj.DataList.Value = cur; end
+        end
+
+        function selectDataset(obj, k)
+            % dataset k of ALLEEG becomes the current one (as in EEGLAB's
+            % Datasets menu)
+            if obj.Busy, obj.showDatasets(); return; end
+            try
+                evalin('base', sprintf('[EEG, ALLEEG, CURRENTSET] = eeg_retrieve(ALLEEG, %d);', k));
+                pipecompare.gui.Main.told('');
+            catch ME
+                uialert(obj.Fig, ME.message, 'PipeCompare');
+            end
+            obj.refreshData();
+        end
+
+        function rows = channelRows(~, EEG)
+            % number, label, type and whether it has a position, per channel
+            rows = cell(0, 4);
+            if isempty(EEG) || ~isfield(EEG, 'chanlocs') || numel(EEG.chanlocs) ~= EEG.nbchan, return; end
+            L = EEG.chanlocs;
+            rows = cell(numel(L), 4);
+            for k = 1:numel(L)
+                ty = ''; if isfield(L, 'type') && ~isempty(L(k).type), ty = char(string(L(k).type)); end
+                has = isfield(L, 'X') && ~isempty(L(k).X) && ~isnan(double(L(k).X(1)));
+                rows(k, :) = {k, char(string(L(k).labels)), ty, pipecompare.utils.ternary(has, 'yes', 'no')};
+            end
+        end
+
+        function applyChannelEdits(obj)
+            % The labels and types changed in the table, as one EEGLAB
+            % channel edit of the current dataset (in its history)
+            try
+                EEG = pipecompare.live.Session.current();
+                assert(~isempty(EEG), 'PipeCompare:NoDataset', 'Open a data file first.');
+                was = obj.channelRows(EEG); edited = obj.ChanTable.Data;
+                assert(isequal(size(was), size(edited)), 'PipeCompare:Channels', 'The dataset changed; the table is shown again.');
+                args = {};
+                for k = 1:size(edited, 1)
+                    for f = {2, 3; 'labels', 'type'}
+                        v = strtrim(char(string(edited{k, f{1}})));
+                        if ~strcmp(v, was{k, f{1}}), args = [args {'changefield', {k, f{2}, v}}]; end %#ok<AGROW>
+                    end
+                end
+                if isempty(args), return; end
+                [EEG, ~, ~, com] = pop_chanedit(EEG, args{:});
+                pipecompare.gui.Main.storeCurrent(EEG, com);
+            catch ME
+                uialert(obj.Fig, ME.message, 'PipeCompare');
+            end
+            obj.refreshData();
         end
 
         function v = dataText(~, EEG, s)
@@ -347,7 +438,7 @@ classdef Main < handle
 
         function setLocations(obj, how, file)
             % Channel locations of the current dataset: 'standard' (looked
-            % up by label), 'file' (file: without the dialog), 'edit'
+            % up by label) or 'file' (file: without the dialog)
             try
                 EEG = pipecompare.live.Session.current();
                 assert(~isempty(EEG), 'PipeCompare:NoDataset', 'Open a data file first.');
@@ -362,8 +453,6 @@ classdef Main < handle
                             file = fullfile(p, f);
                         end
                         [EEG, ~, ~, com] = pop_chanedit(EEG, 'load', {file, 'filetype', 'autodetect'});
-                    case 'edit'
-                        [EEG, ~, ~, com] = pop_chanedit(EEG);
                 end
                 if isempty(com), return; end   % cancelled
                 pipecompare.gui.Main.storeCurrent(EEG, com);
@@ -411,8 +500,30 @@ classdef Main < handle
             if ~isempty(obj.Results) && isvalid(obj.Results.Root), delete(obj.Results.Root); end
             obj.Results = pipecompare.gui.SimpleResults(r, obj.ResultsBox, obj);
             obj.ResultsNote.Visible = 'off';
+            obj.ResultView.clearPlot();   % the lines of another comparison
             obj.RunNote.Text = 'The last comparison is on 4. Results.';
             obj.showPage(4);
+        end
+
+        function plotPipeline(obj)
+            % The selected pipeline (else the recommended one), run again
+            % from the start of the comparison (ICA reused), on the plot
+            if isempty(obj.Results) || ~isvalid(obj.Results.Root)
+                uialert(obj.Fig, 'Run a comparison first (2. Settings, then Run).', 'PipeCompare'); return;
+            end
+            dlg = [];
+            try
+                r = obj.Result;
+                k = pipecompare.run.Executor.pickCandidate(r, obj.Results.chosen());
+                dlg = uiprogressdlg(obj.Fig, 'Title', 'Plot', 'Indeterminate', 'on', 'Message', ...
+                    sprintf('Running pipeline %d again to plot it (ICA comes from the comparison)...', k));
+                [~, E] = evalc('pipecompare.run.Executor.replay(r, k)');
+                obj.ResultView.addPipeline(E, r.contract, sprintf('pipeline %d', k));
+                close(dlg);
+            catch ME
+                if ~isempty(dlg) && isvalid(dlg), close(dlg); end
+                uialert(obj.Fig, ME.message, 'PipeCompare');
+            end
         end
 
         function adopted(obj, k)

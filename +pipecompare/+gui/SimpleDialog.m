@@ -327,8 +327,15 @@ classdef SimpleDialog < handle
         end
 
         function pickChannels(obj)
-            % EEGLAB's channel selection over the dataset's channels.
+            % EEGLAB's channel selection over the dataset's channels (in
+            % the PipeCompare window: its own list).
             labels = {obj.EEG.chanlocs.labels};
+            if ~isempty(obj.Host)
+                [ok, chosen] = pipecompare.gui.ChannelPicker.ask(labels, obj.Channels);
+                if ok, obj.Channels = chosen; end
+                obj.showChannels(); obj.update();
+                return;
+            end
             [~, sel] = ismember(lower(obj.Channels), lower(labels));
             [idx, ~, names] = pop_chansel(labels, 'withindex', 'on', 'select', sel(sel > 0));
             if ~isempty(idx), obj.Channels = labels(idx); elseif iscell(names) && ~isempty(names), obj.Channels = names; end
