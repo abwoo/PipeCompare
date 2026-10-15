@@ -13,7 +13,29 @@ an EEG recording, based on the recording itself. It compares complete preprocess
 (filters, reference, bad channels, ICA with ICLabel, epoch rejection) and recommends the one that
 measures your ERP or band power most precisely, without distorting it.
 
+## Download
+
+<p align="center">
+  <a href="https://github.com/abwoo/PipeCompare/releases/latest"><b>Download the latest PipeCompare (zip)</b></a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/abwoo/PipeCompare/releases">All versions</a>
+</p>
+
+1. Download `PipeCompare<version>.zip` from the
+   [latest release](https://github.com/abwoo/PipeCompare/releases/latest) (under *Assets*).
+2. Unzip it into the `plugins` folder of EEGLAB (2022 or later), so that you have
+   `eeglab/plugins/PipeCompare<version>/`.
+3. Start MATLAB and EEGLAB. Open **Tools > PipeCompare > PipeCompare window…**, or type
+   `pipecompare.start`.
+
+PipeCompare is also listed in EEGLAB's extension manager (**File > Manage EEGLAB extensions**),
+which downloads the same zip. The details and the other ways are under
+[Installation](#installation). In every PipeCompare window, **Help > PipeCompare on GitHub** opens
+this page, and **Help > Download the latest version** the latest release.
+
 ## Contents
+
+- [Download](#download)
 
 - [What PipeCompare does](#what-pipecompare-does)
 - [What happens to your data](#what-happens-to-your-data)
@@ -403,6 +425,13 @@ The window and EEGLAB share the data: the window works on the dataset that is cu
 and stores there what it opens or makes, so you can switch between the window, EEGLAB's menus and
 the Command Window at any time. Closing the window stops a comparison that is running (the
 pipelines already finished are kept in `pipecompare_result`).
+
+The **Help** menu of the window opens this GitHub page (**PipeCompare on GitHub**), this guide
+(**User guide (README)**), the latest release to download (**Download the latest version**) and
+the page to report a problem (**Report a problem**), in your web browser; **About PipeCompare**
+shows the version. The simple dialog, the results window and the advanced panel opened from
+EEGLAB's menu have the same Help menu, and EEGLAB's menu has **Tools > PipeCompare > PipeCompare
+on GitHub…**.
 
 ### From the EEGLAB menu
 

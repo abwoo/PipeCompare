@@ -23,4 +23,6 @@ uimenu(m, 'Label', 'Compare pipelines...', 'userdata', 'startup:off;study:off', 
     'Callback', wrap('[EEG, LASTCOM] = pop_pipecompare(EEG); if ~isempty(LASTCOM), eegh(LASTCOM); end;'));
 uimenu(m, 'Label', 'Advanced panel...', 'userdata', 'startup:on;study:off', ...
     'Callback', wrap('pipecompare.PipeCompare.app();'));
+uimenu(m, 'Label', 'PipeCompare on GitHub...', 'Separator', 'on', 'userdata', 'startup:on;study:off', ...
+    'Callback', wrap('web(pipecompare.PipeCompare.Url, ''-browser'');'));
 end

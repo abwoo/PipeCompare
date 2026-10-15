@@ -28,6 +28,9 @@ verifyEqual(tc, w.DataList.Value, evalin('base', 'CURRENTSET'));   % the dataset
 verifyClass(tc, w.Simple, 'pipecompare.gui.SimpleDialog');     % the simple mode, in the Simple tab
 verifyEqual(tc, ancestor(w.Simple.Grid, 'figure'), w.Fig);
 verifyEmpty(tc, findall(w.Fig, 'Type', 'uibutton', 'Text', 'Cancel'));   % in the window: no Cancel
+gh = findall(w.Fig, 'Type', 'uimenu', 'Text', 'PipeCompare on GitHub');
+verifyNumElements(tc, gh, 1);                                   % Help > PipeCompare on GitHub
+verifyTrue(tc, isa(gh.MenuSelectedFcn, 'function_handle'));
 verifyTrue(tc, pipecompare.start() == w);                      % one window: opening again shows it
 w.showPage(5);
 verifyTrue(tc, logical(w.Pages(5).Visible) && ~logical(w.Pages(1).Visible));

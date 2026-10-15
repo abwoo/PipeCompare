@@ -18,6 +18,10 @@ release has a git tag `vX.Y.Z`.
   EEGLAB menus and dialogs are unchanged.
 - `pop_pipecompare` option `progress`: a container in which the progress and Stop are shown
   instead of a window of their own (the results window is then not opened).
+- A Help menu in the PipeCompare window, the simple dialog, the results window and the advanced
+  panel: PipeCompare on GitHub, the user guide, the latest version to download, report a problem,
+  About. EEGLAB's menu has *Tools > PipeCompare > PipeCompare on GitHub…*. The README starts with
+  a download link to the latest release zip.
 - *Use this pipeline* no longer opens EEGLAB's main window when it is closed (it only refreshes it
   when it is open).
 

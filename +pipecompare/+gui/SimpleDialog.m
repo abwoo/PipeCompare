@@ -85,6 +85,7 @@ classdef SimpleDialog < handle
             if nargin < 2 || isempty(parent)
                 obj.Fig = uifigure('Name', 'Compare preprocessing pipelines', 'Position', pipecompare.utils.onScreen([200 100 720 696]), ...
                     'CloseRequestFcn', @(~, ~) obj.close());
+                pipecompare.gui.helpMenu(obj.Fig);
                 parent = obj.Fig;
             else
                 obj.Fig = ancestor(parent, 'figure'); obj.Host = host;

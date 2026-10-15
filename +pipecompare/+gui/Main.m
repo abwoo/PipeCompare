@@ -145,6 +145,7 @@ classdef Main < handle
             obj.Fig = uifigure('Name', sprintf('PipeCompare %s', pipecompare.PipeCompare.version()), 'Tag', 'PipeCompareMain', ...
                 'Position', pipecompare.utils.onScreen([40 40 1500 900]), 'CloseRequestFcn', @(~, ~) delete(obj));
             setappdata(obj.Fig, 'PipeCompareMain', obj);
+            pipecompare.gui.helpMenu(obj.Fig);   % GitHub, user guide, latest version
             g = uigridlayout(obj.Fig, [1 2]); g.ColumnWidth = {170, '1x'};
             left = uigridlayout(g, [4 1]); left.Padding = [0 0 0 0]; left.RowHeight = {30, 130, 22, '1x'};
             uilabel(left, 'Text', 'PipeCompare', 'FontWeight', 'bold', 'FontSize', 16);

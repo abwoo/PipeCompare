@@ -32,6 +32,7 @@ classdef SimpleResults < handle
             obj.Result = result;
             if nargin < 2 || isempty(parent)
                 obj.Fig = uifigure('Name', 'Pipeline comparison', 'Position', pipecompare.utils.onScreen([220 100 900 600]));
+                pipecompare.gui.helpMenu(obj.Fig);
                 parent = obj.Fig;
             else
                 obj.Fig = ancestor(parent, 'figure');

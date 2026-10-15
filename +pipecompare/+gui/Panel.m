@@ -64,6 +64,7 @@ classdef Panel < handle
             if isempty(parent)
                 obj.Fig = uifigure('Name', sprintf('PipeCompare %s', pipecompare.PipeCompare.version()), ...
                     'Position', pipecompare.utils.onScreen([60 60 1380 860]), 'CloseRequestFcn', @(~, ~) obj.delete());
+                pipecompare.gui.helpMenu(obj.Fig);
                 g = uigridlayout(obj.Fig, [3 2]); obj.Root = obj.Fig;
             else
                 obj.Fig = ancestor(parent, 'figure');

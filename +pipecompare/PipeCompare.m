@@ -23,6 +23,7 @@ classdef PipeCompare
 
     properties (Constant)
         Version = '0.9.4'
+        Url = 'https://github.com/abwoo/PipeCompare'   % the repository (Help menus)
     end
 
     methods (Static)
