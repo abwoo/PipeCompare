@@ -223,14 +223,9 @@ classdef Steps
             doHp = hp > 0 && hp > applied;
             doLp = lp > 0 && lp < EEG.srate / 2;
             copy = doHp || doLp;
-            src = EEG; on = '';
-            if doHp
-                fa = fftArgs(EEG, hp);
-                src = pop_eegfiltnew(src, 'locutoff', hp, 'plotfreqz', 0, fa{:});
-                on = sprintf(' on a %g Hz high-passed', hp);
-            end
+            src = bandCopy(EEG, doHp, hp, doLp, lp); on = '';
+            if doHp, on = sprintf(' on a %g Hz high-passed', hp); end
             if doLp
-                src = pop_eegfiltnew(src, 'hicutoff', lp, 'plotfreqz', 0);
                 on = [pipecompare.utils.ternary(doHp, [on ','], ' on a') sprintf(' %g Hz low-passed', lp)];
             end
             if copy, on = [on ' copy']; end
@@ -247,7 +242,16 @@ classdef Steps
             % those would be marked bad for what ICA is there to remove
             noBlink = src; share = 0;
             if any(~strcmp(measures, 'resid'))
-                [noBlink, share, eyes] = pipecompare.run.Steps.withoutBlinks(src);
+                if copy && EEG.trials == 1
+                    % left out of the data as they are, then filtered like
+                    % the copy: filtering first would spread each blink's
+                    % slow part beyond the stretch left out (eegfiltnew
+                    % filters the stretches between boundaries on their own)
+                    [noBlink, share, eyes] = pipecompare.run.Steps.withoutBlinks(src, EEG);
+                    if share > 0, noBlink = bandCopy(noBlink, doHp, hp, doLp, lp); else, noBlink = src; end
+                else
+                    [noBlink, share, eyes] = pipecompare.run.Steps.withoutBlinks(src);
+                end
                 if share > 0
                     on = sprintf('%s; %.0f%% of the data with blinks left out for kurtosis and probability', on, 100 * share);
                     pipecompare.utils.log('Bad channels: kurtosis and joint probability measured without the %.0f%% of the data with blinks (in %s).', ...
@@ -329,13 +333,16 @@ classdef Steps
             end
         end
 
-        function [T, share, eyes] = withoutBlinks(T)
+        function [T, share, eyes] = withoutBlinks(T, D)
             % T without its blinks: the samples (continuous data) or epochs
             % where an eye channel (Injection.eyeChannels: EOG, else Fp1,
             % Fp2, FPz) is beyond 5 robust SDs of its own (median and MAD),
-            % continuous data with 200 ms on either side. share: the share
-            % of the data left out; nothing is left out (share 0) without
-            % an eye channel, or when that would be over half the data.
+            % continuous data with 200 ms on either side. With D (the same
+            % samples, e.g. T before filtering), those are left out of D
+            % instead. share: the share of the data left out; nothing is
+            % left out (share 0) without an eye channel, or when that would
+            % be over half the data.
+            if nargin > 1, S = D; else, S = T; end
             share = 0;
             eyes = pipecompare.eval.Injection.eyeChannels(T.chanlocs);
             if isempty(eyes), return; end
@@ -345,15 +352,15 @@ classdef Steps
             if T.trials > 1
                 drop = find(any(reshape(hit, T.pnts, T.trials), 1));
                 if isempty(drop) || numel(drop) > T.trials / 2, return; end
-                [~, T] = evalc('pop_select(T, ''notrial'', drop)');
-                share = numel(drop) / (numel(drop) + T.trials);
+                share = numel(drop) / T.trials;
+                [~, T] = evalc('pop_select(S, ''notrial'', drop)');
                 return;
             end
             w = round(0.2 * T.srate);
             hit = conv(double(hit), ones(1, 2 * w + 1), 'same') > 0;
             if ~any(hit) || mean(hit) > 0.5, return; end
             d = diff([0 hit 0]);
-            T = pipecompare.utils.selectPoints(T, 'nopoint', [find(d == 1)' find(d == -1)' - 1]);
+            T = pipecompare.utils.selectPoints(S, 'nopoint', [find(d == 1)' find(d == -1)' - 1]);
             share = mean(hit);
         end
 
@@ -1011,6 +1018,15 @@ if ~isempty(f) && contains(fileread(f), '[xi,yi] = meshgrid(xi,yi);')
         '(rotated scalp maps; eye components are mostly missed). Update ICLabel to 1.6 or later in ', ...
         'File > Manage EEGLAB extensions.']);
 end
+end
+
+function T = bandCopy(T, doHp, hp, doLp, lp)
+% the copy bad channels are tested on: high-passed at hp and/or low-passed at lp
+if doHp
+    fa = fftArgs(T, hp);
+    T = pop_eegfiltnew(T, 'locutoff', hp, 'plotfreqz', 0, fa{:});
+end
+if doLp, T = pop_eegfiltnew(T, 'hicutoff', lp, 'plotfreqz', 0); end
 end
 
 function EEG = runIca(EEG, opts)

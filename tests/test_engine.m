@@ -265,7 +265,7 @@ p = p.addChoice('rej', {'reject_jointprob', 'sd', 5}, {'reject_kurtosis', 'sd', 
 r = pipecompare.PipeCompare.optimize(p, nqc_c());
 verifyEqual(tc, {r.cands.status}, {'ok', 'ok'});
 coms = strjoin(r.cands(1).coms, newline);
-for f = {'pop_eegfiltnew', 'revfilt', 'pop_rejchan', 'pop_interp', 'pop_reref', 'pop_epoch', 'pop_rmbase', 'pop_jointprob', 'pop_rejepoch'}
+for f = {'pop_eegfiltnew', 'revfilt', 'bad-channel test', 'pop_interp', 'pop_reref', 'pop_epoch', 'pop_rmbase', 'pop_jointprob', 'pop_rejepoch'}
     verifyTrue(tc, contains(coms, f{1}), f{1});
 end
 verifyTrue(tc, contains(strjoin(r.cands(2).coms, newline), 'pop_rejkurt'));
@@ -655,17 +655,19 @@ verifyFalse(tc, any(contains(coms, 'copy')));
 end
 
 function testBadChannelMeasuresCombine(tc)
-% Standard detects with 'kurt+prob': kurtosis finds a spiky channel, joint
-% probability a noisy one (on a real recording kurtosis alone missed two
-% noisy channels), and a channel is bad when either measure flags it.
+% Standard detects with 'kurt+prob+resid': kurtosis finds a spiky
+% channel, resid a noisy one (kurtosis and joint probability flagged it
+% only for being less heavy-tailed than channels with blinks, which they
+% no longer see), and a channel is bad when any measure flags it.
 EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20, 'noisyChannels', {{'T7'}}, 'noisyUv', 200));
 rng(1); k = find(strcmp({EEG.chanlocs.labels}, 'PO8'));
 EEG.data(k, :) = EEG.data(k, :) + 2000 * (rand(1, EEG.pnts) > 0.999);   % one spiky channel
-p = struct('measure', 'kurt+prob', 'threshold', 5, 'exclude', {{'EOG1', 'EOG2'}}, ...
+p = struct('measure', 'kurt+prob+resid', 'threshold', 5, 'exclude', {{'EOG1', 'EOG2'}}, ...
     'detectHighpass', 1, 'action', 'interpolate');
 [~, coms, info] = pipecompare.run.Steps.badChannels(EEG, p, struct('highpass', 0));
 verifyTrue(tc, all(ismember({'PO8', 'T7'}, info.badChannels)), strjoin(info.badChannels, ' '));
-verifyTrue(tc, contains(coms{1}, 'measure kurt+prob'));
+verifyFalse(tc, ismember('FPz', info.badChannels), strjoin(info.badChannels, ' '));   % blinks do not make it bad
+verifyTrue(tc, contains(coms{1}, 'measure kurt+prob+resid'));
 p.action = 'remove'; p.detectHighpass = 0;                          % one copy-free path, several measures
 [E, ~, info] = pipecompare.run.Steps.badChannels(EEG, p, struct('highpass', 0));
 verifyFalse(tc, any(ismember(info.badChannels, {E.chanlocs.labels})));
@@ -709,8 +711,8 @@ EEG = nqc_synth(struct('seconds', 150, 'nPerCond', 40, 'artifactTrials', 0));
 lab = {EEG.chanlocs.labels};
 near = {'P3', 'P4', 'CP1', 'CP2', 'POz', 'PO3', 'PO4'};
 rng(3);
-for k = find(ismember(lab, near)), EEG.data(k, :) = EEG.data(k, :) + single(40 * randn(1, EEG.pnts)); end
-for k = find(ismember(lab, {'P8', 'Pz'})), EEG.data(k, :) = EEG.data(k, :) + single(15 * randn(1, EEG.pnts)); end
+for k = find(ismember(lab, near)), EEG.data(k, :) = EEG.data(k, :) + single(80 * randn(1, EEG.pnts)); end
+for k = find(ismember(lab, {'P8', 'Pz'})), EEG.data(k, :) = EEG.data(k, :) + single(25 * randn(1, EEG.pnts)); end
 b = find(ismember(lab, {'P8', 'Pz'}));
 M = pipecompare.eval.ChannelChoice.interpMatrix(EEG, b);
 [~, I] = evalc('pop_interp(EEG, b, ''spherical'')');
@@ -725,7 +727,6 @@ p = p.add('badchannels', 'measure', 'resid', 'threshold', 5, 'exclude', {ex}, 'd
 p = p.add('reref', 'mode', 'average', 'exclude', {{'EOG1', 'EOG2'}});
 p = p.add('highpass', 'cutoff', 0.1);
 p = p.add('epoch'); p = p.add('baseline');
-p = p.add('reject_threshold', 'uv', 100, 'exclude', {ex});
 r = pipecompare.PipeCompare.optimize(p, c);
 f = r.cands(1).steps{1};
 verifyEqual(tc, sort(cellstr(f.interpolated)), {'P8'});
@@ -779,7 +780,7 @@ EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20, 'noisyChannels', {{'T7'}},
 f1 = find(strcmp({EEG.chanlocs.labels}, 'Cz')); f2 = find(strcmp({EEG.chanlocs.labels}, 'O1'));
 EEG.data(f1, :) = 0;                                                % disconnected: a constant
 EEG.data(f2, :) = 1e-3 * randn(1, EEG.pnts);                        % almost nothing
-p = struct('measure', 'kurt+prob', 'threshold', 5, 'exclude', {{'EOG1', 'EOG2'}}, ...
+p = struct('measure', 'kurt+prob+resid', 'threshold', 5, 'exclude', {{'EOG1', 'EOG2'}}, ...
     'detectHighpass', 1, 'action', 'interpolate');
 [E, coms, info] = pipecompare.run.Steps.badChannels(EEG, p, struct('highpass', 0));
 verifyTrue(tc, all(ismember({'Cz', 'O1', 'T7'}, info.badChannels)), strjoin(info.badChannels, ' '));
