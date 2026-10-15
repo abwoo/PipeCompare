@@ -52,7 +52,7 @@ n = evalin('base', 'numel(ALLEEG)');
 evalc('w.openFile(fullfile(folder, ''nolocs.set''))');
 verifyEqual(tc, evalin('base', 'numel(ALLEEG)'), n + 1);       % a new EEGLAB dataset, the current one
 verifyEqual(tc, evalin('base', 'EEG.setname'), 'nolocs');
-verifyTrue(tc, contains(evalin('base', 'EEG.history'), 'nolocs.set'));   % how it was opened
+verifyNotEmpty(tc, eegh('find', 'nolocs.set'));                % how it was opened, in EEGLAB's command history (EEG.history leaves out pop_loadset)
 verifyTrue(tc, startsWith(w.LocText.Text, 'None of the 32 channels has a position'));
 evalc('w.setLocations(''standard'')');
 s = pipecompare.live.DataState.fromEEG(evalin('base', 'EEG'));
