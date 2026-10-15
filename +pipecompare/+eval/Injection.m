@@ -129,7 +129,7 @@ classdef Injection
                     c0 = round(ev.latency);
                     onsets(end+1) = (c0 - 1) / fs; %#ok<AGROW>
                     if isfield(ev, 'urevent') && ~isempty(ev.urevent), urs(end+1) = ev.urevent; else, urs(end+1) = NaN; end %#ok<AGROW>
-                    cols = c0 + round(contract.epoch(1) * fs) + (0:numel(tt)-1);
+                    cols = c0 + round(tt(1) * fs) + (0:numel(tt)-1);
                     ok = cols >= 1 & cols <= root.pnts;
                     S.data(:, cols(ok)) = S.data(:, cols(ok)) + cast(sig(:, ok), 'like', S.data);
                 end
@@ -443,19 +443,31 @@ end
 function [F, owner] = shapeCopy(C, contract, truth)
 % The continuous copy C (shortCopy) with one channel per component and
 % shape (Injection.shapeSpreads): the template used first, then bumps of
-% each width, at every time-locking event as prepare injects them.
+% each width, at every time-locking event as prepare injects them. The
+% bumps are whole (out to 4 SDs either side of the window's centre), not
+% cut at the epoch's edges: a cut bump ends in a step, which a high-pass
+% passes, so the spread would be underestimated.
 fs = C.srate;
 tt = (round(contract.epoch(1) * fs):round(contract.epoch(2) * fs)) / fs;
 own = template(tt, contract, truth);
-G = []; owner = [];
+sds = []; mid = [];
 for j = 1:numel(contract.components)
     win = contract.components(j).window;
-    G = [G; own(j, :)]; owner(end+1) = j; %#ok<AGROW>
-    for f = pipecompare.eval.Injection.ShapeFactors
-        sd = f * max(diff(win), 0.050) / 2.355;
-        G = [G; exp(-0.5 * ((tt - mean(win)) / sd) .^ 2)]; owner(end+1) = j; %#ok<AGROW>
+    sds(end+1, :) = pipecompare.eval.Injection.ShapeFactors * max(diff(win), 0.050) / 2.355; %#ok<AGROW>
+    mid(end+1) = mean(win); %#ok<AGROW>
+end
+t0 = min([tt(1); mid(:) - 4 * max(sds, [], 2)]); t1 = max([tt(end); mid(:) + 4 * max(sds, [], 2)]);
+tx = (floor(t0 * fs):ceil(t1 * fs)) / fs;                     % the times the shapes span
+inEpoch = round(tx * fs) >= round(tt(1) * fs) & round(tx * fs) <= round(tt(end) * fs);
+G = []; owner = [];
+for j = 1:numel(contract.components)
+    g = zeros(1, numel(tx)); g(inEpoch) = own(j, :);           % the template as injected: within the epoch
+    G = [G; g]; owner(end+1) = j; %#ok<AGROW>
+    for sd = sds(j, :)
+        G = [G; exp(-0.5 * ((tx - mid(j)) / sd) .^ 2)]; owner(end+1) = j; %#ok<AGROW>
     end
 end
+tt = tx;
 F = C;
 F.data = zeros(size(G, 1), C.pnts);
 F.nbchan = size(G, 1);
@@ -465,7 +477,7 @@ codes = contract.allEvents();
 for e = 1:numel(C.event)
     if ~any(strcmp(strtrim(char(string(C.event(e).type))), codes)), continue; end
     c0 = round(C.event(e).latency);
-    cols = c0 + round(contract.epoch(1) * fs) + (0:numel(tt)-1);
+    cols = c0 + round(tt(1) * fs) + (0:numel(tt)-1);
     ok = cols >= 1 & cols <= F.pnts;
     F.data(:, cols(ok)) = F.data(:, cols(ok)) + G(:, ok);
 end

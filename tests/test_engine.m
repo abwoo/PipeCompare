@@ -1108,8 +1108,9 @@ verifyError(tc, @() pipecompare.eval.IcThreshold.choose(EEG, q, x), 'PipeCompare
 end
 
 function testIcComponentsChosenBySme(tc)
-% threshold 'sme': components are added one at a time, each time the one
-% whose removal gives the lowest objective; each set on the path is scored
+% threshold 'sme': components are added one at a time, in the order of
+% their own variance at the score over their share of the known signal
+% (the artifact components first); each set on the path is scored
 % exactly as EEGLAB's own processing gives (pop_subcomp, epoching,
 % baseline, the best limit, the gain from the signal copy); a component
 % that may not be removed (ICLabel takes it for brain activity) never is;
@@ -1182,11 +1183,6 @@ verifyEqual(tc, info.objectiveBest, min(f));
 verifyEqual(tc, comps, sort(info.order(1:info.removedChosen)));
 verifyLessThanOrEqual(tc, info.removedChosen, info.removedBest);
 verifyLessThanOrEqual(tc, info.objectiveChosen, 1.05 * info.objectiveBest);   % equivalent to the best
-% the first component added is the best single one to remove
-for k = cand(1:5)
-    [~, ik] = pipecompare.eval.IcThreshold.chooseBySme(EEG, k, x);
-    if ik.sets > 1, verifyLessThanOrEqual(tc, f(2), ik.objectives(2), sprintf('component %d', k)); end
-end
 % in the step: exactly those components removed, none ICLabel takes for brain activity
 if exist('pop_iclabel', 'file') == 2
     % the others Other, as on recordings ICLabel recognises little (an Eye
@@ -1206,6 +1202,41 @@ end
 x.contract = pipecompare.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], ...
     'baseline', [-0.2 0], 'components', {'P3', [0.3 0.5], {'Pz'}, {'peakAmplitude', 'positive'}});
 verifyError(tc, @() pipecompare.eval.IcThreshold.chooseBySme(EEG, cand, x), 'PipeCompare:IcThreshold');
+end
+
+function testBlinkComponentICLabelCallsOtherIsNotKept(tc)
+% threshold 'sme': a component that carries blinks time-locked to the
+% stimulus into the measured window is not kept as time-locked brain
+% activity when its activity follows an eye channel, though ICLabel
+% would call it Other; a component with time-locked activity of its own
+% (F3's here) still is.
+EEG = nqc_synth(struct('seconds', 150, 'nPerCond', 30, 'blinkRate', 0, 'artifactTrials', 0));
+c = nqc_c();
+n = EEG.nbchan; lab = {EEG.chanlocs.labels};
+roi = find(ismember(lower(lab), lower(c.components(1).roi)));
+eog = find(strcmp(lab, 'EOG1')); evk = find(strcmp(lab, 'F3'));
+A = eye(n); A(roi, eog) = 0.5; A(roi, evk) = 1;
+lat = [EEG.event(ismember({EEG.event.type}, {'11', '31'})).latency];
+rng(5); tt = (0:EEG.pnts-1);
+blink = zeros(1, EEG.pnts); p3 = zeros(1, EEG.pnts);
+for L = lat
+    if rand < 0.5, blink = blink + 100 * exp(-0.5 * ((tt - L - 0.4 * EEG.srate) / (0.05 * EEG.srate)) .^ 2); end
+    p3 = p3 + 6 * exp(-0.5 * ((tt - L - 0.4 * EEG.srate) / (0.07 * EEG.srate)) .^ 2);
+end
+EEG.data = EEG.data + single(A(:, eog) * blink + A(:, evk) * p3);
+EEG.icawinv = A; EEG.icaweights = inv(A); EEG.icasphere = eye(n); EEG.icachansind = 1:n;
+EEG.icaact = []; EEG = eeg_checkset(EEG);
+ref = pipecompare.eval.Measure.reference(EEG, c); ref.blink = {};
+[S, truth] = pipecompare.eval.Injection.prepare(EEG, c, ref);
+ins = @(type, params) struct('type', type, 'params', params, 'key', type, 'slot', type, 'label', type);
+x = struct('contract', c, 'highpass', 0, 'ref', ref, 'rank', struct(), ...
+    'after', {{ins('epoch', struct()), ins('baseline', struct())}}, 'signal', struct('S', S, 'truth', truth));
+[~, info] = pipecompare.eval.IcThreshold.chooseBySme(EEG, setdiff(1:n, roi), x);
+k = find(setdiff(1:n, roi) == eog);
+verifyTrue(tc, info.evoked.eye(k));
+verifyFalse(tc, ismember(eog, info.protected), mat2str(info.protected));
+verifyTrue(tc, ismember(evk, info.protected), mat2str(info.protected));
+verifyTrue(tc, ismember(eog, info.order(1:min(3, end))), mat2str(info.order));   % the blinks: removed early
 end
 
 function testFineTunedCutoffsAreExactWithTheDecisionsFixed(tc)

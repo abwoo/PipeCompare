@@ -717,7 +717,7 @@ latency with SD 50 ms), the weighted estimate stays within 3 standard errors of 
 data: the weights, from the noise over the whole epoch, do not count trials with a large P3
 measurably less.
 
-## 9g. ICA components chosen by their effect on the SME (forward selection)
+## 9g. ICA components chosen by their effect on the SME
 
 `icremove` with `threshold` = `sme` chooses the set R of components to remove by the objective
 instead of by ICLabel probability [`pipecompare.eval.IcThreshold.chooseBySme`].
@@ -728,19 +728,32 @@ signal check fails or too few trials are kept), choose R ⊆ C, where C is the s
 whose likeliest ICLabel class is not Brain (a component ICLabel takes for brain activity is never
 a candidate). ICLabel is used only to protect, not to decide.
 
-**Path.** The 2^|C| subsets cannot all be scored, so R is built by forward selection: R₀ = ∅, and
-R_{j+1} = R_j ∪ {*k*} with *k* ∈ C \ R_j minimising *J*(R_j ∪ {*k*}). Each evaluation is exact in the
-sense of section 9d: with P = A W X the back-projection of all components (`pop_subcomp`'s
-rebuild; X itself for R = ∅), removing R gives P − A_R S_R with S = W X the activations, so
-adding *k* subtracts the rank-one term A_{:,k} S_{k,:} from the current data; epoching and baseline
-removal commute with it, and the known-signal copy is updated the same way. The inner problem
-over *u* is solved exactly (section 9c). The path stops after 30 components (`MaxRemoved`), when no
-candidate gives a feasible set, or when *J*(R_j) > (1 + 2*m*) min_{i≤j} *J*(R_i) with *m* the
-equivalence margin (5 %): the path has passed its minimum by more than the margin covers. Forward
-selection is greedy, so the best set on the path need not be the best subset; what it guarantees
-is that every set on the path is scored exactly, that each step takes the component that lowers
-the objective most given those already removed (unlike a threshold, which orders components by
-probability), and that the threshold's own sets are not needed: both are compared in the ranking.
+**Path.** The 2^|C| subsets cannot all be scored, so the sets scored are nested: the first *j*
+components of an order of C. For a mean amplitude the order is by what each component does to
+the score alone. Its part of each trial's score *d*_k,i (below) is exact, as the score is linear
+in the components. Its own trial-to-trial variance there, as a share of the score's variance
+(summed over the measured components and averaged over the conditions), is divided by its share
+*s*_k of the known signal at the score (from the signal copy, at least a thousandth of the largest
+share). The noisiest components that carry the least signal come first. Each set is then scored
+exactly in the sense of section 9d. With P = A W X the back-projection of all components
+(`pop_subcomp`'s rebuild; X itself for R = ∅), removing R gives P − A_R S_R with S = W X the
+activations, so adding *k* subtracts the rank-one term A_{:,k} S_{k,:} from the current data.
+Epoching and baseline removal commute with it, and the known-signal copy is updated the same
+way. The inner problem over *u* is solved exactly (section 9c). The path stops after 30
+components (`MaxRemoved`), or when *J*(R_j) > (1 + 2*m*) min_{i≤j} *J*(R_i) with *m* the equivalence
+margin (5 %): the path has passed its minimum by more than the margin covers.
+
+*Why not forward selection* (adding each time the component that lowers *J* most, used before).
+With about 60 candidates (ICLabel calling most components Other) and 30-40 trials per condition,
+the greedy step picks components whose removal lowers the *sample* variance by chance, through
+chance covariances with the rest of the score. The cross-fitting of section 9e re-chooses only
+among the sets of the path, so it cannot see that. Simulated (fourth review, `icsme_path.py`,
+35 trials per condition): the error the greedy path reported was 38 % below its true error, while
+the cross-fitting showed 3 %, and its true error was 0.66 of removing nothing. With the order
+above, the reported error is 0.94 of the true one and the true error is 0.54 of removing nothing,
+for |C| + 1 evaluations instead of |C| · min(|C|, 30). Band power and
+contralateral-minus-ipsilateral measures, whose parts are not linear in the components or not
+computed, keep the forward selection.
 
 **Time-locked components are not candidates.** The SME counts every trial-to-trial variation as
 noise, real brain activity that varies from trial to trial included, so removing a brain component
@@ -750,15 +763,24 @@ path, for each candidate *k* and condition *c*, the component's part of each tri
 ROI and S̄ the window and baseline means of its activation in trial *i* (exact for a mean
 amplitude: the score is linear in the components). *k* is protected (`info.protected`) when in
 some condition |*t*| = |mean *d*| / (SD *d* / √*n*) > 3 and |mean *d*| > 0.5 SME of the scores:
-clearly time-locked, and large enough to change the measure. Components whose likeliest ICLabel
-class is Eye are not protected, as blinks can be time-locked. Mean amplitudes only;
+clearly time-locked, and large enough to change the measure. Eye components are not protected, as
+blinks can be time-locked: those whose likeliest ICLabel class is Eye, and those whose activation
+follows an eye channel (`Injection.eyeChannels`) far more closely than the other components' do.
+That is the largest |correlation| with one over the epochs above 0.4 (`EyeCorr`) and more than 3
+robust SDs (median, MAD) above the other components', as FASTER finds eye components. ICLabel
+often calls a blink component Other: simulated (`evoked_guard.py`), a blink component that
+ICLabel does not name passed the guard in 73 % of datasets at a 30 % blink rate. Along the path
+the guard also holds for the components removed together: a component is skipped
+(`info.protected`) when its part added to theirs (eye components left out) would pass it, so that
+a P3 spread over several weak components is not removed piece by piece. Mean amplitudes only;
 contralateral-minus-ipsilateral components and band power are not checked.
 
 **Choice.** As in section 9d: the sets on the path are compared with the same paired bootstrap and
 simultaneous max statistic, and among those shown equivalent to the best the one removing the
 fewest components is used. The components are flagged in `EEG.reject.gcompreject` (the command
-is recorded in `EEG.history`) and removed by `pop_subcomp`. Cost: at most |C| · min(|C|, 30)
-evaluations of the inner problem, against at most *K* + 1 for the threshold.
+is recorded in `EEG.history`) and removed by `pop_subcomp`. Cost: at most min(|C|, 30) + 1
+evaluations of the inner problem (forward selection: |C| · min(|C|, 30)), against at most *K* + 1
+for the threshold.
 
 **Scope.** As section 9d (per-trial scores; only epoching, baseline removal and an amplitude
 rejection that removes epochs between the removal and the rejection; the same steps after it in
@@ -894,6 +916,10 @@ for a recording's own average (faded outside the window), −5.5 % for a P3 with
 900 ms; after 1 Hz: −20 %, −20 % and −28 %. So *s* is the largest relative change of the gain over a
 family of shapes: the template used and bumps as wide at half maximum as 0.5, 1 and 2 times the
 window (at least 50 ms) (`Injection.ShapeFactors`), the worst case over the family, a minimax.
+The bumps are whole, out to 4 SDs either side of the window's centre, even where that is
+outside the epoch. Cut at the epoch's edge, the widest bump would end in a step that a high-pass
+passes. In simulation (fourth review, `shape_spread.py`, 300–600 ms window, epoch −0.2–0.8 s)
+the cut bumps gave *s* = 9.1 % instead of 13.2 % at 1 Hz, and 0.9 % instead of 1.4 % at 0.5 Hz.
 Only the filters make the gain depend on the time course: re-referencing, interpolation and IC
 removal act on the scalp field, and rejection and weighting select trials. So *s* is computed
 with each pipeline's filters alone on a short copy of the signal, once per filter sequence; *s* = 0

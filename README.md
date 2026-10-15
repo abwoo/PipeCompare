@@ -920,19 +920,25 @@ also run with the components chosen by what removing them does to the measure:
    ICLabel calls it *Other*: removing it alone would move a condition's average in the window by
    more than half its SME, with a t value above 3 across trials. The noise measure counts real
    brain activity that varies from trial to trial as noise, so without this a P3 component that
-   ICLabel did not recognise could be removed for lowering it. Components ICLabel calls *Eye* are
-   not kept this way, since blinks can be time-locked to the stimulus too. The steps of the
-   pipeline say how many were kept for this reason.
-2. Starting from removing nothing, the component whose removal gives the lowest SME is added to
-   the set, then the next one together with it, and so on (forward selection). Each set is scored
+   ICLabel did not recognise could be removed for lowering it. Eye components are not kept this
+   way, since blinks can be time-locked to the stimulus too: those ICLabel calls *Eye*, and those
+   whose activity follows an eye channel far more closely than the other components' (ICLabel
+   often calls a blink component *Other*). The components removed together may not move the
+   average this way either, so a P3 spread over several weak components is not removed piece by
+   piece. The steps of the pipeline say how many were kept for these reasons.
+2. The components are put in order by what each one does to the measure on its own: how much it
+   makes the score vary from trial to trial, divided by how much of the known signal it carries
+   there. The sets are the first one, the first two, and so on. (Adding each time the component
+   that lowers the SME most, as before, fits the chance of a few dozen trials: in simulations at
+   35 trials per condition its SME looked 38 % better than it was.) Each set is scored
    exactly as in [ICLabel threshold chosen from the data](#iclabel-threshold-chosen-from-the-data):
    the components are taken out of the epoched data directly (removal is linear), the rejection
    limit that follows is found at its best, the SME is divided by the signal gain, and a set that
    fails the signal check (for example because it removes the measured signal) or keeps too few
    trials does not count. This gives a path of sets, each one component larger, ordered by what
    the components do to the measure.
-3. The path stops after 30 components, when no larger set passes, or when the SME has risen more
-   than 10 % above the best on the path.
+3. The path stops after 30 components, or when the SME has risen more than 10 % above the best
+   on the path.
 4. Among the sets on the path, those whose SME is shown to be within 5 % of the best one's are
    equally good, and the one removing the **fewest** components is used, as for the threshold.
 5. The components are flagged (`EEG.reject.gcompreject`, recorded in `EEG.history`) and removed
