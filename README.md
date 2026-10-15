@@ -159,6 +159,10 @@ pipeline, so that the comparison is about the settings that matter.
    5 % of the best one's is used (see [Rejection limit chosen from the data](#rejection-limit-chosen-from-the-data)).
    For peak measures (peak amplitude or latency, advanced panel) the limits 75, 100 and 150 µV
    are compared instead.
+10. **Epochs weighted by their noise**, *compared with equal weights*: in half of the pipelines
+   the average counts every remaining epoch the same, in the other half a noisier epoch counts
+   less, and no epoch is removed for it (see [Epochs weighted by their noise](#epochs-weighted-by-their-noise)).
+   ERP only.
 
 Two more options of the rejection can be ticked; they are not part of *Standard*.
 **Peak-to-peak limits** (ERP CORE's method): instead of testing whether any value is beyond ±*x*
@@ -172,7 +176,7 @@ channels over the limit is still rejected. With repair, the limit is not chosen 
 makes nine times as many pipelines. See
 [Repairing epochs with a few bad channels](#repairing-epochs-with-a-few-bad-channels).
 
-That makes 4 × 3 = 12 pipelines for an ERP, each with its own best ICLabel threshold and rejection limit. The *Filters only* recipe compares only
+That makes 4 × 3 × 2 = 24 pipelines for an ERP, each with its own best ICLabel threshold and rejection limit. The *Filters only* recipe compares only
 steps 5 and 6. For band power, the data are cut into 2 s segments instead of epochs, and only the
 filter edges nearest the band, outside it, are used (a filter outside a band does not change its
 power), which leaves 1 pipeline (its ICLabel threshold and rejection limit still chosen from the
@@ -248,6 +252,10 @@ Along the way PipeCompare also takes care of the following, so you do not have t
 - **Filter cutoffs fine-tuned from the data.** Between the compared cutoffs, a finer grid is
   scored exactly from the measured electrodes alone, with the recommended pipeline's decisions held
   fixed; a better pair runs as one more pipeline.
+- **Epochs weighted by their noise.** Instead of only keeping or dropping epochs, the average can
+  count each epoch by how clean it is (inverse-variance weights), compared with equal weights.
+- **How stable the recommendation is.** The result says how often the same pipeline would be
+  recommended if the trials were drawn again.
 - **Statistically controlled ranking.** A paired bootstrap with simultaneous intervals identifies
   the pipelines that cannot be distinguished from the best, controlling the error rate across all
   candidates.
@@ -559,7 +567,11 @@ data are not cleaned more than they need to be. The result then says whether the
 pipeline's noise is within 5 % of the best one's (a negligible difference) or whether the data are
 too few to tell, with how much noisier it could be. It also says how the best pipeline does on
 trials that were not used to choose it: either *its advantage is not luck*, or its noise there is
-about X % higher than it looks (see [How a pipeline is chosen](#how-a-pipeline-is-chosen)). When the settings compared make no difference on
+about X % higher than it looks (see [How a pipeline is chosen](#how-a-pipeline-is-chosen)). Last, it
+says how often the same pipeline would be recommended with the trials drawn again at random, for
+example *this pipeline is recommended 85% of the time: a stable choice* (70 % or more), or *45% of
+the time, No. 7 30% of the time: the data do not single out one pipeline clearly*; then the
+pipelines it names are about equally good on these data and either can be used. When the settings compared make no difference on
 these data, the result says so. When no pipeline passes because most lost too many epochs to
 rejection, it names the channels most often over the rejection limit (likely bad channels to
 remove or interpolate before running again) and, for data that keep their recorded reference,
@@ -865,6 +877,47 @@ and an amplitude rejection (without repairing epochs) follow the first filter; i
 simple mode. In the advanced panel tick *Options… > Fine-tune filter cutoffs*; in scripts pass
 `'refineCutoffs', true` to `pipecompare.PipeCompare.optimize`.
 
+### Epochs weighted by their noise
+
+Rejection treats epochs as all or nothing: an epoch just over the limit is dropped, one just under
+it counts as much as the cleanest epoch. Weighting instead counts each epoch by how clean it is,
+and drops none:
+
+1. For each epoch, its **noise** is measured at the electrodes you measure: the epoch minus the
+   average of the *other* epochs of its condition (so an epoch cannot make itself look clean),
+   squared and averaged over those electrodes and all samples of the epoch.
+2. Its **weight** is 1 / noise, scaled so that the weights of a condition average 1. If epochs
+   differ only in how much noise they have, these weights give the average with the smallest
+   possible error (inverse-variance weighting). Plain averaging and rejection are both special
+   cases of weighting (weights 1, or 1 and 0), so ideal weights are never worse than either;
+   weights estimated from the data can be, which is why the ranking compares them. So that no epoch can
+   count too much, a noise below a tenth of the condition's median counts as that tenth: no epoch
+   counts more than 10 times the typical one.
+3. The **average** of a condition is then sum(weight × epoch) / sum(weight), and its error (SME)
+   is computed for a weighted mean (the robust "sandwich" formula: sqrt(n / (n − 1) ×
+   sum(weight² × (score − average)²)) / sum(weight), which gives SD / sqrt(n) with equal weights
+   and stays correct even when the weights are not ideal). The bootstrap of the ranking and the
+   selection check resample the epochs with their weights.
+
+In *Standard* this comes after the rejection: every pipeline is run once with equal weights and
+once weighted, and the ranking decides. The rejection limit is chosen for equal weights. The
+known signal is the same in every epoch, so weighting does not change the signal check. Weights
+are for ERPs only: for band power, a weighted mean would favour the epochs with less power.
+
+The weights are stored in the dataset (`EEG.etc.pipecompare.trialWeights`, by the event each
+epoch is locked to, so they stay with their epochs) and listed in the steps as *Epochs weighted by
+their noise*, with how much more the cleanest epoch counts than the noisiest. EEGLAB's and
+ERPLAB's own averaging do not use them. To average with them:
+
+```matlab
+w = pipecompare.eval.Measure.epochWeights(EEG);              % one weight per epoch
+erp = sum(EEG.data .* reshape(w, 1, 1, []), 3) / sum(w);     % channels x time points
+```
+
+(for one condition, take its epochs and their weights only). The PipeCompare window's plots of a
+pipeline use them. In the advanced panel the step is *weight_trials*; in a plan,
+`p.addChoice('weight', {'weight_trials'}, 'none')` compares it with equal weights.
+
 ### ICA on clean data
 
 ICA finds the independent sources in the data. Stretches of the recording that are far noisier
@@ -1094,6 +1147,11 @@ and constraints and ranking options in `help pipecompare.eval.Rank`.
    held out.
 6. **Recommendation.** Within the set of step 3, PipeCompare recommends the least aggressive
    pipeline: the one with the highest trial retention, then the least signal distortion.
+7. **Stability.** In each bootstrap resample of step 3, steps 3 and 6 are done again on the
+   resampled values (with the same critical value), and PipeCompare counts how often each
+   pipeline would be recommended (the bootstrap selection frequency; Efron, 2014). The table has
+   it as `chosenShare`; the result reports it for the recommended pipeline. A low share means the
+   data do not single that pipeline out.
 
 The ICLabel threshold and the epoch-rejection limit of the *Standard* recipe are chosen inside
 each pipeline, before this ranking, with the same SME, constraints and bootstrap (see
@@ -1117,7 +1175,9 @@ descriptive and not used in the ranking. The full derivations are in
 - The full EEGLAB command sequence for every candidate.
 - A MATLAB function that runs a chosen candidate's steps on any recording, deciding bad channels,
   components and rejected epochs from that recording's data (`writeScript`).
-- Adoption of a candidate as a new EEGLAB dataset whose `EEG.history` replays it (`adopt`).
+- Adoption of a candidate as a new EEGLAB dataset whose `EEG.history` replays it (`adopt`). For
+  a pipeline that weights its epochs, the weights are in `EEG.etc.pipecompare.trialWeights`
+  (see [Epochs weighted by their noise](#epochs-weighted-by-their-noise)).
 
 ## Limitations
 

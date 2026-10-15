@@ -83,7 +83,7 @@ classdef SimpleDialog < handle
             [isLock, at] = ismember(obj.Types, s.lockingTypes);
             obj.Counts(isLock) = s.lockingCounts(at(isLock));
             if nargin < 2 || isempty(parent)
-                obj.Fig = uifigure('Name', 'Compare preprocessing pipelines', 'Position', pipecompare.utils.onScreen([200 100 720 696]), ...
+                obj.Fig = uifigure('Name', 'Compare preprocessing pipelines', 'Position', pipecompare.utils.onScreen([200 100 720 722]), ...
                     'CloseRequestFcn', @(~, ~) obj.close());
                 pipecompare.gui.helpMenu(obj.Fig);
                 parent = obj.Fig;
@@ -151,8 +151,8 @@ classdef SimpleDialog < handle
             [obj.Why, obj.Info] = P.stepAvailability(obj.State);
             obj.Ticks = ismember(names, P.recipeSteps('standard'));   % Standard
             obj.StepBoxes = gobjects(1, numel(names)); obj.StepNotes = gobjects(1, numel(names));
-            s = uigridlayout(g, [10 2]); s.Padding = [0 0 0 0]; s.RowSpacing = 4;
-            s.RowHeight = repmat({22}, 1, 10); s.ColumnWidth = {330, '1x'};
+            s = uigridlayout(g, [11 2]); s.Padding = [0 0 0 0]; s.RowSpacing = 4;
+            s.RowHeight = repmat({22}, 1, 11); s.ColumnWidth = {330, '1x'};
             b = uigridlayout(s, [1 3]); b.Padding = [0 0 0 0]; b.ColumnWidth = {'fit', 'fit', '1x'};
             b.Layout.Row = 1; b.Layout.Column = [1 2];
             uibutton(b, 'Text', 'Standard', 'ButtonPushedFcn', @(~, ~) obj.usePreset('standard'));
@@ -160,8 +160,8 @@ classdef SimpleDialog < handle
             grey = [0.3 0.3 0.3];
             uilabel(b, 'Text', 'or tick the steps you want', 'FontColor', grey);
             % rows: bad channels, reference, ICA, high-pass, low-pass, epochs,
-            % rejection, peak-to-peak, repair
-            rows = [2 4 5 6 8 9 10];
+            % rejection, peak-to-peak, repair, weighting
+            rows = [2 4 5 6 8 9 10 11];
             for k = 1:numel(names)
                 h = uicheckbox(s, 'Text', P.stepLabel(names{k}), 'Value', obj.Ticks(k), ...
                     'ValueChangedFcn', @(h, ~) obj.tick(k, h.Value));
@@ -205,6 +205,7 @@ classdef SimpleDialog < handle
             names = pipecompare.simple.Presets.stepNames();
             averaged = any(strcmpi(pipecompare.utils.fieldOr(obj.State, 'reference', ''), {'average', 'averef'}));
             average = strcmp(obj.RefDrop.Value, 'average') || averaged;
+            band = pipecompare.simple.Presets.isBand(obj.MeasureDrop.Value);
             for k = 1:numel(names)
                 why = obj.Why.(names{k});
                 b = obj.StepBoxes(k); note = obj.StepNotes(k);
@@ -213,6 +214,8 @@ classdef SimpleDialog < handle
                 elseif any(strcmp(names{k}, {'peaktopeak', 'epochinterp'})) && ~(obj.Ticks(strcmp(names, 'reject')) && isempty(obj.Why.reject))
                     % an option of the epoch rejection (it uses its limit)
                     b.Value = false; b.Enable = 'off'; note.Text = 'needs epoch rejection (uses its limit)';
+                elseif strcmp(names{k}, 'weight') && band
+                    b.Value = false; b.Enable = 'off'; note.Text = 'for ERPs (not band power)';
                 elseif strcmp(names{k}, 'badchannels') && average
                     % a bad channel in the average spreads into every channel
                     b.Value = true; b.Enable = 'off';

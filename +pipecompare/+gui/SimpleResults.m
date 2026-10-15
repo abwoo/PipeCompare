@@ -296,6 +296,7 @@ end
 function t = noneText(slot, state)
 % A skipped step in words; a filter the data already had is kept.
 t = sprintf('no %s', strrep(slot, 'pass', '-pass'));
+if startsWith(slot, 'weight'), t = 'epochs weighted equally'; return; end   % (weight_trials skipped)
 if ~any(strcmp(slot, {'highpass', 'lowpass'})) || ~isfield(state, 'filters') || isempty(state.filters.(slot)), return; end
 edge = pipecompare.utils.ternary(strcmp(slot, 'highpass'), max(state.filters.(slot)), min(state.filters.(slot)));
 t = sprintf('%s as in the data (%g Hz)', strrep(slot, 'pass', '-pass'), edge);
@@ -309,6 +310,7 @@ switch type
     case 'icremove', t = 'ICLabel component removal';
     case 'epoch', t = 'epochs';
     case 'baseline', t = 'baseline removal';
+    case 'weight_trials', t = 'epochs weighted by their noise';
     otherwise
         d = pipecompare.plan.Catalog.get(type); t = lower(d.label);
 end

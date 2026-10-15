@@ -5,6 +5,19 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- Epochs weighted by their noise (`weight_trials`): instead of only keeping or dropping epochs,
+  the average counts each epoch with weight 1 / its noise at the measured electrodes (the epoch
+  minus the mean of the others of its condition), the weights averaging 1 per condition and none
+  above 10 times the typical one. Scores are weighted means with the sandwich SME; the bootstrap
+  and the selection check take the weights. In *Standard* (ERP) every pipeline is compared with
+  and without the weights (24 pipelines instead of 12). The weights are stored in
+  `EEG.etc.pipecompare.trialWeights`; `pipecompare.eval.Measure.epochWeights(EEG)` gives one per
+  epoch for a weighted average. Method: docs/METHODS.md, section 9f.
+- How stable the recommendation is: in every bootstrap resample of the trials the choice is made
+  again, and the result says how often the recommended pipeline would be recommended (and which
+  other one, when that is below 70 %). In the ranking table as `chosenShare`. Method:
+  docs/METHODS.md, section 3.
+
 - Filter cutoffs fine-tuned from the data: after the comparison, the recommended pipeline's
   high-pass and low-pass cutoffs are also tried on a finer grid between the compared values
   (0.1, 0.15, … 1 Hz and 20, 22, … 40 Hz). With its decisions held fixed (components and epochs

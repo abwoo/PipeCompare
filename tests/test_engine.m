@@ -1070,6 +1070,53 @@ verifyEqual(tc, pipecompare.eval.Cutoff.grid([0.1 0.3 0.5 1]), 0.1:0.05:1, 'AbsT
 verifyEqual(tc, pipecompare.eval.Cutoff.grid([20 30 40]), 20:2:40, 'AbsTol', 1e-12);
 end
 
+function testWeightedEpochsCountByTheirNoise(tc)
+% Weighting the epochs by their noise keeps every epoch and, on data with
+% large artifacts in some trials, measures more precisely than equal
+% weights. The weights are stored with the epochs, the scores are their
+% weighted mean (checked by hand), the signal check gives nearly the same
+% gain (the known signal is the same in every epoch), and the command recorded
+% for the step gives the same weights again.
+EEG = nqc_synth(struct('seconds', 150, 'nPerCond', 30));
+nqc_setBase(EEG);
+c = nqc_c();
+p = pipecompare.plan.Plan();
+p = p.add('highpass', 'cutoff', 0.5); p = p.add('epoch'); p = p.add('baseline');
+p = p.addChoice('weight', {'weight_trials'}, 'none');
+r = pipecompare.PipeCompare.optimize(p, c);
+verifyEqual(tc, {r.cands.status}, {'ok', 'ok'});
+weighted = arrayfun(@(l) any(cellfun(@(x) strcmp(x.type, 'weight_trials'), l.path)), r.leaves);
+kw = find(weighted); k0 = find(~weighted);
+verifyEqual(tc, r.cands(kw).m.retention, [1 1]);
+verifyLessThan(tc, r.ranking.table.objective(kw), r.ranking.table.objective(k0));
+verifyEqual(tc, r.cands(kw).signal.gain, r.cands(k0).signal.gain, 'RelTol', 0.02);   % (filter tails of neighbouring epochs differ a little)
+% the scores by hand
+ctx = struct('contract', c);
+E = r.root;
+for q = 1:numel(r.leaves(kw).path) - 1
+    [~, E] = evalc('pipecompare.run.Steps.run(r.leaves(kw).path{q}, E, ctx)');
+end
+before = E;
+[~, E] = evalc('pipecompare.run.Steps.run(r.leaves(kw).path{end}, E, ctx)');
+w = pipecompare.eval.Measure.epochWeights(E);
+verifyNumElements(tc, w, E.trials);
+verifyLessThan(tc, min(w), 0.5);                                % the artifact trials count less
+times = E.xmin + (0:E.pnts - 1) / E.srate; win = times >= 0.3 - 1e-9 & times <= 0.5 + 1e-9;
+roi = ismember(lower({E.chanlocs.labels}), lower({'Pz', 'P3', 'P4'}));
+score = reshape(mean(mean(double(E.data(roi, win, :)), 1), 2), 1, []);
+for k = 1:2
+    sel = pipecompare.eval.Measure.lockingEvents(E, c.conditions(k).events) > 0;
+    verifyEqual(tc, r.cands(kw).m.objectives(1).estimate(k), sum(w(sel) .* score(sel)) / sum(w(sel)), 'RelTol', 1e-6);
+end
+% the recorded command weights the epochs again
+com = r.cands(kw).coms{find(contains(r.cands(kw).coms, 'weightTrials'), 1)};
+EEG = before; eval(com);
+verifyEqual(tc, pipecompare.eval.Measure.epochWeights(EEG), w, 'RelTol', 1e-12);
+% band power is not weighted
+b = pipecompare.eval.Contract('analysis', 'bandpower', 'segment', 2, 'bands', {'alpha', [8 13], {'Pz'}});
+verifyError(tc, @() pipecompare.run.Steps.run(r.leaves(kw).path{end}, before, struct('contract', b)), 'PipeCompare:Weights');
+end
+
 function testIclabelThresholdFromTheDataEndToEnd(tc)
 % In a search with ICA: the threshold is chosen and listed in the steps;
 % adopt rebuilds the same pipeline (same SME), and the saved script's

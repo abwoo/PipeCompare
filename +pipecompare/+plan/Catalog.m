@@ -21,7 +21,7 @@ classdef Catalog
         function names = types()
             names = {'resample','linenoise','highpass','lowpass','asr','badchannels','channels', ...
                 'restore','reref','ica','icremove','epoch','baseline', ...
-                'reject_threshold','reject_jointprob','reject_kurtosis','native'};
+                'reject_threshold','reject_jointprob','reject_kurtosis','weight_trials','native'};
         end
 
         function d = get(type)
@@ -103,6 +103,10 @@ classdef Catalog
                     d.label = 'Reject epochs: kurtosis'; d.dialog = 'pop_rejkurt';
                     d.params = [P('sd', 5, {3, 4, 5}, false, 'local and global limit (SD)'), P('exclude', {}, {}, false, 'channel labels ignored by the test (e.g. EOG channels)'), ...
                         interp];
+                case 'weight_trials'
+                    d.label = 'Weight epochs by their noise (none removed; ERP)';
+                    d.doc = ['the average counts each epoch with weight 1 / its noise at the measured electrodes ', ...
+                        '(pipecompare.run.Steps.weightTrials); scored as a weighted mean'];
                 case 'native'
                     d.label = 'Native EEGLAB command (fixed)';
                     d.params = P('command', '', {}, true, 'command returned by an EEGLAB dialog');
@@ -215,6 +219,10 @@ classdef Catalog
                         end
                         st = channelsChanged(st);
                     end
+                case 'weight_trials'
+                    if ~st.epoched, reason = 'weight_trials needs epoched data'; return; end
+                    if pipecompare.utils.fieldOr(st, 'weighted', false), reason = 'the epochs are already weighted'; return; end
+                    st.weighted = true;
                 case 'native'
                     % Infer the effect from the EEGLAB functions the
                     % statements call (a captured workflow has several).

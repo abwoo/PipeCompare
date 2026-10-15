@@ -124,7 +124,9 @@ classdef Presets
             % peak-to-peak in moving 200 ms windows (ERP CORE); the limit is
             % chosen from the data, or with epochinterp the limits
             % PeakToPeakUv are compared
-            names = {'badchannels', 'ica', 'highpass', 'lowpass', 'reject', 'peaktopeak', 'epochinterp'};
+            % weight: the average weights the epochs by their noise
+            % (weight_trials), compared with equal weights (ERP only)
+            names = {'badchannels', 'ica', 'highpass', 'lowpass', 'reject', 'peaktopeak', 'epochinterp', 'weight'};
         end
 
         function t = stepLabel(name)
@@ -137,6 +139,7 @@ classdef Presets
                 case 'peaktopeak', t = '  measure the limit peak-to-peak in 200 ms windows (ERP CORE)';
                 case 'epochinterp', t = sprintf('  instead, repair epochs with up to %d channels over the limit', ...
                         pipecompare.simple.Presets.EpochInterpMax);
+                case 'weight', t = 'Weight epochs by their noise (compared with equal weights)';
                 otherwise, error('PipeCompare:Simple', 'Unknown step %s (steps: %s).', name, ...
                         strjoin(pipecompare.simple.Presets.stepNames(), ', '));
             end
@@ -155,7 +158,7 @@ classdef Presets
                 return;
             end
             switch name
-                case 'standard', steps = {'badchannels', 'ica', 'highpass', 'lowpass', 'reject'};
+                case 'standard', steps = {'badchannels', 'ica', 'highpass', 'lowpass', 'reject', 'weight'};
                 case 'filters', steps = {'highpass', 'lowpass'};
                 otherwise, error('PipeCompare:Simple', 'Unknown recipe %s (filters, standard).', name);
             end
@@ -175,8 +178,9 @@ classdef Presets
             % For each step (pipecompare.simple.Presets.stepNames), why it
             % cannot be compared on these data ('' when it can), and what
             % to know about it (e.g. a filter the data already have).
-            why = struct('badchannels', '', 'ica', '', 'highpass', '', 'lowpass', '', 'reject', '', 'peaktopeak', '', 'epochinterp', '');
+            why = struct('badchannels', '', 'ica', '', 'highpass', '', 'lowpass', '', 'reject', '', 'peaktopeak', '', 'epochinterp', '', 'weight', '');
             info = why;
+            info.weight = 'no epoch removed: the noisier an epoch, the less it counts in the average';
             info.peaktopeak = sprintf('not fooled by slow drifts (with repair: limits %s uV compared)', ...
                 strjoin(cellfun(@num2str, pipecompare.simple.Presets.PeakToPeakUv, 'UniformOutput', false), ', '));
             info.epochinterp = 'interpolated from the other channels, in that epoch only; fixed limits are then compared';
@@ -520,6 +524,10 @@ classdef Presets
                         t = sprintf('Epochs rejected by %s (%g SD): %s', pipecompare.utils.ternary(strcmp(f.type, ...
                             'reject_kurtosis'), 'kurtosis', 'joint probability'), p.sd, ofText(f));
                         t = [t repairText(p, f) notTested(p)];
+                    case 'weight_trials'
+                        t = 'Epochs weighted by their noise at the measured electrodes (none removed)';
+                        r = pipecompare.utils.fieldOr(f, 'weightRatio', NaN);
+                        if isfinite(r), t = sprintf('%s: the cleanest counts %.1f times as much as the noisiest', t, r); end
                     case 'asr', t = sprintf('ASR burst correction (%g SD)', p.cutoff);
                     case 'native'
                         cmd = strtrim(char(p.command));
@@ -538,11 +546,13 @@ classdef Presets
         end
 
         function t = precisionText(result)
-            % Two checks of the recommendation, in words (one stratum only):
+            % Three checks of the recommendation, in words (one stratum only):
             % whether the recommended pipeline is practically as good as the
             % best or the data are too few to tell (equivalence margin), and
             % how much better the best looks than it is on trials not used
-            % to choose it (Rank.crossfit). '' when there is nothing to say.
+            % to choose it (Rank.crossfit), and how often it would be
+            % recommended with other trials (selection frequency, Rank step
+            % 5b). '' when there is nothing to say.
             t = '';
             R = result.ranking;
             if numel(R.byStratum) ~= 1 || pipecompare.eval.Rank.sameScores(R), return; end
@@ -557,14 +567,29 @@ classdef Presets
                 end
             end
             cf = b.crossfit;
-            if isempty(cf) || ~isfinite(cf.overstatement), return; end
-            if cf.overstatement < 0.02
-                u = 'Checked on trials not used to choose it, the best pipeline''s noise is as low as it looks here: its advantage is not luck.';
-            else
-                u = sprintf(['Checked on trials not used to choose it, the best pipeline''s noise is about %.0f%% higher than ', ...
-                    'it looks here: part of its advantage over the others is luck.'], 100 * cf.overstatement);
+            if ~isempty(cf) && isfinite(cf.overstatement)
+                if cf.overstatement < 0.02
+                    u = 'Checked on trials not used to choose it, the best pipeline''s noise is as low as it looks here: its advantage is not luck.';
+                else
+                    u = sprintf(['Checked on trials not used to choose it, the best pipeline''s noise is about %.0f%% higher than ', ...
+                        'it looks here: part of its advantage over the others is luck.'], 100 * cf.overstatement);
+                end
+                t = strtrim(sprintf('%s %s', t, u));
             end
-            t = strtrim(sprintf('%s %s', t, u));
+            % how often the same pipeline would be recommended with other trials
+            f = pipecompare.utils.fieldOr(b, 'stability', NaN);
+            if isfinite(f)
+                u = sprintf('With the trials drawn again at random, this pipeline is recommended %.0f%% of the time', 100 * f);
+                share = T.chosenShare; share(k) = -Inf; [g, j] = max(share);
+                if f >= 0.7
+                    u = [u ': a stable choice.'];
+                elseif isfinite(g) && g > 0
+                    u = sprintf('%s, No. %d %.0f%% of the time: the data do not single out one pipeline clearly.', u, j, 100 * g);
+                else
+                    u = [u ': the data do not single out one pipeline clearly.'];
+                end
+                t = strtrim(sprintf('%s %s', t, u));
+            end
         end
 
         function t = detectableText(result)
@@ -884,6 +909,14 @@ classdef Presets
                     plan = addReference(plan, reference, exclude);
                 else
                     plan = plan.add('reject_threshold', exclusion{:}, how{:});
+                end
+            end
+            if has('weight')
+                % the epochs weighted by their noise, or all counted equally
+                if strcmp(contract.analysis, 'erp')
+                    plan = plan.addChoice('weight', {'weight_trials'}, 'none');
+                else
+                    notes{end+1} = 'weighting epochs by their noise is for ERPs: left out';
                 end
             end
             if has('peaktopeak') && ~has('reject')

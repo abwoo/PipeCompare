@@ -164,6 +164,7 @@ classdef Progress < handle
                 case 'epoch', t = 'cutting epochs';
                 case 'baseline', t = 'removing the baseline';
                 case {'reject_threshold', 'reject_jointprob', 'reject_kurtosis'}, t = 'rejecting bad epochs';
+                case 'weight_trials', t = 'weighting epochs by their noise';
                 otherwise, t = in.label;
             end
         end

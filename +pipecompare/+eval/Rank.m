@@ -62,6 +62,16 @@ classdef Rank
     %   5. Among candidates the data do not distinguish from the best, the
     %      recommendation is the least aggressive: highest minimum trial
     %      retention, then smallest signal distortion, then best objective.
+    %   5b. Stability: how often the recommendation would be the same with
+    %      other trials. In each paired bootstrap resample of the trials
+    %      (those of step 4), the choice of steps 4 and 5 is made again on
+    %      the resampled objectives (with the critical value of step 4:
+    %      a candidate is not distinguished from the best when its
+    %      objective is within it of the lowest); the share of resamples in
+    %      which each candidate is recommended is its selection frequency
+    %      (the bootstrap selection frequency of model selection; Efron,
+    %      2014, JASA). A low frequency of the recommended pipeline says the
+    %      data do not single it out.
     %   6. Candidates are compared only within a stratum: candidates that
     %      differ in a parameter that changes the measured quantity (e.g.
     %      the reference) are ranked separately and never against each
@@ -132,14 +142,15 @@ classdef Rank
 
             lo = nan(n, 1); hi = nan(n, 1); hiKept = nan(n, 1); notDist = false(n, 1); equiv = false(n, 1);
             recommended = []; best = [];
-            byStratum = struct('stratum', {}, 'best', {}, 'recommended', {}, 'set', {}, 'crossfit', {});
+            byStratum = struct('stratum', {}, 'best', {}, 'recommended', {}, 'set', {}, 'crossfit', {}, 'stability', {});
+            chosen = nan(n, 1);
             strata = unique(stratum(strcmp(status, 'feasible')), 'stable');
             for s = 1:numel(strata)
                 feas = find(strcmp(status, 'feasible') & strcmp(stratum, strata{s}));
                 boot = pipecompare.eval.Rank.bootstrap(cands(feas), ref, opts, {objName});
                 pts = primary(feas);
                 [~, ib] = min(pts);
-                [keep, l, h, hEq] = bestSet(pts(:), boot{1}, ib, opts.alpha);
+                [keep, l, h, hEq, crit] = bestSet(pts(:), boot{1}, ib, opts.alpha);
                 lo(feas) = l; hi(feas) = h; notDist(feas(keep)) = true;
                 % equivalent: the whole interval within the margin of the best
                 hEq(~keep) = NaN; hiKept(feas) = hEq;
@@ -149,18 +160,20 @@ classdef Rank
                 key = [-minRet(t), ampErr(t), primary(t)];
                 [~, o] = sortrows(round(key, 10));
                 cf = pipecompare.eval.Rank.crossfit(cands(feas), ref, opts, objName, pts(ib));
+                f = selectionFrequency(boot{1}, crit, minRet(feas), ampErr(feas));
+                chosen(feas) = f;
                 byStratum(end+1) = struct('stratum', strata{s}, 'best', feas(ib), 'recommended', t(o(1)), 'set', t, ...
-                    'crossfit', cf); %#ok<AGROW>
+                    'crossfit', cf, 'stability', f(feas == t(o(1)))); %#ok<AGROW>
             end
             if isscalar(byStratum)
                 recommended = byStratum.recommended; best = byStratum.best;
             end
             feasAll = find(strcmp(status, 'feasible'));
             order = [sortBy(feasAll, primary); find(strcmp(status, 'rejected')); find(strcmp(status, 'failed'))];
-            T = table((1:n)', stratum, status, primary, lo, hi, notDist, equiv, hiKept, minRet, minKept, interp, ...
+            T = table((1:n)', stratum, status, primary, lo, hi, notDist, equiv, hiKept, chosen, minRet, minKept, interp, ...
                 ampErr, latSh, artPct, wCorr, tCorr, reasons, notes, ...
                 'VariableNames', {'id','stratum','status','objective','diffLo','diffHi','notDistinguished','equivalent','diffHiKept', ...
-                'minRetention','minTrials','interpolated','ampError', ...
+                'chosenShare','minRetention','minTrials','interpolated','ampError', ...
                 'latencyShiftMs','artifactPct','waveformCorr','topoCorr','reason','note'});
             for k = 1:nO
                 T.(matlab.lang.makeValidName(['sme_' ref.objectives{k}])) = objAgg(:, k);   % gain-corrected
@@ -430,6 +443,10 @@ classdef Rank
                 lab = ''; if ~isempty(b.stratum), lab = sprintf(' [stratum %s]', b.stratum); end
                 pipecompare.utils.log(['Recommended (*)%s: candidate %d (fewest trials lost, then least distortion, among the %d ', ...
                     'not distinguished from the best); best objective: candidate %d.'], lab, b.recommended, numel(b.set), b.best);
+                if isfinite(b.stability)
+                    pipecompare.utils.log('Stability: in resamples of the trials, candidate %d is recommended in %.0f%% of them.', ...
+                        b.recommended, 100 * b.stability);
+                end
                 if ~isempty(b.crossfit)
                     pipecompare.utils.log(['Selection check: the pipeline best on half of the trials has objective %.4g on the ', ...
                         'other half (rescaled to all trials), against %.4g for the best on all trials: the best looks %.0f%% ', ...
@@ -485,11 +502,12 @@ end
 g(~(g > 0)) = NaN;
 end
 
-function [keep, lo, hi, hiEq] = bestSet(pts, Bq, ib, alpha)
+function [keep, lo, hi, hiEq, c] = bestSet(pts, Bq, ib, alpha)
 % Which candidates the data do not show to be worse than another one.
 % pts: point objectives (K x 1); Bq: paired bootstrap replicates (K x B);
 % ib: index of the point-best. lo/hi: interval of each difference from
-% the best (0 for the best itself).
+% the best (0 for the best itself). c: the critical value (a candidate is
+% kept when its objective is within c of the lowest).
 K = numel(pts); keep = false(K, 1); lo = nan(K, 1); hi = nan(K, 1);
 keep(ib) = true;
 % Simultaneous over ALL ordered pairs (bootstrap max statistic): with
@@ -527,6 +545,23 @@ end
 z = maxK(isfinite(maxK));
 if isempty(z), cK = 0; else, cK = max(upperQuantile(z, alpha), 0); end
 hiEq = Dhat(:, ib) + cK; hiEq(ib) = 0; hiEq(~keep) = Inf;
+end
+
+function f = selectionFrequency(Bq, c, ret, amp)
+% The share of the bootstrap resamples (columns of Bq, K x B) in which
+% each of K candidates is recommended: those within c of the lowest
+% objective of the resample, then the rule of step 5 (highest minimum
+% retention, smallest amplitude error, lowest objective).
+K = size(Bq, 1); cnt = zeros(K, 1); used = 0;
+for b = 1:size(Bq, 2)
+    v = Bq(:, b); ok = isfinite(v);
+    if ~any(ok), continue; end
+    t = find(ok & v - min(v(ok)) <= c);
+    [~, o] = sortrows(round([-ret(t), amp(t), v(t)], 10));
+    cnt(t(o(1))) = cnt(t(o(1))) + 1; used = used + 1;
+end
+f = cnt / max(used, 1);
+if used == 0, f(:) = NaN; end
 end
 
 function v = upperQuantile(z, alpha)

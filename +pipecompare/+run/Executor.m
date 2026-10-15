@@ -726,16 +726,19 @@ function f = stepFacts(in, info)
 % data, the threshold (thresholdChosen) and how many components it
 % considered (icsConsidered); the components and epochs removed (comps,
 % rejIdx), which fine-tuning the cutoffs holds fixed; for a filter,
-% whether its cutoff was fine-tuned from the data (cutoffRefined).
+% whether its cutoff was fine-tuned from the data (cutoffRefined); for
+% weighted epochs, how much more the cleanest counts than the noisiest
+% (weightRatio) and the weights (trialWeights), which fine-tuning the
+% cutoffs also holds fixed.
 f = struct('type', in.type, 'params', in.params, 'interpolated', {{}}, 'removed', {{}}, ...
     'icsRemoved', NaN, 'icsTotal', NaN, 'rejected', NaN, 'epochsBefore', NaN, 'epochsInterpolated', NaN, ...
     'icsBrain', NaN, 'icsOther', NaN, 'otherMedian', NaN, 'icaPoints', NaN, 'uvChosen', NaN, 'thresholdChosen', NaN, 'icsConsidered', NaN, ...
-    'comps', [], 'rejIdx', [], 'cutoffRefined', false);
+    'comps', [], 'rejIdx', [], 'cutoffRefined', false, 'weightRatio', NaN, 'trialWeights', []);
 for n = {'interpolated', 'removed'}
     if isfield(info, n{1}), f.(n{1}) = cellstr(info.(n{1})); end
 end
 for n = {'icsRemoved', 'icsTotal', 'rejected', 'epochsBefore', 'epochsInterpolated', 'icsBrain', 'icsOther', 'otherMedian', 'icaPoints', 'uvChosen', 'thresholdChosen', 'icsConsidered', ...
-        'comps', 'rejIdx', 'cutoffRefined'}
+        'comps', 'rejIdx', 'cutoffRefined', 'weightRatio', 'trialWeights'}
     if isfield(info, n{1}), f.(n{1}) = info.(n{1}); end
 end
 end
@@ -765,9 +768,12 @@ in = env.tree(node).inst;
 if ~(strcmp(in.type, 'icremove') && ischar(in.params.threshold)), return; end
 d = env.tree(node).depth;
 under = leavesUnder(env.tree, node);
-after = env.leaves(under(1)).path(d+1:end);
+% the steps it is chosen for: up to the epoch rejection that follows (the
+% steps after that do not change the choice)
+upto = @(path) path(1:min([numel(path) find(cellfun(@(x) strcmp(x.type, 'reject_threshold'), path), 1)]));
+after = upto(env.leaves(under(1)).path(d+1:end));
 plain = @(path) cellfun(@(x) {x.type, x.params}, path, 'UniformOutput', false);
-same = all(arrayfun(@(li) isequal(plain(env.leaves(li).path(d+1:end)), plain(after)), under));
+same = all(arrayfun(@(li) isequal(plain(upto(env.leaves(li).path(d+1:end))), plain(after)), under));
 assert(same, 'PipeCompare:IcThreshold', ['An ICLabel threshold chosen from the data (''auto'') needs the same steps ', ...
     'after it in every pipeline that shares it (it is chosen for the rejection that follows); compare the steps ', ...
     'after it in separate runs, or set the thresholds (e.g. 0.7 | 0.8 | 0.9).']);
@@ -850,9 +856,9 @@ first = fi(1); rest = path(first:end); rt = types(first:end);
 why = '';
 if ~strcmp(env.contract.analysis, 'erp') || ~pipecompare.eval.Threshold.applies(env.contract)
     why = 'it needs mean amplitudes';
-elseif ~all(ismember(rt, {'highpass', 'lowpass', 'icremove', 'epoch', 'baseline', 'reject_threshold'})) || ...
+elseif ~all(ismember(rt, {'highpass', 'lowpass', 'icremove', 'epoch', 'baseline', 'reject_threshold', 'weight_trials'})) || ...
         sum(strcmp(rt, 'epoch')) ~= 1
-    why = 'only IC removal, epoching, baseline removal and an amplitude rejection may follow the filters';
+    why = 'only IC removal, epoching, baseline removal, an amplitude rejection and weighting the epochs may follow the filters';
 elseif any(cellfun(@(i) strcmp(i.type, 'reject_threshold') && pipecompare.utils.fieldOr(i.params, 'interpolate', 0) > 0, rest))
     why = 'epochs are repaired (the rejection then also interpolates channels)';
 elseif any(ismember(types(1:first-1), {'icremove', 'resample'}))
@@ -867,6 +873,7 @@ end
 dec = struct('comps', [], 'rejIdx', []);
 k = find(strcmp(types, 'icremove'), 1); if ~isempty(k), dec.comps = c.steps{k}.comps; end
 k = find(strcmp(types, 'reject_threshold'), 1); if ~isempty(k), dec.rejIdx = c.steps{k}.rejIdx; end
+k = find(strcmp(types, 'weight_trials'), 1); if ~isempty(k), dec.weights = c.steps{k}.trialWeights; end
 pipecompare.utils.log(['Fine-tuning the filter cutoffs of pipeline %d: its decisions held fixed, only the measured ', ...
     'electrodes are filtered for each pair of cutoffs on a finer grid.'], ib);
 S0 = S; E = root; nIca = 0;

@@ -28,6 +28,17 @@ classdef Measure
     %
     %   Trials are identified by the urevent index of their time-locking
     %   event, so the same physical trial is paired across candidates.
+    %
+    %   Epochs weighted by a weight_trials step (pipecompare.run.Steps.
+    %   weightTrials) are averaged with their weights w: estimate =
+    %   sum(w .* x) / sum(w), and SME = sqrt(n / (n - 1) * sum(w.^2 .* (x -
+    %   estimate).^2)) / sum(w), the sandwich (robust) standard error of a
+    %   weighted mean, valid whatever the weights; equal weights give SD /
+    %   sqrt(n). Peak measures average the waveforms with the weights.
+    %
+    %   w = pipecompare.eval.Measure.epochWeights(EEG)
+    %   The weight of each epoch (1 x trials; all 1 without weighting): the
+    %   weighted average is sum(EEG.data .* reshape(w, 1, 1, []), 3) / sum(w).
 
     methods (Static)
         function o = defaults()
@@ -72,18 +83,31 @@ classdef Measure
                 m.retention(c) = m.kept(c) / ref.n(c);
             end
             objs = repmat(struct('name', '', 'unit', '', 'kind', '', 'polarity', '', 'times', [], ...
-                'X', {{}}, 'estimate', [], 'sme', [], 'agg', NaN), 1, nO);
+                'X', {{}}, 'w', {{}}, 'estimate', [], 'sme', [], 'agg', NaN), 1, nO);
+            % the epochs' weights (weight_trials), by the trial's urevent
+            wRow = [];
+            tw = pipecompare.eval.Measure.storedWeights(EEG);
+            if ~isempty(tw)
+                [ok, at] = ismember(T.id, tw.urevent);
+                assert(all(ok), 'PipeCompare:Weights', 'Some epochs have no weight (weight_trials).');
+                wRow = tw.weight(at); wRow = wRow(:);
+            end
             for k = 1:nO
                 o = objs(k);
                 o.name = ref.objectives{k}; o.unit = ref.units{k};
                 [o.kind, o.polarity] = objKind(contract, k);
                 o.times = T.times{k};
                 o.X = cell(1, nC); o.estimate = nan(1, nC); o.sme = nan(1, nC);
+                if ~isempty(wRow), o.w = cell(1, nC); end
                 for c = 1:nC
                     X = nan(ref.n(c), size(T.data{k}, 2));
                     X(rowOf{c}.loc, :) = T.data{k}(rowOf{c}.rows, :);
                     o.X{c} = X;
-                    [o.estimate(c), o.sme(c)] = pipecompare.eval.Measure.estimate(o, X, opts, k * 1000 + c);
+                    w = [];
+                    if ~isempty(wRow)
+                        w = nan(ref.n(c), 1); w(rowOf{c}.loc) = wRow(rowOf{c}.rows); o.w{c} = w;
+                    end
+                    [o.estimate(c), o.sme(c)] = pipecompare.eval.Measure.estimate(o, X, opts, k * 1000 + c, w);
                 end
                 o.agg = sqrt(mean(o.sme .^ 2));
                 objs(k) = o;
@@ -103,11 +127,28 @@ classdef Measure
             end
         end
 
-        function [est, sme] = estimate(o, X, opts, salt)
-            % Point estimate and its SME for one condition.
+        function [est, sme] = estimate(o, X, opts, salt, w)
+            % Point estimate and its SME for one condition (w: the trials'
+            % weights, [] = equal).
             keep = ~isnan(X(:, 1)); Y = X(keep, :); n = size(Y, 1);
             est = NaN; sme = NaN;
             if n < 2, return; end
+            if nargin > 4 && ~isempty(w)
+                w = w(keep); w = w(:); sw = sum(w);
+                switch o.kind
+                    case 'scalar'
+                        est = (w' * Y) / sw;
+                        sme = sqrt(n / (n - 1) * sum(w .^ 2 .* (Y - est) .^ 2)) / sw;
+                    otherwise
+                        est = peakOf((w' * Y) / sw, o);
+                        s = RandStream('mt19937ar', 'Seed', opts.seed + salt);
+                        idx = randi(s, n, n, opts.nBootPeak);
+                        W = full(sparse(idx, repmat(1:opts.nBootPeak, n, 1), 1, n, opts.nBootPeak));
+                        avgs = (W' * (w .* Y)) ./ (W' * w);
+                        sme = std(peakOf(avgs, o));
+                end
+                return;
+            end
             switch o.kind
                 case 'scalar'
                     est = mean(Y); sme = std(Y) / sqrt(n);
@@ -128,10 +169,21 @@ classdef Measure
             % Returns 1 x B, RMS over conditions.
             if nargin < 5, scale = ones(1, numel(Wc)); end
             B = size(Wc{1}, 2); acc = zeros(1, B);
+            weighted = isfield(o, 'w') && ~isempty(o.w);
             for c = 1:numel(Wc)
                 X = o.X{c}; M = double(~isnan(X(:, 1))); X0 = X; X0(isnan(X0)) = 0;
                 Nb = M' * Wc{c};
-                if strcmp(o.kind, 'scalar')
+                if weighted
+                    wt = o.w{c}; wt(~M) = 0;
+                end
+                if weighted && strcmp(o.kind, 'scalar')
+                    % the weighted SME (see above) of each resample: a trial
+                    % drawn k times counts k times with its weight
+                    s0 = wt' * Wc{c}; s1 = (wt .* X0)' * Wc{c};
+                    q0 = (wt .^ 2)' * Wc{c}; q1 = (wt .^ 2 .* X0)' * Wc{c}; q2 = (wt .^ 2 .* X0 .^ 2)' * Wc{c};
+                    mu = s1 ./ s0;
+                    sm2 = max(q2 - 2 * mu .* q1 + mu .^ 2 .* q0, 0) .* Nb ./ (Nb - 1) ./ s0 .^ 2;
+                elseif strcmp(o.kind, 'scalar')
                     s1 = X0' * Wc{c}; s2 = (X0 .^ 2)' * Wc{c};
                     sm2 = max((s2 - s1 .^ 2 ./ Nb) ./ (Nb - 1), 0) ./ Nb;
                 else
@@ -146,7 +198,11 @@ classdef Measure
                         edges = [0; cumsum(w(:)) / n]; edges(end) = 1;
                         pick = discretize(rand(s, n, Bin), edges);   % index into kk
                         Win = full(sparse(pick, repmat(1:Bin, n, 1), 1, numel(kk), Bin));
-                        avgs = (Win' * X(kk, :)) / n;
+                        if weighted
+                            avgs = (Win' * (wt(kk) .* X(kk, :))) ./ (Win' * wt(kk));
+                        else
+                            avgs = (Win' * X(kk, :)) / n;
+                        end
                         sm2(b) = var(peakOf(avgs, o));
                     end
                 end
@@ -154,6 +210,30 @@ classdef Measure
                 acc = acc + sm2 * scale(c) ^ 2;
             end
             v = sqrt(acc / numel(Wc));
+        end
+
+        function tw = storedWeights(EEG)
+            % The weights a weight_trials step stored ([] when none):
+            % urevent (of each epoch's time-locking event), weight, events
+            % (the event types epochs are locked to).
+            tw = [];
+            if isfield(EEG, 'etc') && isstruct(EEG.etc) && isfield(EEG.etc, 'pipecompare') && ...
+                    isfield(EEG.etc.pipecompare, 'trialWeights')
+                tw = EEG.etc.pipecompare.trialWeights;
+            end
+        end
+
+        function w = epochWeights(EEG)
+            % The weight of each epoch (1 when the epochs are not weighted,
+            % or for an epoch not locked to an event of a condition).
+            w = ones(1, EEG.trials);
+            tw = pipecompare.eval.Measure.storedWeights(EEG);
+            if isempty(tw) || EEG.trials < 2, return; end
+            lock = pipecompare.eval.Measure.lockingEvents(EEG, tw.events);
+            for k = find(lock > 0)
+                at = find(tw.urevent == double(EEG.event(lock(k)).urevent), 1);
+                if ~isempty(at), w(k) = tw.weight(at); end
+            end
         end
 
         function lock = lockingEvents(EEG, codes)

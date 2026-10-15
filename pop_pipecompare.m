@@ -35,7 +35,8 @@ function [EEG, com, result] = pop_pipecompare(EEG, varargin)
 %              channels over the limit keeps them, interpolated within the
 %              epoch, instead of being rejected; fixed limits 75, 100 and
 %              150 uV, or 100, 150 and 200 uV peak-to-peak, are then
-%              compared), e.g.
+%              compared), 'weight' (ERP: the epochs weighted by their
+%              noise, compared with equal weights), e.g.
 %              {'highpass', 'lowpass', 'reject'}; they always run in that
 %              order, with epoching and baseline in every pipeline
 %   'reference' 'asis' (default) | 'average': the average reference as a

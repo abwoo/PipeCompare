@@ -218,6 +218,18 @@ between candidates is held out. In simulation (`test_statistics`), with 24 candi
 true noise and 60 trials, the apparent best objective was below the true SME by more than 5 %,
 while the cross-fitted value was within 5 % of it. [`pipecompare.eval.Rank.crossfit`]
 
+**Selection frequency (stability of the recommendation).** The recommendation is a function of the
+trials. In each bootstrap draw *b* of the same paired resamples, the choice is made again on the
+replicates θ*ₖᵇ: the candidates within *c* of the lowest replicate (the kept set of that draw, with
+the critical value *c* of the full sample), then the recommendation rule of the ranking (highest
+minimum retention, smallest amplitude error, lowest objective). The share of draws in which
+candidate *k* is recommended is its selection frequency *f*ₖ (`chosenShare`; Σₖ *f*ₖ = 1), the
+bootstrap selection frequency used for model selection (Efron, 2014). *f* of the recommended
+pipeline is reported (`byStratum.stability`); below 0.7 the result names the next most often
+chosen one. In simulation (`test_statistics`) a candidate with a third of the others' noise was
+chosen in more than 95 % of the draws, and among 5 candidates of equal true noise with 60 trials
+the one recommended on the sample was recommended in about half of them. [`pipecompare.eval.Rank`]
+
 ## 4. Signal preservation: matched-decision injection
 
 A copy of the starting data that holds only a known signal is processed with the same operations
@@ -531,6 +543,39 @@ removal, epoching, baseline removal and an amplitude rejection that removes epoc
 no IC removal or resampling before the filters. It is on in the simple mode, an option in the
 advanced panel (*Options… > Fine-tune filter cutoffs*) and `'refineCutoffs', true` in scripts.
 
+## 9f. Epochs weighted by their noise
+
+**Weights.** For epoch *i* of a condition with *n* epochs, let *r*ᵢ = *x*ᵢ − (Σ_{j≠i} *x*ⱼ)/(*n* − 1) be the
+epoch minus the leave-one-out mean of the others, at the measured electrodes (all of them, over
+all samples of the epoch). Its noise is *v*ᵢ = mean(*r*ᵢ²); the leave-one-out mean keeps the epoch
+from lowering its own noise. With *v*ᵢ floored at a tenth of the condition's median, the weight is
+*w*ᵢ = (1/*v*ᵢ) / mean(1/*v*). If the noise of each epoch is a common process scaled by a factor σᵢ
+(*e*ᵢ = σᵢ *u*ᵢ), its score has variance ∝ σᵢ² ∝ *v*ᵢ, and the weighted mean Σ *w*ᵢ *s*ᵢ / Σ *w*ᵢ with *w*ᵢ ∝ 1/σᵢ²
+has the smallest variance among weighted means (Gauss–Markov; for ERPs, weighted averaging goes
+back to Hoke et al., 1984). Plain averaging (all *w* = 1) and rejection (*w* ∈ {0, 1}) are special cases;
+the floor bounds any weight to 10 times the typical one. The weights are a data-driven decision
+like a rejection, stored by the `urevent` of each epoch's time-locking event
+(`EEG.etc.pipecompare.trialWeights`), and replayed on the signal copy.
+
+**Score and error.** The estimate is *ŝ* = Σ *w*ᵢ *s*ᵢ / Σ *w*ᵢ, and its error is the sandwich
+(heteroscedasticity-consistent) standard error of a weighted mean,
+
+  SME = √( *n*/(*n* − 1) · Σ *w*ᵢ² (*s*ᵢ − *ŝ*)² ) / Σ *w*ᵢ,
+
+which is SD/√*n* for equal weights and does not assume the weights are right. In each bootstrap
+draw a trial drawn *k* times counts *k* times with its weight (the weights are not estimated
+again); peak measures average the waveforms with the weights (inner bootstrap included). In
+simulation (`test_statistics`: 20 trials of noise SD 1 and 10 of SD 4) the error of the mean was
+0.22 with inverse-variance weights against 0.45 with equal weights, and the mean SME matched the
+spread over replications within 8 %.
+
+**Signal check.** The known signal is the same in every epoch, so its weighted average equals its
+plain average up to what differs between epochs (filter tails of neighbouring events); the check
+averages the copy with the same weights. **Scope:** ERP measures (for band power, a weighted mean
+of log power would favour the epochs with less power). The rejection limit chosen from the data
+(9c) is chosen for equal weights. Filter cutoffs can be fine-tuned (9e) with the weights held
+fixed, since the weights use the measured electrodes only.
+
 ## 10. Montage check (before a run)
 
 Scalp potentials vary smoothly over the head, so after an average reference a channel resembles its
@@ -588,6 +633,8 @@ which scores the whole recording, does not catch. When no pipeline passed, the s
 - Delorme, A., & Makeig, S. (2004). EEGLAB: an open source toolbox for analysis of single-trial EEG
   dynamics including independent component analysis. *Journal of Neuroscience Methods, 134*(1),
   9–21.
+- Efron, B. (2014). Estimation and accuracy after model selection. *Journal of the American
+  Statistical Association*, 109(507), 991–1007.
 - Efron, B., & Tibshirani, R. J. (1993). *An Introduction to the Bootstrap*. Chapman & Hall.
 - Hall, P., Horowitz, J. L., & Jing, B.-Y. (1995). On blocking rules for the bootstrap with dependent
   data. *Biometrika, 82*(3), 561–574.
@@ -595,6 +642,9 @@ which scores the whole recording, does not catch. When no pipeline passed, the s
   453–497.
 - Harris, F. J. (1978). On the use of windows for harmonic analysis with the discrete Fourier
   transform. *Proceedings of the IEEE, 66*(1), 51–83.
+- Hoke, M., Ross, B., Wickesberg, R., & Lütkenhöner, B. (1984). Weighted averaging: theory and
+  application to electric response audiometry. *Electroencephalography and Clinical
+  Neurophysiology*, 57(5), 484–489.
 - Kane, N., Acharya, J., Beniczky, S., Caboclo, L., Finnigan, S., Kaplan, P. W., et al. (2017). A
   revised glossary of terms most commonly used by clinical electroencephalographers and updated
   proposal for the report format of the EEG findings. *Clinical Neurophysiology Practice, 2*,

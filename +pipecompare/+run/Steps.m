@@ -19,7 +19,8 @@ classdef Steps
     %   components they removed; epoch rejection replays the channels it
     %   interpolated within epochs (same epochs, same channels) and the
     %   epochs it removed. Other native commands are re-run and
-    %   reported as not decision-matched.
+    %   reported as not decision-matched. Weighting epochs replays the
+    %   weights of the real data.
 
     methods (Static)
         function [EEG, coms, info] = run(inst, EEG, ctx)
@@ -123,6 +124,16 @@ classdef Steps
                     coms = {com};
                 case {'reject_threshold','reject_jointprob','reject_kurtosis'}
                     [EEG, coms, info] = pipecompare.run.Steps.rejectEpochs(EEG, inst.type, p, ctx);
+                case 'weight_trials'
+                    c = ctx.contract;
+                    assert(strcmp(c.analysis, 'erp'), 'PipeCompare:Weights', ...
+                        'Weighting epochs by their noise is for ERPs (a weighted mean of band power would favour the epochs with less power).');
+                    roi = c.allRoi(); groups = {c.conditions.events};
+                    [EEG, info] = pipecompare.run.Steps.weightTrials(EEG, roi, groups);
+                    coms = {sprintf(['EEG = pipecompare.run.Steps.weightTrials(EEG, %s, %s); %% PipeCompare: epochs ', ...
+                        'weighted by their noise (EEG.etc.pipecompare.trialWeights; weighted average: ', ...
+                        'pipecompare.eval.Measure.epochWeights)'], strCells(roi), ...
+                        ['{' strjoin(cellfun(@strCells, groups, 'UniformOutput', false), ', ') '}'])};
                 case 'native'
                     [EEG, coms, info] = pipecompare.run.Steps.native(EEG, p.command);
                 otherwise
@@ -158,6 +169,8 @@ classdef Steps
                         EEG = pipecompare.run.Steps.interpolateEpochs(EEG, info.epochInterp.chans, info.epochInterp.epochs);
                     end
                     if ~isempty(info.rejIdx), EEG = pop_rejepoch(EEG, info.rejIdx, 0); end
+                case 'weight_trials'
+                    EEG.etc.pipecompare.trialWeights = info.trialWeights;
                 case 'native'
                     if isfield(info, 'decisions') && ~isempty(info.decisions)
                         % a workflow of marks and removals: the removals the
@@ -518,6 +531,55 @@ classdef Steps
             info.rejected = numel(idx); info.rejIdx = idx; info.epochsBefore = n0;
         end
 
+        function [EEG, info] = weightTrials(EEG, roi, groups)
+            % Weights for averaging the epochs, from their noise at the
+            % electrodes roi (labels); groups: the event types of each
+            % condition. An epoch's noise is the mean square, over those
+            % electrodes and all its samples, of the epoch minus the mean of
+            % the other epochs of its condition (leave-one-out, so the epoch
+            % does not lower its own noise). Its weight is 1 / noise, scaled
+            % to a mean of 1 per condition: with noise that differs between
+            % epochs only in size, these weights give the weighted mean with
+            % the smallest error (inverse-variance weighting). A noise below
+            % a tenth of the condition's median counts as that tenth, so no
+            % epoch counts more than 10 times the typical one. Stored in
+            % EEG.etc.pipecompare.trialWeights by the urevent of each
+            % epoch's time-locking event, so they follow the epochs through
+            % later selections; no epoch is removed.
+            codes = {};
+            for c = 1:numel(groups), codes = [codes cellstr(groups{c})]; end %#ok<AGROW>
+            codes = unique(codes, 'stable');
+            lock = pipecompare.eval.Measure.lockingEvents(EEG, codes);
+            labels = lower({EEG.chanlocs.labels});
+            [ok, ch] = ismember(lower(cellstr(roi)), labels);
+            assert(all(ok), 'PipeCompare:RoiMissing', 'Electrode(s) missing for the weights: %s', strjoin(cellstr(roi(~ok)), ', '));
+            ch = unique(ch);
+            u = nan(1, EEG.trials); g = zeros(1, EEG.trials);
+            for k = find(lock > 0)
+                e = EEG.event(lock(k)); t = strtrim(char(string(e.type)));
+                g(k) = find(cellfun(@(ev) any(strcmp(cellstr(ev), t)), groups), 1);
+                u(k) = double(e.urevent);
+            end
+            w = nan(1, EEG.trials); X = double(EEG.data(ch, :, :));
+            ratio = 1;
+            for c = 1:numel(groups)
+                k = find(g == c); n = numel(k);
+                if n < 2, w(k) = 1; continue; end
+                Xc = X(:, :, k);
+                R = Xc - (sum(Xc, 3) - Xc) / (n - 1);
+                v = reshape(mean(mean(R .^ 2, 1), 2), 1, n);
+                v = max(v, median(v) / 10);
+                wc = 1 ./ v; wc = wc / mean(wc);
+                w(k) = wc;
+                ratio = max(ratio, max(wc) / min(wc));
+            end
+            keep = g > 0;
+            tw = struct('urevent', u(keep), 'weight', w(keep), 'events', {codes});
+            EEG.etc.pipecompare.trialWeights = tw;
+            info = struct('trialWeights', tw, 'weightRatio', ratio);
+            pipecompare.utils.log('Epochs weighted by their noise: the cleanest counts %.1f times as much as the noisiest.', ratio);
+        end
+
         function chans = testedChannels(EEG, p)
             % the channels an epoch rejection tests (all but p.exclude)
             chans = 1:EEG.nbchan;
@@ -651,6 +713,12 @@ function f = rejField(type)
 % the EEG.reject field a rejection step marks
 f = struct('reject_threshold', 'rejthresh', 'reject_jointprob', 'rejjp', 'reject_kurtosis', 'rejkurt');
 f = f.(type);
+end
+
+function t = strCells(c)
+% a cell of strings as MATLAB code
+c = cellstr(c);
+t = ['{' strjoin(cellfun(@(x) ['''' strrep(x, '''', '''''') ''''], c, 'UniformOutput', false), ' ') '}'];
 end
 
 function t = cellText(c)

@@ -213,7 +213,7 @@ verifyTrue(tc, contains(a, 'Ear/mastoid channels left out: A1, POL A2, m1'), a);
 verifyFalse(tc, contains(strjoin(P.dataAdvice(pipecompare.live.DataState.fromEEG(EEG)), ' '), 'Ear/mastoid'));
 c = P.contract(E, 'P3', {'11'});
 p = P.recipe('standard', st, c, 'average', ex);
-for k = [1 2 numel(p.Slots)]   % badchannels, reref, reject_threshold
+for k = [1 2 find(strcmp({p.Slots.id}, 'reject_threshold'))]   % badchannels, reref, reject_threshold
     verifyTrue(tc, all(ismember({'A1', 'POL A2', 'm1'}, p.Slots(k).alternatives{1}.params.exclude)), p.Slots(k).id);
 end
 % data already referenced to linked ears: A1 and A2 near flat and mirrored,
@@ -332,7 +332,7 @@ st = pipecompare.live.DataState.fromEEG(EEG);
 p = pipecompare.simple.Presets.recipe('filters', st, c);
 verifyEqual(tc, ids(p), {'highpass', 'lowpass', 'epoch', 'baseline'});
 [p, notes] = pipecompare.simple.Presets.recipe('standard', st, c);
-verifyEqual(tc, ids(p), {'badchannels', 'ica', 'highpass', 'lowpass', 'icremove', 'epoch', 'baseline', 'reject_threshold'});
+verifyEqual(tc, ids(p), {'badchannels', 'ica', 'highpass', 'lowpass', 'icremove', 'epoch', 'baseline', 'reject_threshold', 'weight'});
 verifyEmpty(tc, notes);                                          % ICA first: one decomposition for every filter choice
 th = @(p) p.Slots(strcmp(ids(p), 'icremove')).alternatives{1}.params;
 verifyEqual(tc, th(p).threshold, 'auto');                        % the ICLabel threshold chosen from the data
@@ -341,10 +341,10 @@ verifyFalse(tc, isfield(a, 'threshold') && ischar(a.threshold)); % repaired epoc
 % the average reference: fixed, after the bad channels (a bad channel
 % would spread into every channel) and before ICA
 p = pipecompare.simple.Presets.recipe('standard', st, c, 'average', {'VEOG'});
-verifyEqual(tc, ids(p), {'badchannels', 'reref', 'ica', 'highpass', 'lowpass', 'icremove', 'epoch', 'baseline', 'reject_threshold'});
+verifyEqual(tc, ids(p), {'badchannels', 'reref', 'ica', 'highpass', 'lowpass', 'icremove', 'epoch', 'baseline', 'reject_threshold', 'weight'});
 verifyEqual(tc, p.Slots(2).alternatives{1}.params.exclude, {'VEOG'});   % non-EEG channels left out of the average
 verifyEqual(tc, p.Slots(1).alternatives{1}.params.exclude, {'VEOG'});   % nor tested for bad channels
-verifyEqual(tc, p.Slots(end).alternatives{1}.params.exclude, {'VEOG'}); % nor for the epoch threshold
+verifyEqual(tc, p.Slots(strcmp(ids(p), 'reject_threshold')).alternatives{1}.params.exclude, {'VEOG'}); % nor for the epoch threshold
 verifyEqual(tc, p.Slots(1).alternatives{1}.params.detectHighpass, 1);  % bad channels found on a 1 Hz high-passed copy
 verifyEqual(tc, p.Slots(1).alternatives{1}.params.measure, 'kurt+prob');  % spiky or noisy
 % in Filters only too: the bad channels are interpolated before the average
@@ -428,12 +428,15 @@ d = pipecompare.gui.SimpleDialog(EEG); c = onCleanup(@() delete(d)); %#ok<NASGU>
 d.EventList.Value = {'11', '31'}; d.MeasureDrop.Value = 'P3'; d.measureChanged();
 names = pipecompare.simple.Presets.stepNames();
 box = @(s) d.StepBoxes(strcmp(names, s));
-verifyEqual(tc, d.update(), 4 * 3);                             % Standard (ICLabel threshold and rejection limit chosen from the data)
+verifyEqual(tc, d.update(), 4 * 3 * 2);                         % Standard (ICLabel threshold and rejection limit chosen from the data; weighted or not)
 d.tick(find(strcmp(names, 'ica')), false);
-verifyEqual(tc, d.update(), 4 * 3);                             % without ICA
+verifyEqual(tc, d.update(), 4 * 3 * 2);                         % without ICA
 verifyFalse(tc, box('ica').Value);
 o = d.options();
-verifyEqual(tc, o.steps, {'badchannels', 'highpass', 'lowpass', 'reject'});
+verifyEqual(tc, o.steps, {'badchannels', 'highpass', 'lowpass', 'reject', 'weight'});
+d.tick(find(strcmp(names, 'weight')), false);
+verifyEqual(tc, d.update(), 4 * 3);                             % equal weights only
+d.tick(find(strcmp(names, 'weight')), true);
 verifyEmpty(tc, o.recipe);                                      % not one of the two recipes
 d.usePreset('filters');
 verifyEqual(tc, d.update(), 12);
@@ -535,12 +538,12 @@ verifyEqual(tc, char(d.RunButton.Enable), 'off');
 verifyEqual(tc, d.Grid.RowHeight{3}, 0);                        % nothing chosen yet
 d.EventList.Value = {'11', '31'}; d.MeasureDrop.Value = 'P3'; d.measureChanged();
 [n, msg] = d.update();
-verifyEqual(tc, n, 4 * 3);                                      % filters (ICLabel threshold and rejection limit chosen from the data)
+verifyEqual(tc, n, 4 * 3 * 2);                                  % filters (ICLabel threshold and rejection limit chosen from the data), weighted or not
 verifyTrue(tc, contains(msg, '(1 ICA decomposition)'));
 verifyEqual(tc, char(d.RunButton.Enable), 'on');
 verifyEqual(tc, d.RefDrop.Value, 'asis');                       % the reference as recorded unless chosen
 d.RefDrop.Value = 'average';
-verifyEqual(tc, d.update(), 4 * 3);                             % fixed: no more pipelines
+verifyEqual(tc, d.update(), 4 * 3 * 2);                         % fixed: no more pipelines
 o = d.options();
 verifyEqual(tc, o.reference, 'average');
 d.RefDrop.Value = 'asis';

@@ -33,7 +33,9 @@ classdef Threshold
     %
     %   The scores are those of the data at this step (the steps after it
     %   are not run): exact when nothing after it changes the scores other
-    %   than the baseline, which the scores already have removed.
+    %   than the baseline, which the scores already have removed. Epochs
+    %   weighted after it (weight_trials) are not modelled: the limit is
+    %   the one for equal weights.
     %   Needs per-trial scores: mean amplitude or band power.
 
     properties (Constant)

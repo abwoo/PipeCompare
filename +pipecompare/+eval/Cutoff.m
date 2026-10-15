@@ -7,9 +7,11 @@ classdef Cutoff
     %   D: the data just before the pipeline's first filter (continuous).
     %   rest: the pipeline's steps from that filter on: one or two filters
     %   (highpass, lowpass), then only IC removal, epoching, baseline
-    %   removal and an amplitude rejection that removes epochs.
+    %   removal, an amplitude rejection that removes epochs and weighting
+    %   the epochs.
     %   dec: the decisions the pipeline took on these data: comps (the
-    %   components it removed) and rejIdx (the epochs it rejected).
+    %   components it removed), rejIdx (the epochs it rejected) and
+    %   optionally weights (the epochs' weights, trialWeights).
     %   base: the pipeline's measures (m) and signal gains (gain).
     %   env: contract, ref, rank (the ranking's options), S and truth (the
     %   signal-check copy of the starting data), and grid: per filter of
@@ -122,6 +124,7 @@ classdef Cutoff
                 T.data = cast(reshape(Y, E.nbchan, I.pnts, I.trials), 'like', T0.data);
                 if ~isempty(bl), [~, T] = evalc('pipecompare.run.Steps.run(bl{1}, T, ctx)'); end
                 if ~isempty(dec.rejIdx), [~, T] = evalc('pop_rejepoch(T, dec.rejIdx, 0)'); end
+                if isfield(dec, 'weights') && ~isempty(dec.weights), T.etc.pipecompare.trialWeights = dec.weights; end
                 m = pipecompare.eval.Measure.candidate(T, contract, ref, opts);
                 obj(r) = pipecompare.eval.Rank.pointObjective(m, ref, opts, g);
             end

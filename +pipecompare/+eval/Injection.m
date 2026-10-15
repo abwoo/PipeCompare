@@ -258,7 +258,10 @@ classdef Injection
             end
             times = S.xmin + (0:S.pnts-1) / S.srate;
             bl = times >= contract.baseline(1) - 1e-9 & times <= contract.baseline(2) + 1e-9;
-            avg = mean(double(S.data), 3);
+            % averaged as the scores are: with the epochs' weights, if any
+            w = pipecompare.eval.Measure.epochWeights(S);
+            if all(w == 1), avg = mean(double(S.data), 3);
+            else, avg = sum(double(S.data) .* reshape(w, 1, 1, []), 3) / sum(w); end
             avg = avg - mean(avg(:, bl), 2);
             g = expectedTimeCourse(S, times, contract, truth);
             ex = truth.A * (Ew * g);
