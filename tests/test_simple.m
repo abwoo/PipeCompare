@@ -354,7 +354,7 @@ verifyEqual(tc, ids(p), {'badchannels', 'reref', 'highpass', 'lowpass', 'epoch',
 % which removes a bad channel's share of the earlier average
 avg = st; avg.reference = 'average';
 verifyEqual(tc, ids(pipecompare.simple.Presets.recipe('standard', avg, c)), ...
-    {'badchannels', 'reref', 'ica', 'highpass', 'lowpass', 'icremove', 'epoch', 'baseline', 'reject_threshold'});
+    {'badchannels', 'reref', 'ica', 'highpass', 'lowpass', 'icremove', 'epoch', 'baseline', 'reject_threshold', 'weight'});
 verifyEqual(tc, ids(pipecompare.simple.Presets.recipe('filters', avg, c)), ...
     {'badchannels', 'reref', 'highpass', 'lowpass', 'epoch', 'baseline'});
 noloc = st; noloc.nLocated = 0;
@@ -474,7 +474,7 @@ R = pop_select(EEG, 'nochannel', {'O1', 'O2'});
 st = pipecompare.live.DataState.fromEEG(R);
 verifyTrue(tc, all(ismember({'O1', 'O2'}, st.removedChannels(st.restorableChannels))));
 verifyEqual(tc, ids(pipecompare.simple.Presets.recipe('standard', st, c, 'average')), ...
-    {'restore', 'badchannels', 'reref', 'ica', 'highpass', 'lowpass', 'icremove', 'epoch', 'baseline', 'reject_threshold'});
+    {'restore', 'badchannels', 'reref', 'ica', 'highpass', 'lowpass', 'icremove', 'epoch', 'baseline', 'reject_threshold', 'weight'});
 verifyFalse(tc, ismember('restore', ids(pipecompare.simple.Presets.recipe('standard', st, c))));   % as recorded
 V = EEG; V.chanlocs(1).labels = 'VEOG';
 V = pop_select(V, 'nochannel', {'VEOG'});
