@@ -5,6 +5,9 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- `pcomp` opens the PipeCompare window (the same as `pipecompare.start`), like `estudio`
+  for ERPLAB Studio. The README's download steps say how to install PipeCompare and save the path
+  once, so that `pcomp` works in every MATLAB session without EEGLAB's window.
 - The PipeCompare window (`pipecompare.start`, or *Tools > PipeCompare > PipeCompare window…*):
   every step in one window, with or without EEGLAB's main window. On the left the steps in order,
   Import, Settings, Run, Results, Export; Import opens a recording with EEGLAB's own import (.set;

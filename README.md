@@ -21,12 +21,23 @@ measures your ERP or band power most precisely, without distorting it.
   <a href="https://github.com/abwoo/PipeCompare/releases">All versions</a>
 </p>
 
-1. Download `PipeCompare<version>.zip` from the
+PipeCompare is used like ERPLAB Studio: installed once next to EEGLAB, then opened with one
+command, without EEGLAB's own window.
+
+1. Install [EEGLAB](https://sccn.ucsd.edu/eeglab/download.php) (2022 or later) and add its folder to
+   the MATLAB path (**Home > Set Path > Add Folder…**, or `addpath('/path/to/eeglab')`).
+2. Download `PipeCompare<version>.zip` from the
    [latest release](https://github.com/abwoo/PipeCompare/releases/latest) (under *Assets*).
-2. Unzip it into the `plugins` folder of EEGLAB (2022 or later), so that you have
+3. Unzip it into the `plugins` folder of EEGLAB, so that you have
    `eeglab/plugins/PipeCompare<version>/`.
-3. Start MATLAB and EEGLAB. Open **Tools > PipeCompare > PipeCompare window…**, or type
-   `pipecompare.start`.
+4. Save the path, once: in MATLAB's Command Window type `eeglab`, then, when EEGLAB has started,
+   `savepath` (MATLAB then finds PipeCompare and EEGLAB every time it starts; close EEGLAB's window
+   afterwards).
+5. From then on, type `pcomp` in MATLAB's Command Window. The PipeCompare window opens; it
+   starts EEGLAB's functions in the background, without EEGLAB's window.
+
+If `pcomp` is not found, step 4 was skipped or the path could not be saved (on a shared
+computer, MATLAB may not be allowed to write it): type `eeglab nogui` first, then `pcomp`.
 
 PipeCompare is also listed in EEGLAB's extension manager (**File > Manage EEGLAB extensions**),
 which downloads the same zip. The details and the other ways are under
@@ -36,7 +47,6 @@ this page, and **Help > Download the latest version** the latest release.
 ## Contents
 
 - [Download](#download)
-
 - [What PipeCompare does](#what-pipecompare-does)
 - [What happens to your data](#what-happens-to-your-data)
 - [Features](#features)
@@ -209,7 +219,7 @@ Along the way PipeCompare also takes care of the following, so you do not have t
 
 ## Features
 
-- **One window for everything.** `pipecompare.start` (or *Tools > PipeCompare > PipeCompare
+- **One window for everything.** `pcomp` (or *Tools > PipeCompare > PipeCompare
   window…*) opens the PipeCompare window: open the recording, add channel locations, choose what
   to compare (simple or advanced), follow the progress, read the result and save the cleaned data
   and the script, all in one window and without EEGLAB's main window. The EEGLAB menus stay.
@@ -351,12 +361,14 @@ comparison and give the same results.
 
 ### In the PipeCompare window
 
-Type `pipecompare.start` in MATLAB's Command Window, or choose **Tools > PipeCompare > PipeCompare
-window…** in EEGLAB. EEGLAB must be on the MATLAB path; its main window does not have to be open
-(when EEGLAB has not been started yet, the window starts it without its main window). If
-PipeCompare was installed from EEGLAB's extension manager, it is on the path once EEGLAB has
-started, so type `eeglab nogui; pipecompare.start`. Calling it again brings the open window to the
-front.
+Type `pcomp` (or `pipecompare.start`, the same) in MATLAB's Command Window, or choose
+**Tools > PipeCompare > PipeCompare window…** in EEGLAB. PipeCompare and EEGLAB must be on the
+MATLAB path: once the path has been saved after installing (see [Download](#download): start
+EEGLAB, then `savepath`; this works the same when PipeCompare was installed from EEGLAB's extension
+manager), `pcomp` works in every MATLAB session. EEGLAB's main window does not have to be
+open: when EEGLAB has not been started yet, the window starts its functions without its main
+window. Without a saved path, type `eeglab nogui; pcomp`. Calling it again brings the open
+window to the front.
 
 The steps are listed on the left, in the order you do them; clicking one shows its page. Under
 them, **Datasets** lists the datasets open (the recording, each pipeline used, in EEGLAB too);
@@ -888,7 +900,7 @@ them the same again.
 Open the windows of the menu:
 
 ```matlab
-pipecompare.start                                       % the PipeCompare window (Tools > PipeCompare > PipeCompare window...)
+pcomp                                                   % the PipeCompare window (or pipecompare.start; Tools > PipeCompare > PipeCompare window...)
 [EEG, LASTCOM] = pop_pipecompare(EEG); if ~isempty(LASTCOM), eegh(LASTCOM); end   % the simple dialog (Tools > PipeCompare > Compare pipelines...)
 pipecompare.PipeCompare.app();                          % the advanced panel (Tools > PipeCompare > Advanced panel...)
 ```
