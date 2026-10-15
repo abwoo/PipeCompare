@@ -242,6 +242,18 @@ classdef Steps
             if ~isempty(flat)
                 pipecompare.utils.log('Flat channel(s) (no signal) marked bad: %s', strjoin({EEG.chanlocs(flat).labels}, ', '));
             end
+            % kurtosis and joint probability on a copy without the blinks:
+            % they make the frontal channels' values heavy-tailed, so
+            % those would be marked bad for what ICA is there to remove
+            noBlink = src; share = 0;
+            if any(~strcmp(measures, 'resid'))
+                [noBlink, share, eyes] = pipecompare.run.Steps.withoutBlinks(src);
+                if share > 0
+                    on = sprintf('%s; %.0f%% of the data with blinks left out for kurtosis and probability', on, 100 * share);
+                    pipecompare.utils.log('Bad channels: kurtosis and joint probability measured without the %.0f%% of the data with blinks (in %s).', ...
+                        100 * share, strjoin({src.chanlocs(eyes).labels}, ', '));
+                end
+            end
             bad = [];
             for m = measures
                 if strcmp(m{1}, 'resid')
@@ -260,7 +272,7 @@ classdef Steps
                 else
                     args = {'elec', elec, 'threshold', p.threshold, 'norm', 'on', 'measure', m{1}};
                     if strcmp(m{1}, 'spec'), args = [args {'freqrange', [1 min(50, EEG.srate/2 - 1)]}]; end
-                    [EEGrem, b, ~, com] = pop_rejchan(src, args{:});
+                    [EEGrem, b, ~, com] = pop_rejchan(noBlink, args{:});
                 end
                 bad = union(bad, b(:)');
             end
@@ -272,7 +284,7 @@ classdef Steps
             info.badChannels = labels; info.badIdx = bad;
             if strcmp(p.action, 'remove')
                 info.removed = labels;
-                if ~copy && isscalar(measures) && ~strcmp(measures{1}, 'resid') && isempty(flat)
+                if ~copy && share == 0 && isscalar(measures) && ~strcmp(measures{1}, 'resid') && isempty(flat)
                     EEG = EEGrem;
                     coms = {com};
                     return;
@@ -293,6 +305,34 @@ classdef Steps
                 EEG = pop_interp(EEG, bad, 'spherical');   % returns no command from the command line
                 coms{end+1} = sprintf('EEG = pop_interp(EEG, %s, ''spherical'');', mat2str(bad(:)'));
             end
+        end
+
+        function [T, share, eyes] = withoutBlinks(T)
+            % T without its blinks: the samples (continuous data) or epochs
+            % where an eye channel (Injection.eyeChannels: EOG, else Fp1,
+            % Fp2, FPz) is beyond 5 robust SDs of its own (median and MAD),
+            % continuous data with 200 ms on either side. share: the share
+            % of the data left out; nothing is left out (share 0) without
+            % an eye channel, or when that would be over half the data.
+            share = 0;
+            eyes = pipecompare.eval.Injection.eyeChannels(T.chanlocs);
+            if isempty(eyes), return; end
+            X = double(reshape(T.data(eyes, :, :), numel(eyes), []));
+            X = abs(X - median(X, 2));
+            hit = any(X > 5 * max(1.4826 * median(X, 2), eps), 1);
+            if T.trials > 1
+                drop = find(any(reshape(hit, T.pnts, T.trials), 1));
+                if isempty(drop) || numel(drop) > T.trials / 2, return; end
+                [~, T] = evalc('pop_select(T, ''notrial'', drop)');
+                share = numel(drop) / (numel(drop) + T.trials);
+                return;
+            end
+            w = round(0.2 * T.srate);
+            hit = conv(double(hit), ones(1, 2 * w + 1), 'same') > 0;
+            if ~any(hit) || mean(hit) > 0.5, return; end
+            d = diff([0 hit 0]);
+            T = pipecompare.utils.selectPoints(T, 'nopoint', [find(d == 1)' find(d == -1)' - 1]);
+            share = mean(hit);
         end
 
         function z = residualZ(X)

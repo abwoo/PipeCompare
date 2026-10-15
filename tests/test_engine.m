@@ -715,6 +715,22 @@ verifyFalse(tc, ismember('P4', info.badChannels), strjoin(info.badChannels, ' ')
 verifyTrue(tc, contains(coms{1}, '40 Hz low-passed copy'), coms{1});
 end
 
+function testBlinksDoNotMakeFrontalChannelsBad(tc)
+% Kurtosis and joint probability are measured without the stretches with
+% blinks (found in the eye channels): frequent large blinks make the
+% frontal channels' values heavy-tailed, yet those channels are good.
+EEG = nqc_synth(struct('seconds', 90, 'nPerCond', 20, 'blinkRate', 0.4, 'artifactTrials', 0));
+p = struct('measure', 'kurt+prob', 'threshold', 5, 'exclude', {{'EOG1', 'EOG2'}}, ...
+    'detectHighpass', 1, 'action', 'interpolate');
+[~, coms, info] = pipecompare.run.Steps.badChannels(EEG, p, struct('highpass', 0));
+verifyFalse(tc, any(ismember({'FPz', 'F3', 'Fz', 'F4'}, info.badChannels)), strjoin(info.badChannels, ' '));
+verifyTrue(tc, contains(coms{1}, 'with blinks left out for kurtosis and probability'), coms{1});
+[~, H] = evalc('pop_eegfiltnew(EEG, ''locutoff'', 1, ''plotfreqz'', 0)');   % as the test sees the data
+[T, share] = pipecompare.run.Steps.withoutBlinks(H);
+verifyGreaterThan(tc, share, 0.05); verifyLessThan(tc, share, 0.5);
+verifyEqual(tc, T.pnts, H.pnts - round(share * H.pnts), 'AbsTol', 1);
+end
+
 function testFlatChannelsAreBad(tc)
 % A channel with no signal (a constant, or almost nothing) is bad whatever
 % the measures say, and does not keep the others from being detected; the

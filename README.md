@@ -130,7 +130,11 @@ pipeline, so that the comparison is about the settings that matter.
    them (in simulations they found almost none of these; the new test finds most of them, with few
    few false alarms), and one such channel can cost half the epochs at a 100 µV rejection limit.
    Size differences the channels share (strong alpha, blinks, a nearby reference) are predicted,
-   so they do not count, and the test needs no channel locations. It is left out (and said in the
+   so they do not count, and the test needs no channel locations. Kurtosis and joint probability
+   are measured without the stretches with blinks (where an eye channel is beyond 5 robust SDs,
+   with 200 ms on either side): blinks make the frontal channels' values heavy-tailed, and in
+   simulations several good frontal channels per recording were otherwise marked bad, the
+   channels on which ICA sees the blinks best. It is left out (and said in the
    Command Window) when the channels are linearly dependent, as after an average reference. A
    **flat channel** (no signal, as when
    an electrode is disconnected: its spread is zero or under 1 % of the median spread of the

@@ -12,7 +12,8 @@ release has a git tag `vX.Y.Z`.
   their gain; one such channel could cost half the epochs in epoch rejection. The simple mode and
   the panel detect with `kurt+prob+resid`. Bad channels are also found on a copy low-passed to the
   band the analysis keeps (`detectLowpass`, 40 Hz for ERPs), so line noise alone no longer makes a
-  channel bad. Method: docs/METHODS.md, section 5.
+  channel bad. Kurtosis and joint probability are measured without the stretches with blinks,
+  which otherwise made good frontal channels bad. Method: docs/METHODS.md, section 5.
 - Pipelines are ranked by their total error, √(noise² + bias²), instead of the noise alone. The
   noise is the gain-corrected SME as before. The bias is what moves the mean the same way in
   every set of trials, which the SME cannot see: what the trials with a blink add to each

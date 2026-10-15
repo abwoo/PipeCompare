@@ -367,6 +367,14 @@ a pipeline that resamples or epochs before its last filter. [`Injection.filterCh
   frontal channels. One missed channel three times noisier left 52% of the epochs under a 100 µV
   limit. The simple mode and the panel detect with `kurt+prob+resid`.
   [`pipecompare.run.Steps.residualZ`]
+- **Kurtosis and joint probability without the blinks.** Blinks make the frontal channels'
+  values heavy-tailed, so `pop_rejchan` marks them bad (in the simulations above, with frontal
+  blinks: 7.5 good channels per 64-channel recording, all frontal; with the blinks left out, none
+  frontal). The measures therefore run on the copy without the samples where an eye channel
+  (`Injection.eyeChannels`: EOG, else Fp1, Fp2, FPz) is beyond 5 robust SDs of its own (median
+  and MAD), with 200 ms on either side (epoched data: without those epochs), unless that is over
+  half of the data. Spiky channels and line noise are found as before. `resid` leaves out such
+  samples itself. [`pipecompare.run.Steps.withoutBlinks`]
 - **Bad channels are found in the analysis band (`detectLowpass`).** The copy the bad channels are
   found on is also low-passed: at 40 Hz for ERPs (the highest low-pass compared; its stop band
   starts at 50 Hz), 5 Hz above the highest band for band power, none on epoched data, data already
