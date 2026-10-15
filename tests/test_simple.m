@@ -671,6 +671,56 @@ o = d.options();
 verifyTrue(tc, o.pool);
 end
 
+function testOnePipelineForAGroup(tc)
+% Three recordings compared with the simple mode's settings, then ranked
+% together: the group objective is the root mean square of each
+% recording's, the recommendation passes on every recording, the current
+% dataset is put back, and the recommended pipeline is written as a script.
+E = tc.TestData.EEG;
+D = [E nqc_synth(struct('seconds', 120, 'nPerCond', 30, 'seed', 8)) nqc_synth(struct('seconds', 120, 'nPerCond', 30, 'seed', 9))];
+nqc_setBase(E); before = evalin('base', 'EEG');
+G = pipecompare.Group.run(D, 'measure', 'P3', 'events', {'11', '31'}, 'recipe', 'filters', 'show', 'on');
+verifyEqual(tc, evalin('base', 'EEG'), before);                 % the current dataset again
+verifyEqual(tc, size(G.perRecording), [3 height(G.table)]);
+verifyGreaterThanOrEqual(tc, height(G.table), 12);
+verifyEqual(tc, G.table.objective', sqrt(mean(G.perRecording .^ 2, 1)), 'RelTol', 1e-12);
+verifyNotEmpty(tc, G.recommended);
+k = G.recommended;
+verifyEqual(tc, G.table.status{k}, 'passed');
+verifyEqual(tc, G.table.passedIn(k), 3);
+verifyTrue(tc, G.table.notDistinguished(k));
+verifyEqual(tc, evalin('base', 'pipecompare_group.recommended'), k);
+f = fullfile(tempdir, 'pc_group_script.m'); cl = onCleanup(@() delete(f)); %#ok<NASGU>
+pipecompare.Group.writeScript(G, f);
+verifyTrue(tc, contains(fileread(f), G.labels{k}), fileread(f));
+end
+
+function testGroupPipelineMustPassOnEveryRecording(tc)
+% The pipeline best on two recordings but rejected on the third is not
+% recommended; a recording on which nothing passes is left out.
+rs = RandStream('mt19937ar', 'Seed', 5); N = 40; ref = nqc_ref(N);
+o = pipecompare.eval.Rank.defaults(); o.nBoot = 200;
+rk = struct('objective', 'composite', 'options', o);
+S = struct('name', {}, 'keys', {}, 'labels', {}, 'table', {}, 'cands', {}, 'ref', {}, 'ranking', {});
+for i = 1:4
+    x = randn(rs, N, 1);
+    cs = [nqc_cand(x) nqc_cand(2 * x)]; cs(1).id = 1; cs(2).id = 2;   % pipeline a: half the noise of b
+    st = {'feasible'; 'feasible'};
+    if i == 3, st{1} = 'rejected'; end                              % a fails on recording 3
+    if i == 4, st = {'rejected'; 'rejected'}; end                   % nothing passes on recording 4
+    T = table([1; 2], {''; ''}, st, [std(x); 2 * std(x)] / sqrt(N), [1; 1], [0; 0], ...
+        'VariableNames', {'id', 'stratum', 'status', 'objective', 'minRetention', 'ampError'});
+    S(i) = struct('name', sprintf('r%d', i), 'keys', {{'a', 'b'}}, 'labels', {{'a', 'b'}}, 'table', T, ...
+        'cands', {cs}, 'ref', ref, 'ranking', rk);
+end
+G = pipecompare.Group.rank(S);
+verifyEqual(tc, G.leftOut, {'r4'});
+verifyEqual(tc, G.table.status, {'excluded'; 'passed'});
+verifyEqual(tc, G.table.passedIn, [2; 3]);
+verifyEqual(tc, G.recommended, 2);
+verifyEqual(tc, size(G.perRecording), [3 2]);
+end
+
 function testPopFunctionFromAScript(tc)
 EEG = tc.TestData.EEG;
 nqc_setBase(EEG);

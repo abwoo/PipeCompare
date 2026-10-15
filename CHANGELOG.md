@@ -5,6 +5,19 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- One pipeline for a group of recordings (`pipecompare.Group.run`, `pipecompare.Group.writeScript`):
+  every recording is compared as `pop_pipecompare` does; a pipeline counts when it passes on
+  every recording, ranked by the root mean square of its gain-corrected SME over the recordings,
+  with each recording's trial bootstrap combined the same way. Method: docs/METHODS.md, section 14.
+- Weighted pipelines: adopting one (or running its saved script) stores the weighted average of
+  each condition in `EEG.etc.pipecompare.weightedERP`
+  (`pipecompare.eval.Measure.weightedAverages`), and the result names the same pipeline with
+  equal weights for averaging in EEGLAB or ERPLAB.
+- Every epoch rejection compares the trials kept with all trials at the measured electrodes in the
+  window; the result warns when the trials kept have clearly less of the component (z below -3),
+  as when a low limit rejects trials for their large P3. Method: docs/METHODS.md, section 9c.
+- Simulation test: a P3 that varies from trial to trial in size and latency is measured without
+  bias by every passing pipeline, weighted ones included.
 - The selection check now also holds out the choices made inside each pipeline: a rejection limit,
   an ICLabel threshold or components chosen from the data are chosen again on the half of the
   trials used to choose (nested cross-fitting), so their advantage by chance no longer flatters

@@ -502,6 +502,15 @@ several measures of different gains, their weights in the RMS would differ sligh
 measures have no per-trial score and keep fixed limits; so do repaired epochs (section 9), where
 the limit also decides which channels are interpolated.
 
+**Trials kept against all trials** (every rejection, `keptShift`). The statistic *m* includes the
+measured electrodes in the window, so a low limit can reject a trial for a large real component,
+and the known signal, the same in every epoch, cannot show it. For each mean-amplitude component
+and condition, with *x̄*_K the mean score of the *n*_K trials kept and *x̄* that of all *n*,
+*z* = s (*x̄*_K − *x̄*) / (SD(*x*) √(1/*n*_K − 1/*n*)), the standardized difference under random
+rejection (s = −1 for a negative component, so *z* < 0 means less of the component). The lowest
+*z* is stored; the results warn when it is below −3 (`Presets.KeptShiftZ`). Artifacts that push
+the window the same way give the same sign, so this is a warning, not a constraint.
+
 ## 9d. ICLabel threshold chosen from the data (exact joint optimum)
 
 `icremove` with `threshold` = `auto` (the simple mode's default when no epochs are repaired)
@@ -624,6 +633,14 @@ averages the copy with the same weights. **Scope:** ERP measures (for band power
 of log power would favour the epochs with less power). The rejection limit chosen from the data
 (9c) is chosen for equal weights. Filter cutoffs can be fine-tuned (9e) with the weights held
 fixed, since the weights use the measured electrodes only.
+**Downstream averaging.** EEGLAB and ERPLAB average with equal weights, so a weighted pipeline's
+data averaged there do not give the ERP it was scored on. Adopting it (or `apply`) stores the
+weighted average of each condition, Σ*w*_i *x*_i / Σ*w*_i over its epochs, in
+`EEG.etc.pipecompare.weightedERP` (`Measure.weightedAverages`), and the results name the same
+pipeline with equal weights. In simulation (`test_engine`, a P3 whose size varies with SD 50 % and
+latency with SD 50 ms), the weighted estimate stays within 3 standard errors of the P3 in the
+data: the weights, from the noise over the whole epoch, do not count trials with a large P3
+measurably less.
 
 ## 9g. ICA components chosen by their effect on the SME (forward selection)
 
@@ -721,6 +738,22 @@ the result names it (up to 3 such channels) as likely bad over stretches the bad
 which scores the whole recording, does not catch. When no pipeline passed, the same counts give
 `nextStep`'s list instead (channels with at least 10% of all over-limit marks).
 [`pipecompare.simple.Presets.rejectText`]
+
+## 14. One pipeline for a group of recordings
+
+[`pipecompare.Group`] Each recording *s* = 1…*S* is compared as in sections 1–13 (the simple mode's
+settings), its decisions made on its own data. For the pipelines *k* run on every recording, with
+*J*_{s,k} the gain-corrected objective of *k* on *s*: *k* passes when it passes on every recording
+(recordings on which nothing passes are left out); the group objective is
+*J*_k = √(mean_s *J*_{s,k}²). This is the quantity a group analysis pays for: if participant *s*'s
+score is its true value plus a measurement error of SD *J*_{s,k}, the variance of the group mean
+gains mean_s *J*_{s,k}² / *S* from measurement error. The paired bootstrap replicates of each
+recording (section 3, its own trials) are combined the same way, *J*_k^(b) = √(mean_s
+(*J*_{s,k}^(b))²), with independent draws per recording; the confidence and equivalence sets and
+the choice among those not distinguished from the best (highest minimum retention over the
+recordings, then smallest largest amplitude error, then lowest objective) follow section 3. The
+uncertainty is that of these recordings' trials, not of sampling other participants: the choice is
+for this group's data, as the single-recording choice is for one recording's.
 
 ## References
 

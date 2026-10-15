@@ -268,6 +268,8 @@ Along the way PipeCompare also takes care of the following, so you do not have t
   count each epoch by how clean it is (inverse-variance weights), compared with equal weights.
 - **How stable the recommendation is.** The result says how often the same pipeline would be
   recommended if the trials were drawn again.
+- **One pipeline for a group.** `pipecompare.Group.run` compares the pipelines on every
+  recording and recommends the one that is best for the group as a whole.
 - **Statistically controlled ranking.** A paired bootstrap with simultaneous intervals identifies
   the pipelines that cannot be distinguished from the best, controlling the error rate across all
   candidates.
@@ -817,6 +819,18 @@ those of the data at the rejection step; it is exact when nothing after the reje
 `auto | 100`). A saved script keeps `auto`, so on another recording the limit is found from that
 recording's data.
 
+**Rejected for its P3?** A rejection looks at the largest value anywhere in the epoch, the measured
+electrodes and window included. A low limit can therefore reject a trial because its P3 is large,
+and the average of the trials kept is then smaller than the real one. The signal check cannot see
+this, because the known signal is the same in every epoch. So every rejection (with a fixed limit
+too) compares, at the measured electrodes in the window, the average of the trials kept with that
+of all trials, as a z value: their difference divided by the spread it would have if the rejected
+trials were a random draw. When the trials kept have clearly less of the component (z below −3),
+the result says so for the recommended pipeline, with both averages. If the rejected trials are
+artifacts that happen to push the window the same way (blinks at the P3's electrodes, for example),
+nothing needs to change; otherwise a higher limit, or leaving the measured electrodes out of the
+test, avoids it.
+
 ### ICLabel threshold chosen from the data
 
 Which ICLabel threshold is best also depends on the recording: a low threshold removes components
@@ -964,7 +978,20 @@ are for ERPs only: for band power, a weighted mean would favour the epochs with 
 The weights are stored in the dataset (`EEG.etc.pipecompare.trialWeights`, by the event each
 epoch is locked to, so they stay with their epochs) and listed in the steps as *Epochs weighted by
 their noise*, with how much more the cleanest epoch counts than the noisiest. EEGLAB's and
-ERPLAB's own averaging do not use them. To average with them:
+ERPLAB's own averaging do not use them, so averaging such a dataset there would not give the ERP
+the pipeline was scored on. Therefore, when the recommended pipeline is weighted, the result says
+so and names the same pipeline with equal weights (use that one to average in EEGLAB or ERPLAB as
+usual). When you use a weighted pipeline (*Use this pipeline*, `adopt`) or run its saved script,
+the weighted average of each condition is stored in the dataset:
+
+```matlab
+A = EEG.etc.pipecompare.weightedERP;   % A.data: channels x time points x conditions
+A.conditions, A.times                  % condition names; times in ms
+plot(A.times, A.data(strcmpi(A.labels, 'Pz'), :, 1))   % e.g. the first condition at Pz
+```
+
+`pipecompare.eval.Measure.weightedAverages(EEG, contract)` computes it again. To average with
+the weights yourself:
 
 ```matlab
 w = pipecompare.eval.Measure.epochWeights(EEG);              % one weight per epoch
@@ -1146,6 +1173,38 @@ English letters, digits and underscores, must start with a letter, and must not 
 existing MATLAB or EEGLAB function (such as `pop_epoch`); PipeCompare refuses other names. Type
 `help pop_pipecompare` for all options.
 
+### One pipeline for a group of recordings
+
+For a study you usually want **one** pipeline for every participant, not a different one each.
+`pipecompare.Group.run` takes the recordings (a list of `.set` files, or datasets in EEGLAB) and
+the same options as `pop_pipecompare`:
+
+```matlab
+files = {'/path/to/sub01.set', '/path/to/sub02.set', '/path/to/sub03.set'};
+G = pipecompare.Group.run(files, 'measure', 'P3', 'events', {'target', 'standard'}, 'recipe', 'standard');
+G.table                                        % one row per pipeline; G.recommended is the row to use
+pipecompare.Group.writeScript(G, 'my_group_pipeline.m');   % then: EEG = my_group_pipeline(EEG); per recording
+```
+
+(or `G = pipecompare.Group.run(ALLEEG, ...)` for the datasets open in EEGLAB). It works like this:
+
+1. Each recording is compared on its own, exactly as `pop_pipecompare` does (without windows). The
+   steps still decide from each recording's own data: its bad channels, its ICA components, its
+   rejected epochs and its automatic limits.
+2. A pipeline counts for the group only when it **passes on every recording**. A recording on
+   which no pipeline passes is left out and named (`G.leftOut`); look at it on its own.
+3. The pipelines are ranked by the **root mean square of their noise over the recordings**: noise
+   in each participant's average adds the mean of the squared SMEs to the variance of the group
+   average, so this is what your group-level test loses to noise.
+4. Which pipelines cannot be told apart from the best, and which are within 5 % of it, come from
+   each recording's bootstrap of its trials, combined the same way. Among those that cannot be told
+   apart, the one that keeps the most trials in its worst recording is recommended, as for one
+   recording.
+
+The Command Window shows each recording's comparison, then the group's recommendation. `G` is also
+stored in the variable `pipecompare_group`; `G.perRecording` has each pipeline's noise on each
+recording. The current dataset in EEGLAB is left as it was.
+
 ## Scripting interface
 
 For full control, describe what is measured (an analysis *contract*) and what may vary (a *plan*):
@@ -1311,7 +1370,12 @@ addpath(fullfile(pwd, 'tests'));          % run from the PipeCompare folder
 results = run_all();
 ```
 
-The suite runs on synthetic data with known ground truth. It covers history parsing, plan
+The suite runs on synthetic data with known ground truth. Some of it is simulation, to show the
+methods do not mislead: a P3 that differs from trial to trial in size (SD 50 %) and latency (SD
+50 ms), which the SME counts as noise, is still measured without bias by every pipeline that
+passes, weighted epochs included; a rejection limit chosen by chance is caught by the selection
+check; a time-locked component ICLabel does not recognise is not removed; a stimulus-locked blink
+is not taken for the P3's shape. It covers history parsing, plan
 enumeration (checked against brute force), the statistics (validated by simulation), signal
 preservation for every built-in step except `resample`, end-to-end searches with resume and
 parallel execution, and EEGLAB and panel integration. Continuous integration runs every suite,
