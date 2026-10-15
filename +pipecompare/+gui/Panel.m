@@ -2,6 +2,10 @@ classdef Panel < handle
     %PANEL PipeCompare panel: live dataset + history, plan, contract, results.
     %
     %   pipecompare.gui.Panel()   (or EEGLAB > Tools > PipeCompare)
+    %   pipecompare.gui.Panel(parent, host)
+    %       the same in a container of the PipeCompare window (host,
+    %       pipecompare.gui.Main): its progress and results also show on
+    %       the window's Run and Results pages
     %
     %   There is no load button: the panel follows the dataset that is
     %   current in EEGLAB and re-reads it (and its EEG.history) whenever it
@@ -13,6 +17,8 @@ classdef Panel < handle
         Plan
         Result
         Fig
+        Root                      % its window, or its grid in the container
+        Host = []                 % the PipeCompare window it is part of, or []
         Timer
         LastFingerprint = ''
         LastQuick = ''            % Session.quickPrint at the last refresh
@@ -32,12 +38,15 @@ classdef Panel < handle
         Options = struct('dataUnit', 'auto', 'checkpoint', '', ...
             'parallel', false)
         ResultTable; StatusLabel; DetailArea
+        MenuStepButton            % Add EEGLAB menu step... (needs EEGLAB's main window)
     end
 
     methods
-        function obj = Panel()
+        function obj = Panel(parent, host)
             obj.Plan = pipecompare.plan.Plan();
-            obj.build();
+            if nargin < 1, parent = []; end
+            if nargin > 1, obj.Host = host; end
+            obj.build(parent);
             obj.refreshLive(true);
             obj.Timer = timer('ExecutionMode', 'fixedSpacing', 'Period', 1, 'BusyMode', 'drop', ...
                 'TimerFcn', @(~, ~) obj.refreshLive(false), 'Name', 'pipecompare_panel');
@@ -47,19 +56,29 @@ classdef Panel < handle
 
         function delete(obj)
             if ~isempty(obj.Timer) && isvalid(obj.Timer), stop(obj.Timer); delete(obj.Timer); end
-            if ~isempty(obj.Fig) && isvalid(obj.Fig), delete(obj.Fig); end
+            if ~isempty(obj.Root) && isvalid(obj.Root), delete(obj.Root); end
         end
 
         % ------------------------------------------------------------ layout
-        function build(obj)
-            obj.Fig = uifigure('Name', sprintf('PipeCompare %s', pipecompare.PipeCompare.version()), ...
-                'Position', pipecompare.utils.onScreen([60 60 1380 860]), 'CloseRequestFcn', @(~, ~) obj.delete());
-            g = uigridlayout(obj.Fig, [3 2]);
+        function build(obj, parent)
+            if isempty(parent)
+                obj.Fig = uifigure('Name', sprintf('PipeCompare %s', pipecompare.PipeCompare.version()), ...
+                    'Position', pipecompare.utils.onScreen([60 60 1380 860]), 'CloseRequestFcn', @(~, ~) obj.delete());
+                pipecompare.gui.helpMenu(obj.Fig);
+                g = uigridlayout(obj.Fig, [3 2]); obj.Root = obj.Fig;
+            else
+                obj.Fig = ancestor(parent, 'figure');
+                g = uigridlayout(parent, [3 2]); obj.Root = g;
+            end
             g.RowHeight = {80, 300, '1x'}; g.ColumnWidth = {'1x', '1.25x'};   % contract and results get the remaining height
             % below the size every part needs, keep their sizes and scroll
-            obj.Fig.AutoResizeChildren = 'off';   % the grid resizes itself; this lets SizeChangedFcn run
-            obj.Fig.SizeChangedFcn = @(f, ~) fitLayout(g, f.Position);
-            fitLayout(g, obj.Fig.Position);
+            if isempty(parent)
+                obj.Fig.AutoResizeChildren = 'off';   % the grid resizes itself; this lets SizeChangedFcn run
+                obj.Fig.SizeChangedFcn = @(f, ~) fitLayout(g, f.Position);
+                fitLayout(g, obj.Fig.Position);
+            else
+                obj.fit();   % the window calls it again when it is resized
+            end
 
             top = uigridlayout(g, [1 2]); top.Layout.Column = [1 2]; top.ColumnWidth = {'1x', '1x'}; top.Padding = [0 0 0 0];
             obj.DatasetLabel = uilabel(top, 'Text', 'No dataset', 'FontName', 'Courier', 'VerticalAlignment', 'top', 'WordWrap', 'on');
@@ -83,7 +102,7 @@ classdef Panel < handle
             b1.ColumnWidth = {'1.3x', '0.6x', '1.7x', '0.9x', '0.6x', '0.7x', '0.7x', '0.9x'};
             obj.TypeDrop = uidropdown(b1, 'Items', setdiff(pipecompare.plan.Catalog.types(), {'native'}, 'stable'));
             uibutton(b1, 'Text', 'Add', 'ButtonPushedFcn', @(~, ~) obj.addStep());
-            uibutton(b1, 'Text', 'Add EEGLAB menu step...', 'Tooltip', ...
+            obj.MenuStepButton = uibutton(b1, 'Text', 'Add EEGLAB menu step...', 'Tooltip', ...
                 ['Any operation of EEGLAB''s menus (plugins included): its own dialog opens on the data as the plan ', ...
                  'has them at the end, and the command it returns becomes a step'], ...
                 'ButtonPushedFcn', @(~, ~) obj.addEeglabStep());
@@ -224,9 +243,24 @@ classdef Panel < handle
             end
         end
 
+        function fit(obj)
+            % In a container: the layout for the container's size.
+            if isempty(obj.Root) || ~isvalid(obj.Root) || obj.Root == obj.Fig, return; end
+            try, pos = obj.Root.Parent.Position; catch, pos = [0 0 1 1]; end   % (unknown: the smallest layout)
+            fitLayout(obj.Root, pos);
+        end
+
         % ------------------------------------------------------------- live
         function refreshLive(obj, force)
-            if isempty(obj.Fig) || ~isvalid(obj.Fig), return; end
+            if isempty(obj.Root) || ~isvalid(obj.Root), return; end
+            if ~isempty(obj.Host)
+                % in the PipeCompare window EEGLAB's main window may be closed:
+                % its menus are what this button offers
+                open = ~isempty(findobj(groot, 'Tag', 'EEGLAB'));
+                obj.MenuStepButton.Enable = pipecompare.utils.ternary(open, 'on', 'off');
+                obj.MenuStepButton.Tooltip = pipecompare.utils.ternary(open, ['Any operation of EEGLAB''s menus ', ...
+                    '(plugins included) as a step'], 'Needs EEGLAB''s main window (type eeglab); every other step works without it');
+            end
             % Two levels: every second only the quick signature (its cost does
             % not grow with events or history); the full fingerprint when it
             % changed, and otherwise every 5 s, so an edit that keeps every
@@ -1325,14 +1359,20 @@ classdef Panel < handle
                 prog = pipecompare.gui.Progress.empty;
                 if ~dry
                     % the progress window with Stop, as in the simple mode
+                    % (in the PipeCompare window: on its Run page)
                     s = pipecompare.live.DataState.fromEEG(pipecompare.live.Session.current());
                     n = numel(obj.Plan.enumerate(s, c, struct('maxLeaves', opts.maxLeaves)));
-                    prog = pipecompare.gui.Progress(n, any(strcmp({obj.Plan.Slots.id}, 'ica')));
+                    where = [];
+                    if ~isempty(obj.Host)
+                        host = obj.Host; where = host.runStarted();
+                        ended = onCleanup(@() pipecompare.gui.Main.ended(host)); %#ok<NASGU>   % also on an error
+                    end
+                    prog = pipecompare.gui.Progress(n, any(strcmp({obj.Plan.Slots.id}, 'ica')), where);
                     opts.progress = @(k, varargin) prog.step(k, varargin{:});
                 end
                 closeProg = onCleanup(@() delete(prog)); %#ok<NASGU>   % also on an error
                 r = pipecompare.PipeCompare.optimize(obj.Plan, c, opts);
-                if ~isvalid(obj) || ~isvalid(obj.Fig)      % the window was closed during the search
+                if ~isvalid(obj) || ~isvalid(obj.Root)     % the window was closed during the search
                     if ~dry, assignin('base', 'pipecompare_result', r); end
                     pipecompare.utils.log('Panel closed during the search; the result is in pipecompare_result.');
                     return;
@@ -1359,9 +1399,10 @@ classdef Panel < handle
                     obj.DetailArea.Value = notes(:);
                 end
                 pipecompare.utils.log('Result stored in the base variable pipecompare_result.');
+                if ~isempty(obj.Host), obj.Host.showResult(r); end   % in plain words on the Results page
             catch ME
                 pipecompare.utils.log('ERROR: %s', ME.message);
-                if ~isvalid(obj) || ~isvalid(obj.Fig), return; end
+                if ~isvalid(obj) || ~isvalid(obj.Root), return; end
                 obj.StatusLabel.Text = 'Error (see dialog)';
                 uialert(obj.Fig, ME.message, 'PipeCompare');
             end
@@ -1468,6 +1509,7 @@ classdef Panel < handle
             end
             % what comes next, as in the dialog's result window
             obj.StatusLabel.Text = sprintf('Candidate %d adopted as the current EEGLAB dataset.', k);
+            if ~isempty(obj.Host), obj.Host.adopted(k); return; end   % the window says what next
             uialert(obj.Fig, sprintf(['Candidate %d is now the current EEGLAB dataset. It is not saved yet: use ', ...
                 'File > Save current dataset as. These are the data that were compared: average them (or compute the ', ...
                 'band power) and measure. Filtering, re-referencing or rejecting epochs again would change what was ', ...

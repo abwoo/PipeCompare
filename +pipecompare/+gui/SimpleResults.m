@@ -2,6 +2,8 @@ classdef SimpleResults < handle
     %SIMPLERESULTS Result window of the simple mode.
     %
     %   pipecompare.gui.SimpleResults(result)
+    %   pipecompare.gui.SimpleResults(result, parent, host)   % in a container of the
+    %                                   % PipeCompare window (pipecompare.gui.Main)
     %
     %   At the top, in plain words, in a box that scrolls: the recommended
     %   pipeline and why; below,
@@ -21,15 +23,25 @@ classdef SimpleResults < handle
     properties
         Result
         Fig; Headline; Table; AllBox; Steps
+        Root               % its window, or its grid in the container
+        Host = []          % the PipeCompare window it is part of, or []
     end
 
     methods
-        function obj = SimpleResults(result)
+        function obj = SimpleResults(result, parent, host)
             obj.Result = result;
-            obj.Fig = uifigure('Name', 'Pipeline comparison', 'Position', pipecompare.utils.onScreen([220 100 900 600]));
+            if nargin < 2 || isempty(parent)
+                obj.Fig = uifigure('Name', 'Pipeline comparison', 'Position', pipecompare.utils.onScreen([220 100 900 600]));
+                pipecompare.gui.helpMenu(obj.Fig);
+                parent = obj.Fig;
+            else
+                obj.Fig = ancestor(parent, 'figure');
+            end
+            if nargin > 2, obj.Host = host; end
             % the recommendation has a fixed height and scrolls: with all its
             % notes it would otherwise squeeze the table of pipelines
-            g = uigridlayout(obj.Fig, [5 1]); g.RowHeight = {100, '1x', 22, 150, 30};
+            g = uigridlayout(parent, [5 1]); g.RowHeight = {100, '1x', 22, 150, 30};
+            obj.Root = pipecompare.utils.ternary(parent == obj.Fig, obj.Fig, g);
             obj.Headline = uitextarea(g, 'Value', obj.headline(), 'Editable', 'off', 'FontWeight', 'bold');
             obj.Table = uitable(g, 'RowName', {}, 'SelectionChangedFcn', @(~, ~) obj.showSteps());
             obj.showRows();
@@ -213,6 +225,7 @@ classdef SimpleResults < handle
                 dlg = uiprogressdlg(obj.Fig, 'Title', 'Use this pipeline', 'Message', msg, 'Indeterminate', 'on');
                 pipecompare.PipeCompare.adopt(obj.Result, k, force);
                 close(dlg);
+                if ~isempty(obj.Host), obj.Host.adopted(k); return; end   % the window says what next
                 uialert(obj.Fig, sprintf(['Pipeline %d is now the current EEGLAB dataset. It is not saved yet: ', ...
                     'use File > Save current dataset as. Its preprocessing is complete: average it (or compute the ', ...
                     'band power) and measure. Filtering, re-referencing or rejecting epochs again would change ', ...

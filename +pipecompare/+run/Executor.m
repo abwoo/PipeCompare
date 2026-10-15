@@ -571,7 +571,9 @@ classdef Executor
             EEG.setname = sprintf('%s PipeCompare#%d', result.state.setname, idx);
             assignin('base', 'PIPECOMPARE_ADOPT__', EEG);
             evalin('base', ['[ALLEEG, EEG, CURRENTSET] = pop_newset(ALLEEG, PIPECOMPARE_ADOPT__, CURRENTSET, ', ...
-                '''gui'', ''off''); clear PIPECOMPARE_ADOPT__; eeglab redraw;']);
+                '''gui'', ''off''); clear PIPECOMPARE_ADOPT__;']);
+            % (without EEGLAB's main window, eeglab redraw would open it)
+            if ~isempty(findobj(groot, 'Tag', 'EEGLAB')), evalin('base', 'eeglab redraw;'); end
             pipecompare.utils.log('Candidate %d stored as a new EEGLAB dataset; its EEG.history lists every step.', idx);
         end
 
