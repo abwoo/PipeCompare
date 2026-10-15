@@ -94,6 +94,11 @@ classdef Measure
             %   muscle: the log of the largest, over the measured
             %   electrodes, SD of the first difference in the window (fast
             %   activity, which a slow ERP hardly has).
+            % In continuous data, a trial also counts when a blink or eye
+            % movement found sample by sample (sampleHits) falls in its
+            % window or baseline: comparing the trials with each other
+            % finds few when most trials have a blink (n-back tasks with a
+            % response on every trial).
             % info: channels (eye channels' labels), horizontal ('L-R' or
             % ''), share (of the trials, per component), kinds and
             % kindShare (components x kinds).
@@ -110,7 +115,9 @@ classdef Measure
             if ~isempty(hl), info.horizontal = sprintf('%s-%s', EEG.chanlocs(hl).labels, EEG.chanlocs(hr).labels); end
             E = EEG; E.icaact = []; E.icaweights = []; E.icasphere = []; E.icawinv = []; E.icachansind = [];
             [~, E] = evalc('pop_select(E, ''channel'', use)');
+            H = [];
             if E.trials == 1
+                H = sampleHits(E, ismember(use, eyes), ismember(use, hl), ismember(use, hr), contract);
                 [~, E] = evalc('pop_epoch(E, contract.allEvents(), contract.epoch, ''epochinfo'', ''yes'')');
             end
             T = pipecompare.eval.Measure.trials(E, contract, true);
@@ -118,6 +125,7 @@ classdef Measure
             D = double(E.data);
             De = D(ismember(use, eyes), :, :); Dh = [];
             if ~isempty(hl), Dh = D(use == hl, :, :) - D(use == hr, :, :); end
+            bsel = false(size(times));
             if ~isempty(contract.baseline)
                 bsel = times >= contract.baseline(1) - 1e-9 & times <= contract.baseline(2) + 1e-9;
                 if any(bsel)
@@ -140,6 +148,13 @@ classdef Measure
                 end
                 if ~isempty(Dh)
                     v = perTrial(abs(mean(Dh(:, w, :), 2))); K(:, 2) = z(v(T.epoch)) > pipecompare.eval.Measure.BlinkZ;
+                end
+                if ~isempty(H)
+                    % also the trials with a blink or eye movement found in
+                    % the continuous data, in the window or the baseline
+                    hit = reshape(any(H.data(:, w | bsel, :), 2), size(H.data, 1), []);
+                    K(:, 1) = K(:, 1) | hit(1, T.epoch)';
+                    if size(hit, 1) > 1, K(:, 2) = K(:, 2) | hit(2, T.epoch)'; end
                 end
                 r = ismember(use, roi(ismember(labs(roi), lower(comp.roi))));
                 if any(r) && sum(w) > 2
@@ -521,6 +536,31 @@ function v = peakOf(avgs, o)
 % avgs: draws x samples. Peak of each averaged waveform.
 if strcmp(o.polarity, 'negative'), [a, i] = min(avgs, [], 2); else, [a, i] = max(avgs, [], 2); end
 if strcmp(o.kind, 'peakLatency'), v = reshape(o.times(i), [], 1); else, v = a; end
+end
+
+function H = sampleHits(E, isEye, isL, isR, contract)
+% The blinks and eye movements of the continuous data E, found sample by
+% sample (the trial rule compares the trials with each other, so when
+% most trials have a blink the median trial has one, and few are found):
+% where an eye channel, or the left minus the right channel, minus its
+% moving median over 1 s (slow drifts out) is beyond 5 robust SDs (median
+% and MAD over the samples: blinks fill far fewer samples than trials),
+% with 50 ms on either side. Epoched like the data: one row per kind
+% (blinks; eye movements when there is a pair). [] without eye channels.
+H = [];
+if ~any(isEye), return; end
+rows = {double(E.data(isEye, :))};
+if any(isL) && any(isR), rows{2} = double(E.data(isL, :)) - double(E.data(isR, :)); end
+w = round(0.05 * E.srate); M = zeros(numel(rows), E.pnts);
+for k = 1:numel(rows)
+    Y = rows{k} - movmedian(rows{k}, round(E.srate), 2);
+    Y = abs(Y - median(Y, 2));
+    M(k, :) = conv(double(any(Y > 5 * max(1.4826 * median(Y, 2), eps), 1)), ones(1, 2 * w + 1), 'same') > 0;
+end
+H = E; H.data = single(M); H.nbchan = size(M, 1);
+H.chanlocs = struct('labels', arrayfun(@(k) sprintf('hit%d', k), 1:H.nbchan, 'UniformOutput', false));
+[~, H] = evalc('pop_epoch(H, contract.allEvents(), contract.epoch, ''epochinfo'', ''yes'')');
+H.data = H.data > 0.5;
 end
 
 function [l, r] = horizontalPair(chanlocs, eyes, roi)

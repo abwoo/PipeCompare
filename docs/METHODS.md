@@ -878,7 +878,14 @@ The blink trials are found once, on the data as they are before any processing: 
 mean-amplitude component, an epoch's eye activity is the largest, over the eye channels (EOG by
 type or name, else Fp1, Fp2, FPz; never a measured electrode), of |window mean − baseline mean|,
 the part of an eye artifact that reaches a score; it is a blink when its robust *z* (median and
-MAD over all trials) exceeds 3 (`Measure.BlinkZ`). Then, for each pipeline and condition, over the
+MAD over all trials) exceeds 3 (`Measure.BlinkZ`). Comparing the trials with each other fails
+when most of them have a blink, as in n-back tasks with a response on every trial: the median
+trial then has one (simulated, fourth review `eye_bias.py`: at 50 % blink trials the bias came out
+0.69 µV for a true 1.44 µV, at 70 % 0.17 µV for 2.0 µV). So in continuous data a trial is also a
+blink trial when a blink found sample by sample falls in its window or baseline: an eye channel
+minus its moving median over 1 s beyond 5 robust SDs over the samples (blinks fill far fewer
+samples than trials), with 50 ms on either side; eye movements the same on *h* below
+(`Measure.blinks`, `sampleHits`). Then, for each pipeline and condition, over the
 trials it keeps (with their weights *w*, when weighted), with *p* the blink trials' share of the
 weight and *m*_B, *m*_N the weighted mean scores of the blink and other trials,
 
