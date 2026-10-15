@@ -3,11 +3,11 @@ name: benchmark
 # The ground-truth benchmark (benchmarks/pipecompare_benchmark.m): simulated
 # recordings with a known P3, measured by the pipeline PipeCompare
 # recommends and by common fixed pipelines. Long (an ICA per pipeline and
-# recording), so it runs only when the benchmark changes, or by hand.
+# recording, hours for 8 recordings), so it runs by hand only (Actions >
+# benchmark > Run workflow). The results are written after every recording
+# and kept even when the run stops early.
 
 on:
-  pull_request:
-    paths: ['benchmarks/**', '.github/workflows/benchmark.yml']
   workflow_dispatch:
     inputs:
       recordings:
@@ -18,7 +18,7 @@ jobs:
   benchmark:
     name: Ground-truth benchmark
     runs-on: ubuntu-latest
-    timeout-minutes: 150
+    timeout-minutes: 340
     env:
       DISPLAY: ":99"
       PIPECOMPARE_BENCH_N: ${{ github.event.inputs.recordings || '8' }}

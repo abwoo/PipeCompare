@@ -72,11 +72,17 @@ for s = 1:nRec
         rows(end+1, :) = {s, names{i}, label{i}, want(1), want(2), est(i, 1), est(i, 2), e(1), e(2), e(1) - e(2), kept(i), ...
             strjoin(truth.badLabels, ' '), truth.lockedBlinkShare}; %#ok<AGROW>
     end
+    [T, txt] = writeResults(rows, rankOfPick, s, outDir, names);   % after every recording: kept if the run stops early
 end
+out = struct('table', T, 'summary', txt, 'rankOfPick', rankOfPick);
+end
+
+function [T, txt] = writeResults(rows, rankOfPick, nDone, outDir, names)
+% benchmark.csv and benchmark_summary.txt for the recordings done so far
 T = cell2table(rows, 'VariableNames', {'recording', 'pipeline', 'steps', 'trueTarget', 'trueStandard', ...
     'target', 'standard', 'errTarget', 'errStandard', 'errDifference', 'kept', 'badChannel', 'lockedBlinkShare'});
 writetable(T, fullfile(outDir, 'benchmark.csv'));
-lines = {sprintf('PipeCompare benchmark: %d simulated recordings (P3 at Pz, 300-600 ms; uV)', nRec), ...
+lines = {sprintf('PipeCompare benchmark: %d simulated recordings (P3 at Pz, 300-600 ms; uV)', nDone), ...
     sprintf('%-12s %22s %22s %22s %8s', 'pipeline', 'target bias / RMSE', 'standard bias / RMSE', 'difference bias / RMSE', 'kept')};
 for i = 1:3
     R = T(strcmp(T.pipeline, names{i}), :);
@@ -85,11 +91,10 @@ for i = 1:3
         f(R.errDifference), 100 * mean(R.kept, 'omitnan')); %#ok<AGROW>
 end
 lines{end+1} = sprintf(['PipeCompare''s recommendation by the actual error of the difference, among the pipelines it ', ...
-    'compared: rank %s (1 = the most accurate)'], mat2str(rankOfPick));
+    'compared: rank %s (1 = the most accurate)'], mat2str(rankOfPick(1:nDone)));
 txt = strjoin(lines, newline);
 fprintf('%s\n', txt);
 fid = fopen(fullfile(outDir, 'benchmark_summary.txt'), 'w'); fprintf(fid, '%s\n', txt); fclose(fid);
-out = struct('table', T, 'summary', txt, 'rankOfPick', rankOfPick);
 end
 
 function want = trueP3(truth, c, fs)

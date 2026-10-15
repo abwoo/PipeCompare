@@ -1474,8 +1474,9 @@ pipeline (0.1-30 Hz, average reference, rejection at 100 µV) and a common one (
 bad-channel interpolation and ICA with ICLabel). It reports, per pipeline, the bias and the root
 mean square error of each condition and of their difference against the P3 actually in the data,
 the trials kept, and where the recommendation ranks by actual error among all the pipelines
-PipeCompare compared. It runs on GitHub when the benchmark changes or by hand (workflow
-*benchmark*, its results kept as an artifact), or locally:
+PipeCompare compared. It takes hours (an ICA per pipeline and recording), so on GitHub it runs
+by hand only (Actions > *benchmark* > *Run workflow*; the results, written after every recording,
+are kept as an artifact), or locally:
 
 ```matlab
 eeglab nogui; addpath(fullfile(pwd, 'benchmarks'));
