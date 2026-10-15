@@ -2,6 +2,10 @@ classdef SimpleDialog < handle
     %SIMPLEDIALOG Simple mode: what to measure, then Run.
     %
     %   opts = pipecompare.gui.SimpleDialog.ask(EEG)   % [] if cancelled
+    %   pipecompare.gui.SimpleDialog(EEG, parent, host)
+    %       the same in a container of the PipeCompare window (host,
+    %       pipecompare.gui.Main): Run and Advanced... go to the window,
+    %       and there is no Cancel
     %
     %   1. The data, described in one line (epoched, events, or neither),
     %      in a box of fixed height that scrolls when the text is long.
@@ -47,6 +51,7 @@ classdef SimpleDialog < handle
         RunButton; AdvancedButton
         Answer = []            % the options when Run was pressed
         Grid
+        Host = []              % the PipeCompare window it is part of, or []
     end
 
     properties (Constant)
@@ -65,7 +70,7 @@ classdef SimpleDialog < handle
     end
 
     methods
-        function obj = SimpleDialog(EEG)
+        function obj = SimpleDialog(EEG, parent, host)
             obj.EEG = EEG;
             obj.State = pipecompare.live.DataState.fromEEG(EEG);
             obj.Montage = pipecompare.live.Montage.check(EEG);
@@ -77,9 +82,14 @@ classdef SimpleDialog < handle
             obj.Types = s.eventTypes(keep); obj.Counts = s.eventCounts(keep);
             [isLock, at] = ismember(obj.Types, s.lockingTypes);
             obj.Counts(isLock) = s.lockingCounts(at(isLock));
-            obj.Fig = uifigure('Name', 'Compare preprocessing pipelines', 'Position', pipecompare.utils.onScreen([200 100 720 696]), ...
-                'CloseRequestFcn', @(~, ~) obj.close());
-            g = uigridlayout(obj.Fig, [9 2]); obj.Grid = g;
+            if nargin < 2 || isempty(parent)
+                obj.Fig = uifigure('Name', 'Compare preprocessing pipelines', 'Position', pipecompare.utils.onScreen([200 100 720 696]), ...
+                    'CloseRequestFcn', @(~, ~) obj.close());
+                parent = obj.Fig;
+            else
+                obj.Fig = ancestor(parent, 'figure'); obj.Host = host;
+            end
+            g = uigridlayout(parent, [9 2]); obj.Grid = g;
             % the data line has a fixed height and scrolls: a long montage
             % check would otherwise squeeze the event list to nothing
             g.RowHeight = {80, 22, 0, '1x', 22, 'fit', 22, 44, 30};
@@ -122,7 +132,11 @@ classdef SimpleDialog < handle
             b = uigridlayout(g, [1 3]); b.Padding = [0 0 0 0];
             obj.RunButton = uibutton(b, 'Text', 'Run', 'FontWeight', 'bold', 'ButtonPushedFcn', @(~, ~) obj.run());
             obj.AdvancedButton = uibutton(b, 'Text', 'Advanced...', 'ButtonPushedFcn', @(~, ~) obj.advanced());
-            uibutton(b, 'Text', 'Cancel', 'ButtonPushedFcn', @(~, ~) obj.close());
+            if isempty(obj.Host)
+                uibutton(b, 'Text', 'Cancel', 'ButtonPushedFcn', @(~, ~) obj.close());
+            else
+                obj.AdvancedButton.ButtonPushedFcn = @(~, ~) obj.Host.openAdvanced(obj);
+            end
             obj.measureChanged();
         end
 
@@ -217,7 +231,11 @@ classdef SimpleDialog < handle
         end
 
         function delete(obj)
-            if ~isempty(obj.Fig) && isvalid(obj.Fig), delete(obj.Fig); end
+            if ~isempty(obj.Host)   % in the window: only what it drew there
+                if ~isempty(obj.Grid) && isvalid(obj.Grid), delete(obj.Grid); end
+            elseif ~isempty(obj.Fig) && isvalid(obj.Fig)
+                delete(obj.Fig);
+            end
         end
 
         function t = typeReason(obj)
@@ -444,6 +462,7 @@ classdef SimpleDialog < handle
 
         function run(obj)
             obj.Answer = obj.options();
+            if ~isempty(obj.Host), obj.Host.runSimple(obj.Answer); return; end
             uiresume(obj.Fig); obj.Fig.Visible = 'off';
         end
 
@@ -452,9 +471,12 @@ classdef SimpleDialog < handle
             if isvalid(obj.Fig), uiresume(obj.Fig); obj.Fig.Visible = 'off'; end
         end
 
-        function app = advanced(obj)
+        function app = advanced(obj, make)
             % The full panel with what has been chosen so far; choices the
             % panel cannot take are said here, and the dialog stays open.
+            % make: a function that returns the panel to fill (the
+            % PipeCompare window's, in its Advanced tab); by default a new
+            % panel window, and the dialog closes.
             app = [];
             o = obj.options(); c = [];
             if ~isempty(o)
@@ -464,7 +486,8 @@ classdef SimpleDialog < handle
                     uialert(obj.Fig, ME.message, 'PipeCompare'); return;
                 end
             end
-            app = pipecompare.gui.Panel();
+            if nargin < 2, make = @() pipecompare.gui.Panel(); end
+            app = make();
             if ~isempty(c)
                 [plan, notes] = pipecompare.simple.Presets.recipe(o.steps, obj.State, c, o.reference, ...
                     pipecompare.simple.Presets.nonEegChannels(obj.EEG));
@@ -484,7 +507,7 @@ classdef SimpleDialog < handle
                 app.settingsChanged();
                 for k = 1:numel(notes), pipecompare.utils.log('Left out: %s.', notes{k}); end
             end
-            obj.close();
+            if isempty(obj.Host), obj.close(); end
         end
     end
 end

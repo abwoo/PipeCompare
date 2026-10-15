@@ -2,6 +2,8 @@ classdef Progress < handle
     %PROGRESS Progress window of a search, with Stop.
     %
     %   p = pipecompare.gui.Progress(nTotal, hasIca);
+    %   p = pipecompare.gui.Progress(nTotal, hasIca, parent);    % drawn in a container (a page
+    %                                    % of the PipeCompare window) instead of its own window
     %   opts.progress = @(n, varargin) p.step(n, varargin{:});   % the Executor's progress callback
     %
     %   Shows how many pipelines are done, the step running now, the time so
@@ -11,10 +13,12 @@ classdef Progress < handle
     %   included) a short block moves along the bar instead of a fill
     %   level. Stop (or closing the window) asks the search to stop after
     %   the current step, keeping the pipelines already finished. Used by
-    %   the simple mode and the panel. delete(p) closes the window.
+    %   the simple mode, the panel and the PipeCompare window. delete(p) closes
+    %   the window (in a container: removes what it drew there).
 
     properties
         Fig
+        Root              % what it drew: its window, or its grid in the container
         Message           % the text: pipelines done, the step now, the time
         Track; Fill       % the bar: its background and its filled part
         StopButton
@@ -32,14 +36,20 @@ classdef Progress < handle
     end
 
     methods
-        function obj = Progress(nTotal, hasIca)
+        function obj = Progress(nTotal, hasIca, parent)
             obj.NTotal = nTotal;
             obj.T0 = tic;
             obj.First = 'the first one runs every step from the start';
             if hasIca, obj.First = 'ICA is fitted first (once; the slow part)'; end
-            obj.Fig = uifigure('Name', 'PipeCompare: comparing pipelines', ...
-                'Position', pipecompare.utils.onScreen([300 300 520 190]), 'CloseRequestFcn', @(~, ~) obj.requestStop());
-            g = uigridlayout(obj.Fig, [3 1]); g.RowHeight = {'1x', 12, 30}; g.Padding = [20 16 20 16]; g.RowSpacing = 14;
+            if nargin < 3 || isempty(parent)
+                obj.Fig = uifigure('Name', 'PipeCompare: comparing pipelines', ...
+                    'Position', pipecompare.utils.onScreen([300 300 520 190]), 'CloseRequestFcn', @(~, ~) obj.requestStop());
+                g = uigridlayout(obj.Fig, [3 1]); obj.Root = obj.Fig;
+            else
+                obj.Fig = ancestor(parent, 'figure');
+                g = uigridlayout(parent, [3 1]); obj.Root = g;
+            end
+            g.RowHeight = {'1x', 12, 30}; g.Padding = [20 16 20 16]; g.RowSpacing = 14;
             obj.Message = uilabel(g, 'Text', '', 'WordWrap', 'on', 'VerticalAlignment', 'top');
             obj.Track = uipanel(g, 'BorderType', 'none', 'BackgroundColor', [0.78 0.78 0.78]);
             obj.Fill = uipanel(obj.Track, 'BorderType', 'none', 'BackgroundColor', [0.26 0.58 0.95], 'Position', [0 0 1 12]);
@@ -55,7 +65,7 @@ classdef Progress < handle
 
         function delete(obj)
             if ~isempty(obj.Timer) && isvalid(obj.Timer), stop(obj.Timer); delete(obj.Timer); end
-            if ~isempty(obj.Fig) && isvalid(obj.Fig), delete(obj.Fig); end
+            if ~isempty(obj.Root) && isvalid(obj.Root), delete(obj.Root); end
         end
 
         function requestStop(obj)
@@ -68,7 +78,7 @@ classdef Progress < handle
         function stop = step(obj, n, in)
             % n more pipelines are finished (0 = only asking); in: the step
             % that starts now (optional)
-            if isempty(obj.Fig) || ~isvalid(obj.Fig), stop = true; return; end   % the window is gone: stop as well
+            if isempty(obj.Root) || ~isvalid(obj.Root), stop = true; return; end   % the window is gone: stop as well
             obj.NDone = obj.NDone + n;
             if nargin > 2
                 try, obj.Step = pipecompare.gui.Progress.stepText(in); catch, obj.Step = ''; end   % never stops a search
@@ -86,7 +96,7 @@ classdef Progress < handle
 
         function refresh(obj)
             % the window's text and bar: pipelines done, the step now, the time so far
-            if isempty(obj.Fig) || ~isvalid(obj.Fig), return; end
+            if isempty(obj.Root) || ~isvalid(obj.Root), return; end
             if obj.CancelRequested
                 obj.Message.Text = 'Stopping after the current step...';
                 obj.StopButton.Enable = 'off';

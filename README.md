@@ -187,6 +187,10 @@ Along the way PipeCompare also takes care of the following, so you do not have t
 
 ## Features
 
+- **One window for everything.** `pipecompare.start` (or *Tools > PipeCompare > PipeCompare
+  window…*) opens the PipeCompare window: open the recording, add channel locations, choose what
+  to compare (simple or advanced), follow the progress, read the result and save the cleaned data
+  and the script, all in one window and without EEGLAB's main window. The EEGLAB menus stay.
 - **Works on the dataset you have open.** Reads the current EEGLAB state (continuous or epoched
   data, channel locations, ICA decomposition, reference, sampling rate) and parses `EEG.history`,
   so earlier processing is taken into account.
@@ -219,8 +223,8 @@ Along the way PipeCompare also takes care of the following, so you do not have t
 PipeCompare replaces the preprocessing part of a single-recording EEGLAB analysis:
 
 1. **Before PipeCompare** (done by you): import the recording, add channel locations
-   (*Edit > Channel locations*), and, if needed, remove channels that are not EEG or that you know
-   are broken.
+   (*Edit > Channel locations*, or both on the *Import* page of the PipeCompare window), and, if
+   needed, remove channels that are not EEG or that you know are broken.
 2. **PipeCompare**: filtering, reference, bad-channel detection and interpolation, ICA with
    ICLabel, epoching, baseline correction and epoch rejection. These are the steps it compares, so
    they should not be applied beforehand.
@@ -243,7 +247,7 @@ epochs) from each recording's own data.
 | Component | Requirement |
 |---|---|
 | MATLAB | R2021b or later (see the tested versions below). GNU Octave is not supported: the interface uses `uifigure`. |
-| [EEGLAB](https://github.com/sccn/eeglab) | 2022.0 or later. The PipeCompare menu and *Add EEGLAB menu step…* need EEGLAB's main window; scripts also run after `eeglab nogui` |
+| [EEGLAB](https://github.com/sccn/eeglab) | 2022.0 or later. The PipeCompare window needs EEGLAB on the MATLAB path but not its main window (it starts EEGLAB without it); the PipeCompare menu and *Add EEGLAB menu step…* need EEGLAB's main window; scripts also run after `eeglab nogui` |
 | EEGLAB plugins | firfilt (bundled with EEGLAB); ICLabel for IC removal; clean_rawdata for ASR |
 | Optional | Parallel Computing Toolbox, for parallel execution; Signal Processing Toolbox, for ASR at sampling rates other than 100, 128, 200, 256, 300, 500 and 512 Hz and for faster low-frequency high-pass filtering |
 
@@ -318,6 +322,66 @@ pipecompare_setup                         % run from the PipeCompare folder
 `eeglab` call, because EEGLAB rebuilds its menus.
 
 ## Quick start
+
+There are three ways to start: the PipeCompare window (everything in one window), EEGLAB's menu
+(the same dialogs on the dataset open in EEGLAB), or the command line. They use the same
+comparison and give the same results.
+
+### In the PipeCompare window
+
+Type `pipecompare.start` in MATLAB's Command Window, or choose **Tools > PipeCompare > PipeCompare
+window…** in EEGLAB. EEGLAB must be on the MATLAB path; its main window does not have to be open
+(when EEGLAB has not been started yet, the window starts it without its main window). If
+PipeCompare was installed from EEGLAB's extension manager, it is on the path once EEGLAB has
+started, so type `eeglab nogui; pipecompare.start`. Calling it again brings the open window to the
+front.
+
+The steps are listed on the left, in the order you do them; clicking one shows its page:
+
+1. **Import.** **Open data file…** reads a recording with EEGLAB's own import for its format:
+   `.set` directly, EDF, BDF and GDF through EEGLAB's BIOSIG import, other formats (BrainVision,
+   Neuroscan, EGI and more) through EEGLAB's FILE-IO import. If EEGLAB lacks the import for a
+   format, it offers to install it. The recording becomes a new EEGLAB dataset, the current one,
+   so EEGLAB's menus and the Command Window see it too; a dataset that is already current in
+   EEGLAB is used as it is. The page describes the dataset (channels, sampling rate, length or
+   epochs, event types) and says which channels have positions. **Channel locations** adds them:
+   **Look up standard positions** finds each channel's position in the standard 10-05 system by
+   its label (EEGLAB's channel lookup, with the standard file of its DIPFIT plugin); **From a
+   file…** loads the locations file of your cap; **Edit in EEGLAB…** opens EEGLAB's channel
+   editor. Channels whose labels are not standard (for example EOG channels) stay without a
+   position and are named. The change replaces the current dataset and is recorded in its
+   `EEG.history`. Interpolating bad channels and ICLabel need the positions.
+2. **Settings**, in two tabs. **Simple** holds the simple mode's choices, the same as the dialog
+   described [below](#from-the-eeglab-menu) (what to measure, the event types, the steps), with
+   **Run** and **Advanced…** but no Cancel. **Advanced** holds the full advanced panel (every
+   control is described in [docs/PANEL.md](docs/PANEL.md)); it is opened the first time the tab
+   is shown.
+   **Advanced…** in the Simple tab opens a new panel in the Advanced tab with the choices made
+   so far, and the Simple tab keeps them. When the current dataset changes (a file opened,
+   locations added, a pipeline used, or a change made in EEGLAB), the Simple tab is made again
+   for the new data the next time a page is shown.
+3. **Run.** **Run** (Simple tab) or **Run search** (Advanced tab) shows this page: how many
+   pipelines are done, the step running now, the time so far and the time left, and **Stop**,
+   which ends the search and keeps the pipelines already finished, as the progress window of the
+   menu does. While a comparison runs, the other pages wait. If it stops with an error, the
+   message is shown and the window goes back to Settings.
+4. **Results.** When the comparison is done, this page shows the result in plain words: which
+   pipeline to use and why, the table of pipelines, the steps of the selected pipeline, **Show all
+   pipelines**, **Use this pipeline** and **Save script…**, as the result window of the menu (see
+   [Reading the result](#reading-the-result)). It also shows the result of a search run in the
+   Advanced tab, whose own table keeps the details. **Use this pipeline** makes the pipeline the
+   current dataset and goes to Export.
+5. **Export.** **Save dataset (.set)…** saves the current dataset, for example the pipeline just
+   used, as an EEGLAB `.set` file; until then it is in memory only. After **Use this pipeline**,
+   the page says what to do next: the data are cut into epochs (segments for band power) and
+   cleaned, ready to average into ERPs or to compute band power; do not filter, re-reference or
+   reject epochs again. **Save script…** writes the recommended pipeline (or the one selected on
+   Results) as a MATLAB function that runs the same steps on your other recordings.
+
+The window and EEGLAB share the data: the window works on the dataset that is current in EEGLAB
+and stores there what it opens or makes, so you can switch between the window, EEGLAB's menus and
+the Command Window at any time. Closing the window stops a comparison that is running (the
+pipelines already finished are kept in `pipecompare_result`).
 
 ### From the EEGLAB menu
 
@@ -496,7 +560,8 @@ Command Window after a run from `pop_pipecompare`, and the advanced panel shows 
 when you select a result row.
 
 For any EEGLAB step, order search, several components or different constraints, open
-**Advanced…** in the dialog, or **Tools > PipeCompare > Advanced panel…**. The panel defines the
+**Advanced…** in the dialog, **Tools > PipeCompare > Advanced panel…**, or the **Advanced** tab of
+the PipeCompare window. The panel defines the
 same measures as the dialog (ERP components, N2pc and LRP contralateral minus ipsilateral, band
 power). See [docs/PANEL.md](docs/PANEL.md) for a description of every control.
 
@@ -773,6 +838,7 @@ them the same again.
 Open the windows of the menu:
 
 ```matlab
+pipecompare.start                                       % the PipeCompare window (Tools > PipeCompare > PipeCompare window...)
 [EEG, LASTCOM] = pop_pipecompare(EEG); if ~isempty(LASTCOM), eegh(LASTCOM); end   % the simple dialog (Tools > PipeCompare > Compare pipelines...)
 pipecompare.PipeCompare.app();                          % the advanced panel (Tools > PipeCompare > Advanced panel...)
 ```

@@ -1,5 +1,10 @@
 # Panel reference
 
+The simple mode and the advanced panel are also the *Simple* and *Advanced* tabs of the
+PipeCompare window (`pipecompare.start`; see the README, *In the PipeCompare window*), with the
+same controls; there, Run shows its progress and result on the window's *Run* and *Results*
+pages.
+
 ## Simple mode (*Compare pipelines…*, `pop_pipecompare`)
 
 Two choices (what to measure; for ERP, the event types); the steps are preselected:

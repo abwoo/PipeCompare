@@ -3,6 +3,21 @@
 All notable changes. Versions follow `PipeCompare.Version` (`NeuroQC.Version` up to 0.7.1); each
 release has a git tag `vX.Y.Z`.
 
+## Unreleased
+
+- The PipeCompare window (`pipecompare.start`, or *Tools > PipeCompare > PipeCompare window…*):
+  every step in one window, with or without EEGLAB's main window. On the left the steps in order,
+  Import, Settings, Run, Results, Export; Import opens a recording with EEGLAB's own import (.set;
+  EDF, BDF, GDF through BIOSIG; other formats through FILE-IO) and adds channel locations
+  (standard 10-05 positions looked up by label, a locations file, or EEGLAB's channel editor);
+  Settings holds the simple mode and the advanced panel as two tabs; the progress, the results
+  and saving the dataset and the script are pages of the same window. The EEGLAB menus and
+  dialogs are unchanged.
+- `pop_pipecompare` option `progress`: a container in which the progress and Stop are shown
+  instead of a window of their own (the results window is then not opened).
+- *Use this pipeline* no longer opens EEGLAB's main window when it is closed (it only refreshes it
+  when it is open).
+
 ## 0.9.4 (2026-10-09)
 
 - The results say whether the recommended pipeline is practically as good as the best one (its

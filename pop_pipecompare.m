@@ -47,6 +47,10 @@ function [EEG, com, result] = pop_pipecompare(EEG, varargin)
 %   'show'     'on' (default) shows a progress window with a Stop button
 %              (stopping keeps the pipelines already run) and opens the
 %              results window; 'off' does neither
+%   'progress' a container (a page of the PipeCompare window, pipecompare)
+%              in which the progress and Stop are shown instead of a
+%              window of their own; the results window is then not opened
+%              (the caller shows result)
 %
 %   Before the run, the montage check (pipecompare.live.Montage) names
 %   channels that do not resemble their neighbours (labels that may not
@@ -67,14 +71,15 @@ assert(~isempty(EEG.data), 'PipeCompare:NoDataset', 'pop_pipecompare needs a dat
 if nargin < 2
     opts = pipecompare.gui.SimpleDialog.ask(EEG);
     if isempty(opts), return; end                       % cancelled, or continued in the panel
+    opts.progress = [];
 else
     opts = struct('measure', '', 'events', {{}}, 'left', {{}}, 'right', {{}}, 'pool', false, 'window', [], 'band', [], ...
-        'channels', {{}}, 'recipe', 'standard', 'steps', {{}}, 'reference', 'asis', 'segment', 2, 'show', 'on');
+        'channels', {{}}, 'recipe', 'standard', 'steps', {{}}, 'reference', 'asis', 'segment', 2, 'show', 'on', 'progress', []);
     [varargin{:}] = convertStringsToChars(varargin{:});   % "P3" as well as 'P3'
     for k = 1:2:numel(varargin)
         f = lower(char(varargin{k}));
         assert(isfield(opts, f), 'PipeCompare:Simple', ['Unknown option %s (measure, events, left, right, pool, window, ', ...
-            'band, channels, recipe, steps, reference, segment, show).'], f);
+            'band, channels, recipe, steps, reference, segment, show, progress).'], f);
         opts.(f) = varargin{k+1};
     end
     for f = {'events', 'left', 'right'}
@@ -122,7 +127,7 @@ runOpts = struct('dataUnit', state.unitGuess);
 if strcmp(state.unitGuess, 'V'), pipecompare.utils.log('The data are in volts (judged from the amplitude scale); they are compared in uV.'); end
 prog = pipecompare.gui.Progress.empty;
 if ~strcmp(opts.show, 'off')
-    prog = pipecompare.gui.Progress(nTotal, any(strcmp({plan.Slots.id}, 'ica')));
+    prog = pipecompare.gui.Progress(nTotal, any(strcmp({plan.Slots.id}, 'ica')), opts.progress);
     runOpts.progress = @(n, varargin) prog.step(n, varargin{:});
 end
 closeProg = onCleanup(@() delete(prog)); %#ok<NASGU>   % also on an error
@@ -192,7 +197,7 @@ if isempty(recipe), args = [args {'steps', steps}]; else, args = [args {'recipe'
 if strcmp(opts.reference, 'average'), args = [args {'reference', 'average'}]; end
 if strcmp(opts.show, 'off'), args = [args {'show', 'off'}]; end
 com = sprintf('EEG = pop_pipecompare(EEG, %s);', vararg2str(args));
-if ~strcmp(opts.show, 'off'), pipecompare.gui.SimpleResults(result); end
+if ~strcmp(opts.show, 'off') && isempty(opts.progress), pipecompare.gui.SimpleResults(result); end
 end
 
 function restore = keepDiary(logFile)
