@@ -60,6 +60,7 @@ classdef Injection
     %   change the expected values of the channels that remain.
 
     properties (Constant)
+        ShapeFactors = [0.5 1 2]   % shapeSpreads: bump widths, in windows, besides the template
         MinReliability = 0.8   % 'data' template: lowest split-half reliability used
         EyeSimilarity = 0.8    % 'data' template: an eye channel this alike (and twice as large) means a blink
     end
@@ -222,6 +223,83 @@ classdef Injection
             end
         end
 
+        function eyes = eyeChannels(chanlocs)
+            % The eye channels: EOG by type, or non-EEG channels named
+            % EOG/EYE; else the frontal poles (Fp1, Fp2, FPz). Indices.
+            labs = lower({chanlocs.labels});
+            eyes = find(pipecompare.simple.Presets.isNonEeg(chanlocs) & ...
+                ~cellfun(@isempty, regexpi({chanlocs.labels}, 'EOG|EYE', 'once')));
+            if isfield(chanlocs, 'type')
+                ty = arrayfun(@(c) upper(strtrim(char(string(c.type)))), chanlocs(:)', 'UniformOutput', false);
+                eyes = union(eyes, find(ismember(ty, {'EOG', 'HEOG', 'VEOG'})));
+            end
+            if isempty(eyes), eyes = find(ismember(labs, {'fp1', 'fp2', 'fpz'})); end
+            eyes = eyes(:)';
+        end
+
+        function sp = shapeSpreads(S, contract, truth, leaves)
+            % How much each pipeline's filters would change the gain of
+            % each measure if the signal had another shape: sp{li}(j) =
+            % the largest |g_s / g - 1| over the shapes s of
+            % ShapeFactors (bumps as wide at half maximum as that many
+            % times the component's window, at least 50 ms) and the
+            % template used, g_s the gain of leaf li's filters alone on
+            % shape s (window mean, or peak, after epoching and baseline
+            % removal) and g that on the template. The other steps act
+            % on the scalp field or select trials, the same way whatever
+            % the time course, so only the filters make the gain depend
+            % on the shape. 0 for a latency, for band power, for a leaf
+            % without filters (or with a resampling or epoching before its
+            % last filter) and for epoched data. Rank adds the score times
+            % this spread to the bias (the minimax over the shapes:
+            % docs/METHODS.md, section 15).
+            n = numel(leaves);
+            if strcmp(contract.analysis, 'bandpower')
+                sp = repmat({zeros(1, numel(contract.bands))}, n, 1); return;
+            end
+            nJ = numel(contract.components);
+            sp = repmat({zeros(1, nJ)}, n, 1);
+            if isempty(S) || S.trials > 1 || nJ == 0, return; end
+            filt = {'highpass', 'lowpass', 'linenoise'};
+            seqs = cell(n, 1); hp = [];
+            for li = 1:n
+                path = leaves(li).path;
+                types = cellfun(@(i) i.type, path, 'UniformOutput', false);
+                f = find(ismember(types, filt));
+                if isempty(f) || any(ismember(types(1:f(end)), {'resample', 'epoch'})), continue; end
+                seqs{li} = path(f);
+                for q = f(strcmp(types(f), 'highpass')), hp(end+1) = path{q}.params.cutoff; end %#ok<AGROW>
+            end
+            if all(cellfun(@isempty, seqs)), return; end
+            [F0, owner] = shapeCopy(shortCopy(S, contract, hp), contract, truth);
+            [v0, sgn] = shapeValues(F0, contract, owner, []);
+            memo = containers.Map('KeyType', 'char', 'ValueType', 'any');
+            done = containers.Map('KeyType', 'char', 'ValueType', 'any');
+            for li = 1:n
+                seq = seqs{li};
+                if isempty(seq), continue; end
+                key = strjoin(cellfun(@(i) i.key, seq, 'UniformOutput', false), ' > ');
+                if ~isKey(done, key)
+                    F = F0; pre = '';
+                    for q = 1:numel(seq)
+                        pre = [pre ' > ' seq{q}.key]; %#ok<AGROW>
+                        if isKey(memo, pre), F = memo(pre); continue; end
+                        [~, F] = evalc('pipecompare.run.Steps.run(seq{q}, F, struct())');
+                        memo(pre) = F;
+                    end
+                    r = shapeValues(F, contract, owner, sgn) ./ v0;      % gain of each shape
+                    s = zeros(1, nJ);
+                    for j = 1:nJ
+                        if strcmp(contract.components(j).measure, 'peakLatency'), continue; end
+                        rows = find(owner == j);                         % the template first
+                        s(j) = max(abs(r(rows) / r(rows(1)) - 1));
+                    end
+                    done(key) = s;
+                end
+                sp{li} = done(key);
+            end
+        end
+
         function S = noteReference(S, inst)
             % Record the channel set a re-reference step is about to use
             % (called on the injected copy before the step runs).
@@ -362,6 +440,59 @@ for e = 1:numel(C.event), C.event(e).latency = C.event(e).latency - (i1 - 1); en
 C.icaact = [];
 end
 
+function [F, owner] = shapeCopy(C, contract, truth)
+% The continuous copy C (shortCopy) with one channel per component and
+% shape (Injection.shapeSpreads): the template used first, then bumps of
+% each width, at every time-locking event as prepare injects them.
+fs = C.srate;
+tt = (round(contract.epoch(1) * fs):round(contract.epoch(2) * fs)) / fs;
+own = template(tt, contract, truth);
+G = []; owner = [];
+for j = 1:numel(contract.components)
+    win = contract.components(j).window;
+    G = [G; own(j, :)]; owner(end+1) = j; %#ok<AGROW>
+    for f = pipecompare.eval.Injection.ShapeFactors
+        sd = f * max(diff(win), 0.050) / 2.355;
+        G = [G; exp(-0.5 * ((tt - mean(win)) / sd) .^ 2)]; owner(end+1) = j; %#ok<AGROW>
+    end
+end
+F = C;
+F.data = zeros(size(G, 1), C.pnts);
+F.nbchan = size(G, 1);
+F.chanlocs = struct('labels', arrayfun(@(k) sprintf('shape%d', k), 1:F.nbchan, 'UniformOutput', false));
+F.icaact = []; F.icaweights = []; F.icasphere = []; F.icawinv = []; F.icachansind = [];
+codes = contract.allEvents();
+for e = 1:numel(C.event)
+    if ~any(strcmp(strtrim(char(string(C.event(e).type))), codes)), continue; end
+    c0 = round(C.event(e).latency);
+    cols = c0 + round(contract.epoch(1) * fs) + (0:numel(tt)-1);
+    ok = cols >= 1 & cols <= F.pnts;
+    F.data(:, cols(ok)) = F.data(:, cols(ok)) + G(:, ok);
+end
+end
+
+function [v, sgn] = shapeValues(F, contract, owner, sgn)
+% Each channel of a shape copy (shapeCopy) epoched, averaged and baseline
+% removed: its window mean (mean amplitude) or its peak in the direction
+% sgn (peak amplitude; sgn: the sign of the unfiltered window mean, from
+% the first call).
+[~, E] = evalc('pop_epoch(F, contract.allEvents(), contract.epoch, ''epochinfo'', ''yes'')');
+times = E.xmin + (0:E.pnts-1) / E.srate;
+avg = mean(double(E.data), 3);
+if ~isempty(contract.baseline)
+    bl = times >= contract.baseline(1) - 1e-9 & times <= contract.baseline(2) + 1e-9;
+    if any(bl), avg = avg - mean(avg(:, bl), 2); end
+end
+v = nan(1, numel(owner));
+if isempty(sgn), sgn = ones(1, numel(owner)); fill = true; else, fill = false; end
+for k = 1:numel(owner)
+    comp = contract.components(owner(k));
+    w = times >= comp.window(1) - 1e-9 & times <= comp.window(2) + 1e-9;
+    if fill, sgn(k) = sign(mean(avg(k, w))); if sgn(k) == 0, sgn(k) = 1; end, end
+    if strcmp(comp.measure, 'mean'), v(k) = mean(avg(k, w)); else, v(k) = sgn(k) * max(sgn(k) * avg(k, w)); end
+end
+end
+
 function L = toLabels(x, labs)
 % channel indices or labels -> labels
 if isnumeric(x), L = labs(x); else, L = cellstr(x); end
@@ -468,13 +599,7 @@ info = struct('used', false(1, nJ), 'reliability', nan(1, nJ), 'why', {repmat({'
 labs = lower({root.chanlocs.labels});
 % the eye channels (EOG by type or name), else the frontal poles: a blink
 % locked to the stimulus would otherwise pass for the component's shape
-eyes = find(pipecompare.simple.Presets.isNonEeg(root.chanlocs) & ...
-    ~cellfun(@isempty, regexpi({root.chanlocs.labels}, 'EOG|EYE', 'once')));
-if isfield(root.chanlocs, 'type')
-    ty = arrayfun(@(c) upper(strtrim(char(string(c.type)))), root.chanlocs(:)', 'UniformOutput', false);
-    eyes = union(eyes, find(ismember(ty, {'EOG', 'HEOG', 'VEOG'})));
-end
-if isempty(eyes), eyes = find(ismember(labs, {'fp1', 'fp2', 'fpz'})); end
+eyes = pipecompare.eval.Injection.eyeChannels(root.chanlocs);
 for j = 1:nJ
     comp = contract.components(j);
     if contract.isLateral(j), info.why{j} = 'contralateral minus ipsilateral'; continue; end

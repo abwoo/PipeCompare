@@ -14,10 +14,11 @@ classdef Group
     %   - A pipeline passes when it passes on every recording. Recordings on
     %     which no pipeline passes are left out and named (G.leftOut).
     %   - Its group objective is the root mean square over the recordings
-    %     of its gain-corrected SME. Measurement error adds the mean of the
-    %     squared SMEs, divided by the number of recordings, to the
-    %     variance of a group mean, so this is what the group-level test
-    %     loses to noise.
+    %     of its total error (Rank step 3b: the gain-corrected SME with the
+    %     bias of what blinks add and of the signal's unknown shape).
+    %     Measurement error adds the mean of the squared SMEs, divided by
+    %     the number of recordings, to the variance of a group mean, so
+    %     this is what the group-level test loses to noise (and bias).
     %   - Its uncertainty is that of each recording's paired bootstrap of
     %     its trials (Rank.bootstrap, as one recording's ranking), combined
     %     the same way; the pipelines not distinguished from the best and

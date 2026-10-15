@@ -570,7 +570,7 @@ The recommended pipeline is marked with `*`, followed by the best of the others.
 | Column | Meaning |
 |---|---|
 | checks | *passed*: the pipeline met every constraint; *excluded*: it broke one (the reason is under *Show all pipelines*); *error*: a step failed; *not run*: the search was stopped first |
-| noise (SME) | the standardized measurement error of your measure, divided by the share of a known signal the pipeline keeps. Lower is better: the averaged value is measured more precisely |
+| error (noise + bias) | how far your averaged measure is from the truth on average: the noise (the standardized measurement error, SME, divided by the share of a known signal the pipeline keeps) and the bias (what blinks add to the mean, and what the filters would change for another signal shape) together, √(noise² + bias²). Lower is better |
 | trials kept | the smallest share of trials kept in any condition |
 | signal change | how much the pipeline changed the amplitude of the known signal |
 | settings | the settings that differ between the pipelines |
@@ -1273,10 +1273,32 @@ and constraints and ranking options in `help pipecompare.eval.Rank`.
    high-pass for a broad P3. This saves the filtering of the whole recording and everything after
    it for those pipelines. It is done for ERP measures on continuous data, when no resampling or
    epoching comes before the last filter; `'filterCheck', false` turns it off.
-2. **Precision.** Feasible pipelines are scored by their SME, divided by the gain each pipeline
-   applies to the known signal. This makes the comparison one of signal-to-noise ratio, so a
-   pipeline cannot appear more precise just by attenuating everything (Zhang, Garrett & Luck,
-   2024).
+2. **Total error.** Feasible pipelines are scored by how far their measure is from the truth on
+   average: the noise and the bias together, √(noise² + bias²).
+   - The **noise** is the SME divided by the gain each pipeline applies to the known signal. This
+     makes the comparison one of signal-to-noise ratio, so a pipeline cannot appear more precise
+     just by attenuating everything (Zhang, Garrett & Luck, 2024).
+   - The **bias** is what moves the mean the same way in every set of trials, which the SME cannot
+     see. It has two parts. First, what blinks add: blinks time-locked to the stimulus (for
+     example after targets) fall in a share of the trials and move the mean much more than they
+     raise the SME. PipeCompare finds the trials with a blink in the eye channels of the data as
+     they are (EOG channels, else Fp1/Fp2/FPz when they are not measured: an epoch whose eye
+     activity in the window, relative to the baseline, is more than 3 robust SDs above the
+     others'), and for each pipeline computes what the blink trials it keeps add to its mean
+     (their share times the difference of their mean from the other trials'). A pipeline that
+     removed the eye activity, by ICA or by rejecting those trials, adds about nothing. The
+     estimate's own noise is taken off its square, so a bias the data do not show counts about 0.
+     Second, what the signal's shape changes: the gain is measured with one known shape, and a
+     filter changes the gain of a broad, slow component more than that of a narrow one. So each
+     pipeline's filters are also run on bumps 0.5, 1 and 2 times as wide as the window, and the
+     largest change of the gain (the worst case) times the measured mean counts as bias.
+   - The rejection limit, ICLabel threshold and components chosen from the data minimize the same
+     total error (without the shape part, which they do not change). The results table shows the
+     total error (*error (noise + bias)*); the result says how much blinks add in the recommended
+     pipeline, how much its filters could change the measure for another shape, or that there is
+     no eye channel to check blinks with. In the table of the ranking: `objective` (total error),
+     `noise`, `bias`, and per measure `eyeBias_…` (µV, the condition where it is largest) and
+     `shapeSpread_…`.
 3. **Uncertainty.** A paired bootstrap over trials, with simultaneous intervals across all pairs
    of candidates (White, 2000; Romano & Wolf, 2005), finds the set of pipelines that the data
    cannot distinguish from the best.
@@ -1295,7 +1317,9 @@ and constraints and ranking options in `help pipecompare.eval.Rank`.
    channels, ICA, rejected epochs) were made on all trials; only the choice between pipelines is
    held out.
 6. **Recommendation.** Within the set of step 3, PipeCompare recommends the least aggressive
-   pipeline: the one with the highest trial retention, then the least signal distortion.
+   pipeline: the one with the highest trial retention, then the least signal distortion. A
+   pipeline whose bias is more than half its noise is recommended only when no pipeline with less
+   bias is in that set: keeping more trials is no reason to keep the blinks they carry.
 7. **Stability.** In each bootstrap resample of step 3, steps 3 and 6 are done again on the
    resampled values (with the same critical value), and PipeCompare counts how often each
    pipeline would be recommended (the bootstrap selection frequency; Efron, 2014). The table has
@@ -1321,7 +1345,7 @@ descriptive and not used in the ranking. The full derivations are in
 
 ## Outputs
 
-- A ranked table of all pipelines: status, objective (gain-corrected SME), simultaneous interval
+- A ranked table of all pipelines: status, objective (total error: gain-corrected SME and bias), simultaneous interval
   of its difference from the best, trial retention, interpolation, signal-check results, and the
   reason for each exclusion.
 - The recommended pipeline and why it was chosen.

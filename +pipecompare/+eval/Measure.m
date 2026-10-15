@@ -47,6 +47,10 @@ classdef Measure
     %   every epoch equally, so they do not give the ERP a weighted
     %   pipeline was scored on.
 
+    properties (Constant)
+        BlinkZ = 3   % an epoch's eye activity this many robust SDs above the others' is a blink
+    end
+
     methods (Static)
         function o = defaults()
             o = struct('nBootPeak', 1000, 'seed', 1);
@@ -68,6 +72,85 @@ classdef Measure
             % consecutive segments of one recording are not independent:
             % Rank resamples them in blocks (moving-block bootstrap)
             ref.segmented = contract.isSegmented();
+            [ref.blink, ref.blinkInfo] = pipecompare.eval.Measure.blinks(EEG, contract, ref);
+        end
+
+        function [B, info] = blinks(EEG, contract, ref)
+            % Which reference trials have a blink (or other eye movement)
+            % in each mean-amplitude component's score: B{j}{c} (ref.n(c) x
+            % 1 logical) for component j and condition c, {} when it cannot
+            % be told (band power, or no eye channel). An epoch's eye
+            % activity in component j is the largest, over the eye channels
+            % (Injection.eyeChannels: EOG by type or name, else Fp1, Fp2,
+            % FPz; never a measured electrode), of the absolute window mean
+            % minus the baseline mean of the data as they are (before any
+            % processing): what an eye artifact adds to the score is
+            % carried by that difference. It is a blink when its robust z
+            % (median and MAD over all reference trials) exceeds BlinkZ.
+            % info: channels (labels), share (of the trials, per component).
+            B = {}; info = struct('channels', {{}}, 'share', []);
+            if ~strcmp(contract.analysis, 'erp') || isempty(contract.components), return; end
+            eyes = pipecompare.eval.Injection.eyeChannels(EEG.chanlocs);
+            eyes = setdiff(eyes, find(ismember(lower({EEG.chanlocs.labels}), lower(contract.allRoi()))));
+            if isempty(eyes), return; end
+            info.channels = {EEG.chanlocs(eyes).labels};
+            E = EEG; E.icaact = []; E.icaweights = []; E.icasphere = []; E.icawinv = []; E.icachansind = [];
+            [~, E] = evalc('pop_select(E, ''channel'', eyes)');
+            if E.trials == 1
+                [~, E] = evalc('pop_epoch(E, contract.allEvents(), contract.epoch, ''epochinfo'', ''yes'')');
+            end
+            T = pipecompare.eval.Measure.trials(E, contract, true);
+            times = E.xmin + (0:E.pnts-1) / E.srate;
+            D = double(E.data);
+            if ~isempty(contract.baseline)
+                bsel = times >= contract.baseline(1) - 1e-9 & times <= contract.baseline(2) + 1e-9;
+                if any(bsel), D = D - mean(D(:, bsel, :), 2); end
+            end
+            nJ = numel(contract.components); nC = numel(ref.ids);
+            B = cell(1, nJ); info.share = nan(1, nJ);
+            for j = 1:nJ
+                B{j} = arrayfun(@(c) false(ref.n(c), 1), 1:nC, 'UniformOutput', false);
+                comp = contract.components(j);
+                w = times >= comp.window(1) - 1e-9 & times <= comp.window(2) + 1e-9;
+                if ~strcmp(comp.measure, 'mean') || ~any(w), continue; end
+                v = reshape(max(abs(mean(D(:, w, :), 2)), [], 1), [], 1);
+                v = v(T.epoch);
+                mad = max(1.4826 * median(abs(v - median(v))), eps);
+                isB = (v - median(v)) / mad > pipecompare.eval.Measure.BlinkZ;
+                for c = 1:nC
+                    r = find(T.cond == c);
+                    [tf, loc] = ismember(T.id(r), ref.ids{c});
+                    B{j}{c}(loc(tf)) = isB(r(tf));
+                end
+                info.share(j) = mean(isB);
+            end
+        end
+
+        function [bias, sq] = eyeBias(x, b, K)
+            % What the blink trials add to a weighted mean score. x: scores
+            % (n x 1, NaN = absent), b: blink trials (n x 1 logical), K:
+            % weights (n x L: a column per mean, e.g. the trials kept at a
+            % limit, a bootstrap resample's counts, or trial weights). The
+            % mean is sum(K .* x) / sum(K); with blink share p (of the
+            % weight) and blink and other trials' means mB and mN, it is mN
+            % + p (mB - mN): bias = p (mB - mN), what the blinks add. The
+            % estimate is noisy, so its square has its variance taken off
+            % (a bias the data do not show counts about 0): sq =
+            % max(bias^2 - its variance, 0), the variance p^2 s^2
+            % (1/nB + 1/nN), s^2 the scores' variance. 0 when no kept trial
+            % (or every kept trial) has a blink: nothing to compare. 1 x L.
+            ok = ~isnan(x); x(~ok) = 0; b = double(b(:) & ok(:)); o = double(ok(:)) - b;
+            K = double(K) .* double(ok(:));
+            nB = b' * K; nN = o' * K; n = nB + nN;
+            sB = (x .* b)' * K; sN = (x .* o)' * K;
+            s2 = (x .^ 2)' * K;
+            mu = (sB + sN) ./ n;
+            v = max(s2 ./ n - mu .^ 2, 0) .* n ./ max(n - 1, eps);
+            p = nB ./ n;
+            bias = p .* (sB ./ nB - sN ./ nN);
+            sq = max(bias .^ 2 - p .^ 2 .* v .* (1 ./ nB + 1 ./ nN), 0);
+            none = ~(nB > 0 & nN > 0);
+            bias(none) = 0; sq(none) = 0;
         end
 
         function m = candidate(EEG, contract, ref, opts)
@@ -90,7 +173,8 @@ classdef Measure
                 m.retention(c) = m.kept(c) / ref.n(c);
             end
             objs = repmat(struct('name', '', 'unit', '', 'kind', '', 'polarity', '', 'times', [], ...
-                'X', {{}}, 'w', {{}}, 'estimate', [], 'sme', [], 'agg', NaN), 1, nO);
+                'X', {{}}, 'w', {{}}, 'estimate', [], 'sme', [], 'agg', NaN, 'eyeBias', [], 'eyeBiasSq', []), 1, nO);
+            blink = pipecompare.utils.fieldOr(ref, 'blink', {});
             % the epochs' weights (weight_trials), by the trial's urevent
             wRow = [];
             tw = pipecompare.eval.Measure.storedWeights(EEG);
@@ -105,6 +189,9 @@ classdef Measure
                 [o.kind, o.polarity] = objKind(contract, k);
                 o.times = T.times{k};
                 o.X = cell(1, nC); o.estimate = nan(1, nC); o.sme = nan(1, nC);
+                % what blinks add to each condition's mean (Measure.eyeBias;
+                % 0 without eye channels, for peak measures and band power)
+                o.eyeBias = zeros(1, nC); o.eyeBiasSq = zeros(1, nC);
                 if ~isempty(wRow), o.w = cell(1, nC); end
                 for c = 1:nC
                     X = nan(ref.n(c), size(T.data{k}, 2));
@@ -115,6 +202,10 @@ classdef Measure
                         w = nan(ref.n(c), 1); w(rowOf{c}.loc) = wRow(rowOf{c}.rows); o.w{c} = w;
                     end
                     [o.estimate(c), o.sme(c)] = pipecompare.eval.Measure.estimate(o, X, opts, k * 1000 + c, w);
+                    if strcmp(o.kind, 'scalar') && numel(blink) >= k && ~isempty(blink{k})
+                        K = ones(ref.n(c), 1); if ~isempty(w), K = w; K(isnan(K)) = 0; end
+                        [o.eyeBias(c), o.eyeBiasSq(c)] = pipecompare.eval.Measure.eyeBias(X(:, 1), blink{k}{c}, K);
+                    end
                 end
                 o.agg = sqrt(mean(o.sme .^ 2));
                 objs(k) = o;

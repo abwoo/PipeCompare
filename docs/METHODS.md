@@ -99,7 +99,7 @@ checks the difference of the two. A difference between independent conditions (M
 minus standard) needs no such scoring: its SME is √(SME₁² + SME₂²), √2 times the root mean
 square over the two conditions, so the ranking is the same.
 
-## 2. Gain-corrected SME (the ranking objective)
+## 2. Gain-corrected SME (the noise part of the ranking objective)
 
 **Problem with raw SME.** SME is in µV, so it is not invariant to the scale of the data. A pipeline
 that multiplies signal and noise by *c* < 1 lowers SME by the factor *c* without measuring the
@@ -754,6 +754,82 @@ the choice among those not distinguished from the best (highest minimum retentio
 recordings, then smallest largest amplitude error, then lowest objective) follow section 3. The
 uncertainty is that of these recordings' trials, not of sampling other participants: the choice is
 for this group's data, as the single-recording choice is for one recording's.
+
+## 15. Total error: noise and bias together
+
+[`pipecompare.eval.Rank` step 3b; `pipecompare.eval.Measure.blinks`, `Measure.eyeBias`;
+`pipecompare.eval.Injection.shapeSpreads`] The SME (section 1) measures how much a mean would vary
+from one set of trials to another. It does not see an error that moves every set the same way.
+The objective is therefore the root mean square error of each gain-corrected condition mean,
+
+  *J* = √(mean over measures and conditions of (SME/*g*)² + *b*²),
+
+with *b* = (*e* + |ȳ| *s*) / *g* the bias of that mean (columns `noise` = SME/*g* alone and `bias` =
+*b* alone; *J*² = noise² + bias²). It has two parts, each computed from the data and the
+pipeline's own processing.
+
+**What blinks add (*e*).** A blink (or other eye movement) time-locked to the stimulus, as after
+targets in an oddball or n-back task, falls in a share *p* of the trials and adds about *d* µV to
+their score at the measured electrodes. The mean moves by *p d*; the SME grows only by the spread
+*d*·√(*p*(1−*p*)) adds to the trials' spread, divided by √*N*. Simulated (40 trials per condition,
+SME 0.94 µV): with *p* = 0.3 and *d* = 3 µV the SME grows 3 % while the mean moves 0.9 µV, one
+SME; with *p* = 0.5, 3 % and 1.6 SME. A choice by SME alone keeps such trials (within the
+equivalence margin, the least aggressive pipeline is recommended), and epoch rejection does not
+test the EOG channels.
+
+The blink trials are found once, on the data as they are before any processing: for each
+mean-amplitude component, an epoch's eye activity is the largest, over the eye channels (EOG by
+type or name, else Fp1, Fp2, FPz; never a measured electrode), of |window mean − baseline mean|,
+the part of an eye artifact that reaches a score; it is a blink when its robust *z* (median and
+MAD over all trials) exceeds 3 (`Measure.BlinkZ`). Then, for each pipeline and condition, over the
+trials it keeps (with their weights *w*, when weighted), with *p* the blink trials' share of the
+weight and *m*_B, *m*_N the weighted mean scores of the blink and other trials,
+
+  ȳ = *m*_N + *p* (*m*_B − *m*_N),  *e* = *p* (*m*_B − *m*_N):
+
+what the blink trials add to the mean (a pipeline that removed the eye activity, by ICA or by
+rejecting those trials, has *e* ≈ 0). *e* is itself an estimate; its square is used with its
+variance taken off, *e*² − *p*² *s*² (1/*n*_B + 1/*n*_N), floored at 0 (*s*² the scores' variance), so a
+bias the data do not show counts about 0 (`test_statistics/testWhatBlinksAddToTheMean`). In the
+bootstrap (section 3) *e* is recomputed in every resample. A difference of the blink trials'
+mean that is real brain activity (a larger P3 in the trials with a blink) is counted as bias too;
+using the blink's size only to select the trials, not as a regressor, keeps frontal brain activity
+that correlates with the measured electrodes from being read as eye activity.
+
+**What the signal's shape changes (*s*).** The gain *g* (section 2) is measured with one known
+shape (section 4). The real component's shape is not known, and a filter changes the gain of a
+broad or slow component more than that of a narrow one. Simulated with EEGLAB's default
+high-pass design, the window mean of a P3 at 300–600 ms after 0.5 Hz: −3.3 % for the bump, −3.4 %
+for a recording's own average (faded outside the window), −5.5 % for a P3 with a slow tail to
+900 ms; after 1 Hz: −20 %, −20 % and −28 %. So *s* is the largest relative change of the gain over a
+family of shapes: the template used and bumps as wide at half maximum as 0.5, 1 and 2 times the
+window (at least 50 ms) (`Injection.ShapeFactors`), the worst case over the family, a minimax.
+Only the filters make the gain depend on the time course: re-referencing, interpolation and IC
+removal act on the scalp field, and rejection and weighting select trials. So *s* is computed
+with each pipeline's filters alone on a short copy of the signal, once per filter sequence; *s* = 0
+without filters, for latencies, band power and epoched data. *b* uses |ȳ| *s*, the change of the
+measured mean if the gain were off by *s*.
+
+**Inside the pipelines.** The rejection limit and the ICLabel threshold chosen from the data
+(sections 9c and 9d) and the components chosen by their effect on the noise (9g) minimize the
+same total error, with *e* (the shape part depends on the filters, not on these choices, so it is
+left out there); the selection check (section 3) makes them again on half of the trials with it.
+Fine-tuned cutoffs (9e) use the *s* of each pair of cutoffs.
+
+**Recommendation.** Among the pipelines not distinguished from the best, one whose bias is above
+half its noise (`Rank.BiasShare`) is recommended only when none below it is among them: keeping
+more trials is no reason to keep what they carry in.
+
+**Simulation.** `test_engine/testBlinksCountInTheTotalError`: blinks after 30 % of the targets;
+the estimated *e* is within 3 standard errors of what the blinks add in fact (the same data
+without them), rejecting the blink trials leaves almost none, and that pipeline is recommended.
+`test_engine/testShapeSpreadGrowsWithTheHighPass`: *s* is 0 without a filter, below 2 % at 0.1 Hz,
+above 10 % at 1 Hz.
+
+**Limits.** Without an eye channel (EOG, or a frontal pole that is not measured) *e* is not
+estimated, and the result says so. Blinks in more than half of the trials defeat the robust *z*.
+Eye activity that does not reach the eye channels (small saccades) is not seen. The shape family
+covers widths, not every shape.
 
 ## References
 

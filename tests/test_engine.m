@@ -866,6 +866,7 @@ EEG = nqc_synth(struct('seconds', 150, 'nPerCond', 30));
 [~, E] = evalc('nqc_epoched(EEG)');
 c = nqc_c();
 ref = pipecompare.eval.Measure.reference(E, c);
+ref.blink = {};   % the SME part alone (what blinks add: testBlinksCountInTheTotalError)
 in = struct('type', 'reject_threshold', 'params', struct('uv', 'auto', 'exclude', {{}}), 'key', 'rej', 'slot', 'rej', 'label', 'rej');
 x = struct('contract', c, 'highpass', 0, 'ref', ref, 'rank', struct());
 [E2, coms, info] = pipecompare.run.Steps.run(in, E, x);
@@ -952,6 +953,7 @@ q(1:6) = [0.97 0.9 0.8 0.65 0.55 0.45];      % 5 components over 0.5: 6 sets wit
 q(strcmpi({EEG.chanlocs.labels}, 'Pz')) = 0.6;
 q = single(q);
 ref = pipecompare.eval.Measure.reference(EEG, c);
+ref.blink = {};   % the SME part alone (what blinks add: testBlinksCountInTheTotalError)
 [S, truth] = pipecompare.eval.Injection.prepare(EEG, c, ref);
 ins = @(type, params) struct('type', type, 'params', params, 'key', type, 'slot', type, 'label', type);
 after = {ins('epoch', struct()), ins('baseline', struct()), ins('reject_threshold', struct('uv', 'auto', 'exclude', {{}}))};
@@ -1034,6 +1036,7 @@ EEG.data = EEG.data + single(A(:, evk) * p3);
 EEG.icawinv = A; EEG.icaweights = inv(A); EEG.icasphere = eye(n); EEG.icachansind = 1:n;
 EEG.icaact = []; EEG = eeg_checkset(EEG);
 ref = pipecompare.eval.Measure.reference(EEG, c);
+ref.blink = {};   % the SME part alone (what blinks add: testBlinksCountInTheTotalError)
 [S, truth] = pipecompare.eval.Injection.prepare(EEG, c, ref);
 ins = @(type, params) struct('type', type, 'params', params, 'key', type, 'slot', type, 'label', type);
 after = {ins('epoch', struct()), ins('baseline', struct()), ins('reject_threshold', struct('uv', 'auto', 'exclude', {{}}))};
@@ -1355,6 +1358,67 @@ for k = feas
         k, r.labels{k}, mat2str(o.estimate / gk, 3), mat2str(want, 3), mat2str(err, 2));
     verifyLessThan(tc, err, 3, r.labels{k});
 end
+end
+
+function testBlinksCountInTheTotalError(tc)
+% Simulation: in 30% of the target trials a blink time-locked to the
+% stimulus falls in the P3 window. It moves the target mean much more than
+% it raises the SME. The estimate of what the blinks add (eyeBias) is
+% close to what they add in fact (the same pipeline on the same data
+% without those blinks: everything else is drawn the same), a pipeline
+% that rejects the blink trials adds almost nothing, and it is
+% recommended.
+o = struct('seconds', 300, 'nPerCond', 80, 'lockedBlinks', 0.3, 'lockedBlinkUv', 1000, 'artifactTrials', 0, 'blinkRate', 0);
+[EEG, truth] = nqc_synth(o);
+o.lockedBlinks = 0; EEG0 = nqc_synth(o);
+nqc_setBase(EEG);
+c = pipecompare.eval.Contract('conditions', {'target', {'11'}; 'standard', {'31'}}, ...
+    'epoch', [-0.2 1.0], 'baseline', [-0.2 0], 'components', {'P3', [0.30 0.50], truth.roi});
+p = pipecompare.plan.Plan();
+p = p.add('epoch'); p = p.add('baseline');
+p = p.add('reject_threshold', 'uv', {1000, 100}, 'exclude', {{'EOG1', 'EOG2'}});
+r = pipecompare.PipeCompare.optimize(p, c);
+verifyEqual(tc, sort(r.ref.blinkInfo.channels), {'EOG1', 'EOG2'});
+T = r.ranking.table;
+kAll = find(contains(r.labels, '1000')); kRej = setdiff(1:2, kAll);
+verifyTrue(tc, all(strcmp(T.status, 'feasible')), strjoin(T.reason, '; '));
+% what the blinks add in fact, to the target mean of the pipeline keeping every trial
+[~, E1] = evalc('nqc_epoched(EEG)'); [~, E0] = evalc('nqc_epoched(EEG0)');
+m1 = pipecompare.eval.Measure.candidate(E1, c, r.ref); m0 = pipecompare.eval.Measure.candidate(E0, c, r.ref);
+actual = m1.objectives(1).estimate(1) - m0.objectives(1).estimate(1);
+o1 = r.cands(kAll).m.objectives(1);
+x = o1.X{1}(:, 1); b = r.ref.blink{1}{1}; pb = mean(b);
+se = pb * std(x) * sqrt(1 / sum(b) + 1 / sum(~b));
+fprintf(['blinks: they add %.2f uV to the target mean; estimated %.2f uV (SE %.2f); rejecting them: %.2f uV; ', ...
+    'noise %.3f keeping them, %.3f rejecting them\n'], actual, T.eyeBias_P3(kAll), se, T.eyeBias_P3(kRej), T.noise(kAll), T.noise(kRej));
+verifyGreaterThan(tc, actual, 2 * se);                            % a real bias
+verifyLessThan(tc, abs(T.eyeBias_P3(kAll) - actual), 3 * se);
+verifyLessThan(tc, abs(T.eyeBias_P3(kRej)), abs(T.eyeBias_P3(kAll)) / 4);
+verifyEqual(tc, r.ranking.recommended, kRej);
+r2 = r; r2.ranking.recommended = kAll;                            % the results' words for the other one
+verifyTrue(tc, contains(pipecompare.simple.Presets.biasText(r2), 'blinks in the trials it keeps'), pipecompare.simple.Presets.biasText(r2));
+% the total error: noise and bias together
+verifyEqual(tc, T.objective, sqrt(T.noise .^ 2 + T.bias .^ 2), 'RelTol', 1e-9);
+end
+
+function testShapeSpreadGrowsWithTheHighPass(tc)
+% How much a pipeline's filters would change the gain for another signal
+% shape: none without a filter, small for a 0.1 Hz high-pass, larger at
+% 1 Hz; a low-pass at 30 Hz changes the broad P3 shapes little.
+EEG = nqc_synth(struct('seconds', 120, 'nPerCond', 20));
+c = nqc_c();
+ref = pipecompare.eval.Measure.reference(EEG, c);
+S = pipecompare.eval.Injection.prepare(EEG, c, ref);
+ins = @(type, v) struct('type', type, 'params', struct('cutoff', v), 'key', sprintf('%s%g', type, v), 'slot', type, 'label', type);
+leaves = struct('path', {{ins('epoch', 0)}, {ins('highpass', 0.1)}, {ins('highpass', 1)}, {ins('lowpass', 30)}});
+sp = pipecompare.eval.Injection.shapeSpreads(S, c, struct('kind', 'erp'), leaves);
+sp = [sp{:}];
+fprintf('shape spread: none %.3f, HP 0.1 %.3f, HP 1 %.3f, LP 30 %.3f\n', sp);
+verifyEqual(tc, sp(1), 0);
+verifyLessThan(tc, sp(2), 0.02);
+verifyGreaterThan(tc, sp(3), 0.1);
+verifyGreaterThan(tc, sp(3), 5 * sp(2));
+verifyLessThan(tc, sp(4), 0.05);
 end
 
 function testRejectingEpochsForTheirLargeComponentIsReported(tc)

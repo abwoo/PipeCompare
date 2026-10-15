@@ -138,7 +138,7 @@ classdef IcThreshold
                 best = F(find(f(F) == min(f(F)), 1));     % ties: fewer components
                 Bq = zeros(numel(F), opts.nBoot);
                 for i = 1:numel(F)
-                    Bq(i, :) = pipecompare.eval.Threshold.bootstrap(X{F(i)}, M{F(i)}, u(F(i)), opts, ref);
+                    Bq(i, :) = pipecompare.eval.Threshold.bootstrap(X{F(i)}, M{F(i)}, u(F(i)), opts, ref, C{F(i)});
                 end
                 [keep, equiv] = pipecompare.eval.Rank.confidenceSet(f(F)', Bq, find(F == best), ...
                     opts.alpha, opts.equivalenceMargin);
@@ -201,7 +201,7 @@ classdef IcThreshold
                 best = F(find(f(F) == min(f(F)), 1));     % ties: fewer components
                 Bq = zeros(numel(F), opts.nBoot);
                 for i = 1:numel(F)
-                    Bq(i, :) = pipecompare.eval.Threshold.bootstrap(X{F(i)}, M{F(i)}, u(F(i)), opts, ref);
+                    Bq(i, :) = pipecompare.eval.Threshold.bootstrap(X{F(i)}, M{F(i)}, u(F(i)), opts, ref, C{F(i)});
                 end
                 [keep, equiv] = pipecompare.eval.Rank.confidenceSet(f(F)', Bq, find(F == best), ...
                     opts.alpha, opts.equivalenceMargin);

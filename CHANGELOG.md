@@ -5,6 +5,18 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- Pipelines are ranked by their total error, √(noise² + bias²), instead of the noise alone. The
+  noise is the gain-corrected SME as before. The bias is what moves the mean the same way in
+  every set of trials, which the SME cannot see: what the trials with a blink add to each
+  condition's mean (blink trials found in the eye channels of the data as they are; for each
+  pipeline, their share of the trials it keeps times the difference of their mean from the
+  others', with the estimate's own noise taken off), and how much the pipeline's filters would
+  change the measure if the signal had another shape (bumps 0.5, 1 and 2 windows wide; the worst
+  case). The rejection limit, ICLabel threshold and components chosen from the data minimize the
+  same total error, a pipeline whose bias is above half its noise is recommended only when no
+  less biased one is as good, and the result says how much blinks add in the recommended
+  pipeline (or that no eye channel let them be checked). Ranking table: `noise`, `bias`,
+  `eyeBias_…`, `shapeSpread_…`. Method: docs/METHODS.md, section 15.
 - One pipeline for a group of recordings (`pipecompare.Group.run`, `pipecompare.Group.writeScript`):
   every recording is compared as `pop_pipecompare` does; a pipeline counts when it passes on
   every recording, ranked by the root mean square of its gain-corrected SME over the recordings,

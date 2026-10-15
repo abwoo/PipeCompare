@@ -577,9 +577,9 @@ classdef Presets
             margin = 100 * R.options.equivalenceMargin;
             if k ~= b.best && isfinite(T.diffHiKept(k)) && T.objective(b.best) > 0
                 if T.equivalent(k)
-                    t = sprintf('Its noise is within %.0f%% of the best one''s, a negligible difference.', margin);
+                    t = sprintf('Its error is within %.0f%% of the best one''s, a negligible difference.', margin);
                 else
-                    t = sprintf(['With this many trials it could still be up to %.0f%% noisier than the best one; ', ...
+                    t = sprintf(['With this many trials its error could still be up to %.0f%% larger than the best one''s; ', ...
                         'more trials would tell them apart.'], 100 * T.diffHiKept(k) / T.objective(b.best));
                 end
             end
@@ -592,9 +592,9 @@ classdef Presets
                     on = 'trials not used to choose it';
                 end
                 if cf.overstatement < 0.02
-                    u = sprintf('Checked on %s, the best pipeline''s noise is as low as it looks here: its advantage is not luck.', on);
+                    u = sprintf('Checked on %s, the best pipeline''s error is as low as it looks here: its advantage is not luck.', on);
                 else
-                    u = sprintf(['Checked on %s, the best pipeline''s noise is about %.0f%% higher than ', ...
+                    u = sprintf(['Checked on %s, the best pipeline''s error is about %.0f%% higher than ', ...
                         'it looks here: part of its advantage over the others is luck.'], on, 100 * cf.overstatement);
                 end
                 t = strtrim(sprintf('%s %s', t, u));
@@ -780,6 +780,40 @@ classdef Presets
                 c.rejectedEpochs, c.id, pipecompare.utils.ternary(numel(top) > 1, 'These channels', 'This channel'), ...
                 pipecompare.utils.ternary(numel(top) > 1, 'them', 'it'), pipecompare.utils.ternary(numel(top) > 1, 'they are', 'it is'), ...
                 pipecompare.utils.ternary(numel(top) > 1, 'them', 'it'), pipecompare.utils.ternary(numel(top) > 1, 'them', 'it'));
+        end
+
+        function t = biasText(result)
+            % The bias in the recommended pipeline's total error, in words
+            % (Rank step 3b): what blinks add to each measure's mean and
+            % how much its filters could change a measure for another
+            % signal shape; or that no eye channel let blinks be checked.
+            % '' when there is nothing to say.
+            t = '';
+            if ~isfield(result, 'ranking') || ~isfield(result.ranking, 'recommended') || ...
+                    isempty(result.ranking.recommended) || ~isfield(result, 'ref'), return; end
+            R = result.ranking; T = R.table; ref = result.ref; k = R.recommended;
+            parts = {};
+            for o = 1:numel(ref.objectives)
+                col = matlab.lang.makeValidName(['eyeBias_' ref.objectives{o}]);
+                if ismember(col, T.Properties.VariableNames) && abs(T.(col)(k)) > 0
+                    parts{end+1} = sprintf('blinks in the trials it keeps add about %.2g %s to the %s mean', ...
+                        T.(col)(k), ref.units{o}, ref.objectives{o}); %#ok<AGROW>
+                end
+                col = matlab.lang.makeValidName(['shapeSpread_' ref.objectives{o}]);
+                if ismember(col, T.Properties.VariableNames) && T.(col)(k) >= 0.01
+                    parts{end+1} = sprintf(['its filters would change the %s by up to %.0f%% more or less ', ...
+                        'than the check''s signal if the real one had another shape'], ref.objectives{o}, 100 * T.(col)(k)); %#ok<AGROW>
+                end
+            end
+            if ~isempty(parts)
+                t = sprintf(['In pipeline %d, %s. This bias counts in its error together with the noise ', ...
+                    '(the error column).'], k, strjoin(parts, '; '));
+            end
+            info = pipecompare.utils.fieldOr(ref, 'blinkInfo', struct('channels', {{}}));
+            if isfield(result, 'contract') && strcmp(result.contract.analysis, 'erp') && isempty(info.channels)
+                t = strtrim([t ' There is no eye channel (EOG, or Fp1/Fp2/FPz that you do not measure), so what ', ...
+                    'blinks add to the means could not be checked.']);
+            end
         end
 
         function t = keptShiftText(result)

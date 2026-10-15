@@ -111,6 +111,8 @@ classdef SimpleResults < handle
             if ~isempty(prior), t = sprintf('%s %s', t, prior); end
             tpl = pipecompare.simple.Presets.templateText(obj.Result);
             if ~isempty(tpl), t = sprintf('%s %s', t, tpl); end
+            bt = pipecompare.simple.Presets.biasText(obj.Result);
+            if ~isempty(bt), t = sprintf('%s %s', t, bt); end
             ks = pipecompare.simple.Presets.keptShiftText(obj.Result);
             if ~isempty(ks), t = sprintf('%s %s', t, ks); end
             wt = pipecompare.simple.Presets.weightsText(obj.Result);
@@ -128,7 +130,7 @@ classdef SimpleResults < handle
         function showRows(obj)
             showAll = ~isempty(obj.AllBox) && obj.AllBox.Value;
             [data, cols] = obj.rows(showAll);
-            w = {60, 70, 85, 80, 90, 'auto'};
+            w = {60, 70, 120, 80, 90, 'auto'};
             if showAll, w = [w {'auto'}]; end
             obj.Table.Data = data; obj.Table.ColumnName = cols; obj.Table.ColumnWidth = w;
         end
@@ -141,7 +143,7 @@ classdef SimpleResults < handle
             rec = [R.byStratum.recommended];
             o = [rec(:); R.order(~ismember(R.order, rec))];
             if ~showAll, o = o(1:min(max(5, numel(rec)), numel(o))); end
-            cols = {'pipeline', 'checks', 'noise (SME)', 'trials kept', 'signal change', 'settings'};
+            cols = {'pipeline', 'checks', 'error (noise + bias)', 'trials kept', 'signal change', 'settings'};
             if showAll, cols{end+1} = 'why excluded'; end
             data = cell(numel(o), numel(cols));
             for i = 1:numel(o)

@@ -127,6 +127,21 @@ classdef Executor
             [S, env.truth] = pipecompare.eval.Injection.prepare(root, contract, ref, opts);
             pipecompare.utils.log(['Signal check: a known %g uV signal is carried through every candidate with the ', ...
                 'same decisions (matched-decision injection).'], opts.injectUv);
+            % how much each pipeline's filters make the gain depend on the
+            % signal's shape (part of the bias of the total error)
+            try
+                env.spread = pipecompare.eval.Injection.shapeSpreads(S, contract, env.truth, leaves);
+            catch ME
+                env.spread = {};
+                pipecompare.utils.log('Signal shapes: not checked (%s); the bias leaves out what the filters do to other shapes.', ME.message);
+            end
+            if isfield(ref, 'blinkInfo') && ~isempty(ref.blinkInfo.channels)
+                pipecompare.utils.log(['Blinks: eye activity in the measured window(s) from %s; trials with a blink: %s ', ...
+                    '(what they add to each mean counts in the total error).'], strjoin(ref.blinkInfo.channels, ', '), ...
+                    strjoin(arrayfun(@(x) sprintf('%.0f%%', 100 * x), ref.blinkInfo.share, 'UniformOutput', false), ', '));
+            elseif strcmp(contract.analysis, 'erp')
+                pipecompare.utils.log('Blinks: no eye channel (EOG, or Fp1/Fp2/FPz) that is not measured, so what blinks add is not estimated.');
+            end
             result.signalTemplate = [];
             if isfield(env.truth, 'shape') && ~isempty(env.truth.shape)
                 result.signalTemplate = env.truth.shape.info;
@@ -861,6 +876,7 @@ try
     if ~isempty(tcom), c.coms{end+1} = tcom; end
     if ~isempty(S)
         c.signal = pipecompare.eval.Injection.compare(S, env.contract, env.truth, env.leaves(li).path);
+        if isfield(env, 'spread') && numel(env.spread) >= li, c.signal.shapeSpread = env.spread{li}; end
     end
     c.status = 'ok';
 catch ME
@@ -945,7 +961,8 @@ try
         [ctx, acc] = advance(in, ctx, acc, info, coms, unmatched, 0);
     end
     cenv = struct('contract', env.contract, 'ref', env.ref, 'rank', env.opts, 'S', S0, 'truth', env.truth, 'grid', {cuts});
-    [cut, cinfo] = pipecompare.eval.Cutoff.search(E, rest, dec, struct('m', c.m, 'gain', c.signal.gain), cenv);
+    [cut, cinfo] = pipecompare.eval.Cutoff.search(E, rest, dec, struct('m', c.m, 'gain', c.signal.gain, ...
+        'spread', pipecompare.utils.fieldOr(c.signal, 'shapeSpread', [])), cenv);
 catch ME
     pipecompare.utils.log('Filter cutoffs not fine-tuned: %s', ME.message);
     return;
@@ -968,6 +985,11 @@ end
 li = numel(env.leaves) + 1;
 leaf = struct('path', {path2}, 'key', key2, 'order', env.leaves(ib).order, 'stratum', env.leaves(ib).stratum);
 env.leaves(li) = leaf;
+try
+    sp = pipecompare.eval.Injection.shapeSpreads(S0, env.contract, env.truth, leaf); env.spread{li} = sp{1};
+catch
+    env.spread{li} = [];   % the shape part of its bias left out
+end
 try
     for k = first:numel(path2)
         in = path2{k};

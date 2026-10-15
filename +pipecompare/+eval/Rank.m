@@ -29,6 +29,21 @@ classdef Rank
     %      and conditions (when they share a unit), or the name of one
     %      measure (e.g. 'P3.peakLatency'), needed when the units differ.
     %      The other measures are reported, not ranked.
+    %   3b. Total error: the objective adds to each condition's SME/g the
+    %      bias b of its gain-corrected mean, sqrt((SME/g)^2 + b^2) (the
+    %      root mean square error of the estimate; RMS over measures and
+    %      conditions as above). b = (e + |mean| s) / g: e, what the trials
+    %      with a blink add to the mean (Measure.eyeBias, from the eye
+    %      channels of the data as they were; its square with its variance
+    %      taken off, about 0 unless the data show it), and s, how much the
+    %      pipeline's filters would change its gain if the signal had
+    %      another shape (Injection.shapeSpreads: the largest change over
+    %      a family of shapes, a minimax). The SME counts what varies from
+    %      trial to trial; a blink in a share of the trials also moves the
+    %      mean, and much more than it raises the SME. Columns noise
+    %      (SME/g alone) and bias (b alone) of the table, eyeBias_ (e, in
+    %      the measure's unit, the condition where it is largest) and
+    %      shapeSpread_ (s) per measure (docs/METHODS.md, section 15).
     %   4. Uncertainty: a paired bootstrap over trials (the same resampled
     %      trials, by urevent, for every candidate). A candidate is "not
     %      distinguished from the best" unless the data show it is worse
@@ -65,7 +80,10 @@ classdef Rank
     %      so its advantage by chance is held out as well.
     %   5. Among candidates the data do not distinguish from the best, the
     %      recommendation is the least aggressive: highest minimum trial
-    %      retention, then smallest signal distortion, then best objective.
+    %      retention, then smallest signal distortion, then best objective;
+    %      a biased one (bias above BiasShare of its noise) only when no
+    %      unbiased one is among them, since keeping more trials is no
+    %      reason to keep what they carry in.
     %   5b. Stability: how often the recommendation would be the same with
     %      other trials. In each paired bootstrap resample of the trials
     %      (those of step 4), the choice of steps 4 and 5 is made again on
@@ -83,6 +101,10 @@ classdef Rank
     %
     %   No experimental effect (condition difference, p-value) is used, so
     %   choosing a pipeline cannot inflate the effect tested later.
+
+    properties (Constant)
+        BiasShare = 0.5   % a bias above this share of the noise makes a pipeline "biased" (step 5)
+    end
 
     methods (Static)
         function o = defaults()
@@ -104,7 +126,7 @@ classdef Rank
             stratum = repmat({''}, n, 1);
             primary = nan(n, 1); minRet = nan(n, 1); minKept = nan(n, 1); interp = nan(n, 1);
             ampErr = nan(n, 1); latSh = nan(n, 1); artPct = nan(n, 1); wCorr = nan(n, 1); tCorr = nan(n, 1);
-            objAgg = nan(n, nO);
+            objAgg = nan(n, nO); noise = nan(n, 1); bias = nan(n, 1); eyeB = nan(n, nO); spreads = nan(n, nO);
             for i = 1:n
                 c = cands(i);
                 if isfield(c, 'stratum') && ~isempty(c.stratum), stratum{i} = c.stratum; end
@@ -118,9 +140,13 @@ classdef Rank
                     status{i} = 'failed'; reasons{i} = c.message; whyList{i} = {c.message}; continue;
                 end
                 m = c.m;
-                g = gainOf(c, nO); gains(i, :) = g;
+                g = gainOf(c, nO); gains(i, :) = g; sp = spreadOf(c, nO); spreads(i, :) = sp;
                 objAgg(i, :) = [m.objectives.agg] ./ g;
-                primary(i) = primaryPoint(m, objName, ref, g);
+                [primary(i), noise(i), bias(i)] = primaryPoint(m, objName, ref, g, sp);
+                for k = 1:nO
+                    eb = pipecompare.utils.fieldOr(m.objectives(k), 'eyeBias', 0);
+                    [~, at] = max(abs(eb)); eyeB(i, k) = eb(at);   % the condition where blinks add most
+                end
                 minRet(i) = min(m.retention); minKept(i) = min(m.kept);
                 interp(i) = c.interpolatedFraction;
                 sg = c.signal;
@@ -160,11 +186,13 @@ classdef Rank
                 hEq(~keep) = NaN; hiKept(feas) = hEq;
                 equiv(feas) = keep & hEq <= opts.equivalenceMargin * pts(ib);
                 t = feas(keep);
-                % least aggressive among those not distinguished from the best
-                key = [-minRet(t), ampErr(t), primary(t)];
+                % least aggressive among those not distinguished from the
+                % best, a biased one only when no unbiased one is among them
+                biased = double(bias > pipecompare.eval.Rank.BiasShare * noise);
+                key = [biased(t), -minRet(t), ampErr(t), primary(t)];
                 [~, o] = sortrows(round(key, 10));
                 cf = pipecompare.eval.Rank.crossfit(cands(feas), ref, opts, objName, pts(ib));
-                f = selectionFrequency(boot{1}, crit, minRet(feas), ampErr(feas));
+                f = selectionFrequency(boot{1}, crit, minRet(feas), ampErr(feas), biased(feas));
                 chosen(feas) = f;
                 byStratum(end+1) = struct('stratum', strata{s}, 'best', feas(ib), 'recommended', t(o(1)), 'set', t, ...
                     'crossfit', cf, 'stability', f(feas == t(o(1)))); %#ok<AGROW>
@@ -174,14 +202,16 @@ classdef Rank
             end
             feasAll = find(strcmp(status, 'feasible'));
             order = [sortBy(feasAll, primary); find(strcmp(status, 'rejected')); find(strcmp(status, 'failed'))];
-            T = table((1:n)', stratum, status, primary, lo, hi, notDist, equiv, hiKept, chosen, minRet, minKept, interp, ...
+            T = table((1:n)', stratum, status, primary, noise, bias, lo, hi, notDist, equiv, hiKept, chosen, minRet, minKept, interp, ...
                 ampErr, latSh, artPct, wCorr, tCorr, reasons, notes, ...
-                'VariableNames', {'id','stratum','status','objective','diffLo','diffHi','notDistinguished','equivalent','diffHiKept', ...
+                'VariableNames', {'id','stratum','status','objective','noise','bias','diffLo','diffHi','notDistinguished','equivalent','diffHiKept', ...
                 'chosenShare','minRetention','minTrials','interpolated','ampError', ...
                 'latencyShiftMs','artifactPct','waveformCorr','topoCorr','reason','note'});
             for k = 1:nO
                 T.(matlab.lang.makeValidName(['sme_' ref.objectives{k}])) = objAgg(:, k);   % gain-corrected
                 T.(matlab.lang.makeValidName(['gain_' ref.objectives{k}])) = gains(:, k);
+                T.(matlab.lang.makeValidName(['eyeBias_' ref.objectives{k}])) = eyeB(:, k);   % in the measure's unit
+                T.(matlab.lang.makeValidName(['shapeSpread_' ref.objectives{k}])) = spreads(:, k);
             end
             R = struct('table', T, 'whyList', {whyList}, 'order', order, 'best', best, 'recommended', recommended, ...
                 'byStratum', byStratum, 'objective', objName, 'options', opts, 'units', {ref.units});
@@ -273,11 +303,13 @@ classdef Rank
             equiv(ib) = true;
         end
 
-        function v = pointObjective(m, ref, opts, g)
+        function v = pointObjective(m, ref, opts, g, spread)
             % The ranking's objective of one candidate's measures m with
-            % the signal gains g (one per measure): what Rank.run ranks by.
+            % the signal gains g and shape spreads (Injection.shapeSpreads;
+            % default 0), one per measure: what Rank.run ranks by.
             opts = pipecompare.utils.withDefaults(opts, pipecompare.eval.Rank.defaults());
-            v = primaryPoint(m, resolveObjective(opts.objective, ref), ref, g);
+            if nargin < 5 || isempty(spread), spread = zeros(1, numel(g)); end
+            v = primaryPoint(m, resolveObjective(opts.objective, ref), ref, g, spread);
         end
 
         function name = objectiveName(obj, ref)
@@ -437,17 +469,17 @@ classdef Rank
 
         function print(R, labels)
             T = R.table; o = R.options;
-            pipecompare.utils.log(['Ranking by %s gain-corrected SME (SME / signal gain; lower = more precise). diff = difference from the best, ', ...
+            pipecompare.utils.log(['Ranking by %s total error (noise: SME / signal gain, and bias: what blinks add and what the filters do to other signal shapes; lower = more accurate). diff = difference from the best, ', ...
                 '%.0f%% interval simultaneous over all candidates; "nd" = not distinguished from the best by these data ', ...
                 '(not equivalence); "eq" = equivalent: the whole interval within %.0f%% of the best.'], R.objective, ...
                 100 * (1 - o.alpha), 100 * o.equivalenceMargin);
-            fprintf('   %-4s %-9s %9s %19s %3s %6s %6s %6s %5s  %s\n', 'id', 'status', 'objective', 'diff vs best [CI]', 'nd', 'minRet', 'interp', 'ampErr', 'art', 'pipeline');
+            fprintf('   %-4s %-9s %9s %7s %19s %3s %6s %6s %6s %5s  %s\n', 'id', 'status', 'objective', 'bias', 'diff vs best [CI]', 'nd', 'minRet', 'interp', 'ampErr', 'art', 'pipeline');
             for k = R.order(:)'
                 mark = ' '; if any([R.byStratum.recommended] == k), mark = '*'; end
                 ci = ''; if isfinite(T.diffLo(k)), ci = sprintf('[%+.3f %+.3f]', T.diffLo(k), T.diffHi(k)); end
                 nd = ''; if T.equivalent(k), nd = 'eq'; elseif T.notDistinguished(k), nd = 'nd'; end
-                fprintf('  %s%-4d %-9s %9.4g %19s %3s %5.0f%% %5.0f%% %5.0f%% %4.1f%%  %s\n', mark, k, T.status{k}, ...
-                    T.objective(k), ci, nd, 100*T.minRetention(k), 100*T.interpolated(k), ...
+                fprintf('  %s%-4d %-9s %9.4g %7.3g %19s %3s %5.0f%% %5.0f%% %5.0f%% %4.1f%%  %s\n', mark, k, T.status{k}, ...
+                    T.objective(k), T.bias(k), ci, nd, 100*T.minRetention(k), 100*T.interpolated(k), ...
                     100*T.ampError(k), 100*T.artifactPct(k), labels{k});
                 if ~isempty(T.stratum{k}), fprintf('        stratum: %s\n', T.stratum{k}); end
                 if ~isempty(T.reason{k}), fprintf('        -> %s\n', T.reason{k}); end
@@ -503,13 +535,39 @@ else
 end
 end
 
-function v = primaryPoint(m, name, ref, g)
-% gain-corrected objective: RMS over measures and conditions of SME/g
-if strcmp(name, 'composite')
-    v = sqrt(mean(cell2mat(arrayfun(@(k) m.objectives(k).sme / g(k), 1:numel(g), 'UniformOutput', false)) .^ 2));
-else
-    k = strcmp(ref.objectives, name);
-    v = m.objectives(k).agg / g(k);
+function [v, noise, bias] = primaryPoint(m, name, ref, g, spread)
+% The total error: the RMS over measures and conditions of
+% sqrt((SME/g)^2 + b^2), b the bias of the gain-corrected mean
+% (biasOf); noise and bias: the same RMS of SME/g alone and of b alone.
+use = 1:numel(g);
+if ~strcmp(name, 'composite'), use = find(strcmp(ref.objectives, name)); end
+s2 = []; b2 = [];
+for k = use
+    s2 = [s2 (m.objectives(k).sme / g(k)) .^ 2]; %#ok<AGROW>
+    b2 = [b2 biasOf(m.objectives(k), g(k), spread(k)) .^ 2]; %#ok<AGROW>
+end
+noise = sqrt(mean(s2)); bias = sqrt(mean(b2));
+v = sqrt(mean(s2 + b2));
+end
+
+function b = biasOf(o, g, spread, eyeSq)
+% The bias of measure o's gain-corrected mean in each condition (1 x
+% conditions), in its unit: what blinks add to it (Measure.eyeBias:
+% the square root of its squared bias, with its variance taken off; eyeSq
+% replaces it, e.g. a bootstrap resample's) plus what the filters would
+% change if the signal had another shape (|mean| x spread,
+% Injection.shapeSpreads), both divided by the gain g.
+if nargin < 4, eyeSq = pipecompare.utils.fieldOr(o, 'eyeBiasSq', zeros(size(o.estimate))); end
+est = o.estimate; est(~isfinite(est)) = 0;
+b = (sqrt(eyeSq) + abs(est) * spread) / g;
+end
+
+function s = spreadOf(c, nO)
+% the shape spread of each measure (Injection.shapeSpreads), 0 when unknown
+s = zeros(1, nO);
+if isfield(c, 'signal') && isstruct(c.signal) && isfield(c.signal, 'shapeSpread') && numel(c.signal.shapeSpread) == nO
+    s = double(c.signal.shapeSpread(:)');
+    s(~isfinite(s)) = 0;
 end
 end
 
@@ -569,17 +627,17 @@ if isempty(z), cK = 0; else, cK = max(upperQuantile(z, alpha), 0); end
 hiEq = Dhat(:, ib) + cK; hiEq(ib) = 0; hiEq(~keep) = Inf;
 end
 
-function f = selectionFrequency(Bq, c, ret, amp)
+function f = selectionFrequency(Bq, c, ret, amp, biased)
 % The share of the bootstrap resamples (columns of Bq, K x B) in which
 % each of K candidates is recommended: those within c of the lowest
-% objective of the resample, then the rule of step 5 (highest minimum
-% retention, smallest amplitude error, lowest objective).
+% objective of the resample, then the rule of step 5 (unbiased first,
+% highest minimum retention, smallest amplitude error, lowest objective).
 K = size(Bq, 1); cnt = zeros(K, 1); used = 0;
 for b = 1:size(Bq, 2)
     v = Bq(:, b); ok = isfinite(v);
     if ~any(ok), continue; end
     t = find(ok & v - min(v(ok)) <= c);
-    [~, o] = sortrows(round([-ret(t), amp(t), v(t)], 10));
+    [~, o] = sortrows(round([biased(t), -ret(t), amp(t), v(t)], 10));
     cnt(t(o(1))) = cnt(t(o(1))) + 1; used = used + 1;
 end
 f = cnt / max(used, 1);
@@ -623,15 +681,30 @@ end
 end
 
 function per = perObjective(cands, ref, opts, W, scale)
-% Gain-corrected SME of every candidate and objective under the trial
-% weights W{c} (N x B per condition): candidates x B x objectives.
+% Total error of every candidate and objective under the trial weights
+% W{c} (N x B per condition): candidates x B x objectives. The SME
+% (Measure.smeBoot) and what blinks add (Measure.eyeBias) are those of
+% each resample; the shape part of the bias is that of all trials.
 nO = numel(ref.objectives); B = size(W{1}, 2);
 per = zeros(numel(cands), B, nO);
+blink = pipecompare.utils.fieldOr(ref, 'blink', {});
 for k = 1:numel(cands)
     objs = cands(k).m.objectives;
-    g = gainOf(cands(k), nO);
+    g = gainOf(cands(k), nO); sp = spreadOf(cands(k), nO);
     for o = 1:nO
-        per(k, :, o) = pipecompare.eval.Measure.smeBoot(objs(o), W, opts, 7919 * o, scale) / g(o);
+        sm = pipecompare.eval.Measure.smeBoot(objs(o), W, opts, 7919 * o, scale) / g(o);
+        nC = numel(W); b2 = zeros(1, B);
+        for c = 1:nC
+            eq = zeros(1, B);
+            if strcmp(objs(o).kind, 'scalar') && numel(blink) >= o && ~isempty(blink{o})
+                K = W{c};
+                if isfield(objs(o), 'w') && ~isempty(objs(o).w), wt = objs(o).w{c}; wt(isnan(wt)) = 0; K = K .* wt; end
+                [~, eq] = pipecompare.eval.Measure.eyeBias(objs(o).X{c}(:, 1), blink{o}{c}, K);
+            end
+            oc = struct('estimate', objs(o).estimate(c));
+            b2 = b2 + biasOf(oc, g(o), sp(o), eq) .^ 2;
+        end
+        per(k, :, o) = sqrt(sm .^ 2 + b2 / nC);
     end
 end
 end
@@ -700,7 +773,15 @@ for j = 1:numel(opt)
         X(isnan(X)) = 0; opt{j}.X{q} = X;
     end
 end
-in = struct('options', {opt}, 'ok', logical(cv.ok), 'w', {w});
+% the shape part of each measure's bias in each condition (fixed: that of
+% all trials) and the blink trials, for the total error
+sp = spreadOf(c, nO); sp = sp(use);
+shape = zeros(numel(use), nC);
+for j = 1:numel(use), shape(j, :) = biasOf(struct('estimate', objs(j).estimate), g(j), sp(j), zeros(1, nC)); end
+blink = pipecompare.utils.fieldOr(ref, 'blink', {});
+bl = {};
+if numel(blink) >= max(use) && all(~cellfun(@isempty, blink(use))), bl = blink(use); end
+in = struct('options', {opt}, 'ok', logical(cv.ok), 'w', {w}, 'shape', shape, 'blink', {bl});
 end
 
 function [vH, vO] = nestedHalf(in, H, O, scH, scO, ref, opts)
@@ -736,6 +817,7 @@ for j = find(in.ok(:)')
             x = P.X{q}(:, o);
             s1 = x' * K; s2 = (x .^ 2)' * K;
             acc = acc + max((s2 - s1 .^ 2 ./ n) ./ (n - 1), 0) ./ n;
+            acc = acc + halfBias(in, x, o, q, K) .^ 2;
         end
     end
     obj = sqrt(acc / (nC * size(P.X{1}, 2)));
@@ -746,19 +828,31 @@ if ~any(isfinite(best)), return; end
 j = find(best <= mg * min(best), 1);
 u = lims{j}(find(objs{j} <= mg * best(j), 1, 'last'));
 P = in.options{j};
-vH = scoredAt(P, u, H, scH, in.w, opts); vO = scoredAt(P, u, O, scO, in.w, opts);
+vH = scoredAt(in, P, u, H, scH, opts); vO = scoredAt(in, P, u, O, scO, opts);
 end
 
-function v = scoredAt(P, u, W, sc, w, opts)
-% The objective of option P with the trials kept at limit u, under the
-% trial weights W (Measure.smeBoot, rescaled by sc; RMS over the measures)
+function v = scoredAt(in, P, u, W, sc, opts)
+% The total error of option P with the trials kept at limit u, under the
+% trial weights W (Measure.smeBoot, rescaled by sc; the bias as in
+% halfBias; RMS over the measures)
 nC = numel(P.X); per = zeros(1, size(P.X{1}, 2));
 for o = 1:numel(per)
-    X = cell(1, nC);
+    X = cell(1, nC); b2 = 0;
     for q = 1:nC
         X{q} = P.X{q}(:, o); X{q}(~(P.M{q} <= u)) = NaN;
+        K = W{q}; if ~isempty(in.w), K = K .* in.w{q}; end
+        b2 = b2 + halfBias(in, X{q}, o, q, K) ^ 2;
     end
-    per(o) = pipecompare.eval.Measure.smeBoot(struct('kind', 'scalar', 'X', {X}, 'w', {w}), W, opts, 0, sc);
+    per(o) = sqrt(pipecompare.eval.Measure.smeBoot(struct('kind', 'scalar', 'X', {X}, 'w', {in.w}), W, opts, 0, sc) ^ 2 + b2 / nC);
 end
 v = sqrt(mean(per .^ 2));
+end
+
+function b = halfBias(in, x, o, q, K)
+% The bias of measure o (of the options' measures) in condition q with
+% weights K (a column per mean): what the blinks among those trials add
+% (Measure.eyeBias; x is already divided by the gain) plus the shape part.
+eq = zeros(1, size(K, 2));
+if ~isempty(in.blink), [~, eq] = pipecompare.eval.Measure.eyeBias(x, in.blink{o}{q}, K); end
+b = sqrt(eq) + in.shape(o, q);
 end

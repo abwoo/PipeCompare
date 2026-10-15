@@ -75,7 +75,7 @@ classdef Threshold
             if numel(F) > pipecompare.eval.Threshold.MaxCompared
                 pick = unique([F(round(linspace(1, numel(F), pipecompare.eval.Threshold.MaxCompared - 1))) best]);
             end
-            Bq = pipecompare.eval.Threshold.bootstrap(X, M, v(pick), opts, ref);
+            Bq = pipecompare.eval.Threshold.bootstrap(X, M, v(pick), opts, ref, C);
             [keep, equiv] = pipecompare.eval.Rank.confidenceSet(obj(pick)', Bq, find(pick == best), ...
                 opts.alpha, opts.equivalenceMargin);
             chosen = max(pick(equiv));
@@ -109,7 +109,7 @@ classdef Threshold
             T = pipecompare.eval.Measure.trials(EEG, contract);
             m = double(m(:)');
             nC = numel(ref.ids); X = cell(1, nC); M = cell(1, nC);
-            C = struct('X', {cell(1, nC)}, 'M', {cell(1, nC)}, 'use', use, 'v', vIn, 'gained', gained);
+            C = struct('X', {cell(1, nC)}, 'M', {cell(1, nC)}, 'use', use, 'v', vIn, 'gained', gained, 'loc', {cell(1, nC)});
             for c = 1:nC
                 % the reference trials of condition c, in time order
                 rows = find(T.cond == c);
@@ -121,6 +121,7 @@ classdef Threshold
                 M{c} = m(T.epoch(rows));
                 C.X{c} = nan(ref.n(c), numel(use)); C.X{c}(unique(loc), :) = X{c};
                 C.M{c} = nan(ref.n(c), 1); C.M{c}(unique(loc)) = M{c};
+                C.loc{c} = unique(loc);                          % the reference row of each row of X{c}
             end
             if isempty(v), v = unique([M{:}]); end   % one limit per kept set (keep m <= v(j))
             v = v(:)';
@@ -134,6 +135,7 @@ classdef Threshold
                 for o = 1:size(X{c}, 2)
                     s1 = X{c}(:, o)' * K; s2 = (X{c}(:, o) .^ 2)' * K;
                     acc = acc + max((s2 - s1 .^ 2 ./ n) ./ (n - 1), 0) ./ n;
+                    acc = acc + eyeSq(X{c}(:, o), ref, use(o), c, C.loc{c}, K);   % what blinks add (total error)
                 end
             end
             obj = sqrt(acc / (nC * size(X{1}, 2)));
@@ -146,9 +148,10 @@ classdef Threshold
                 (~isempty(contract.components) && all(strcmp({contract.components.measure}, 'mean')));
         end
 
-        function Bq = bootstrap(X, M, v, opts, ref)
+        function Bq = bootstrap(X, M, v, opts, ref, C)
             % The objective at each limit v under the paired bootstrap of the
             % ranking (same resampled trials for every limit): limits x B.
+            % C (curve's): with it, what blinks add is resampled too.
             s = RandStream('mt19937ar', 'Seed', opts.seed + 202);
             segmented = isfield(ref, 'segmented') && ref.segmented;
             nC = numel(X); B = opts.nBoot;
@@ -162,12 +165,27 @@ classdef Threshold
                     s1 = K' * (x .* W); s2 = K' * (x .^ 2 .* W);
                     sm2 = max((s2 - s1 .^ 2 ./ Nb) ./ (Nb - 1), 0) ./ Nb;
                     sm2(Nb < 2) = Inf;
+                    if nargin > 5
+                        for j = 1:numel(v)
+                            sm2(j, :) = sm2(j, :) + eyeSq(x, ref, C.use(o), c, C.loc{c}, K(:, j) .* W);
+                        end
+                    end
                     acc = acc + sm2;
                 end
             end
             Bq = sqrt(acc / (nC * size(X{1}, 2)));
         end
     end
+end
+
+function q = eyeSq(x, ref, k, c, loc, K)
+% The squared bias blinks add to measure k's mean in condition c
+% (Measure.eyeBias) for the rows loc of the reference trials (scores x,
+% weights K, a column per mean); 0 when the blinks are not known.
+q = zeros(1, size(K, 2));
+blink = pipecompare.utils.fieldOr(ref, 'blink', {});
+if numel(blink) < k || isempty(blink{k}), return; end
+[~, q] = pipecompare.eval.Measure.eyeBias(x, blink{k}{c}(loc), K);
 end
 
 function b = nextAbove(v, j)

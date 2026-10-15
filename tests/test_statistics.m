@@ -224,6 +224,28 @@ Y = randn(rs, 25, 20) + [zeros(1, 9) 3 zeros(1, 10)];
 verifyEqual(tc, [a1 b1], [a0 b0], 'RelTol', 1e-10);
 end
 
+function testWhatBlinksAddToTheMean(tc)
+% Measure.eyeBias: the share of the blink trials times the difference of
+% their mean from the others' (what they add to the mean), its square
+% estimated without bias (minus its variance), 0 with no blink trial kept
+% or no other trial, and every mean (a column of weights) at once.
+x = [1 1 1 3 3 NaN]'; b = logical([0 0 0 1 1 1])';
+[bias, sq] = pipecompare.eval.Measure.eyeBias(x, b, ones(6, 1));
+verifyEqual(tc, bias, 0.4 * 2, 'AbsTol', 1e-12);
+v = var([1 1 1 3 3]);
+verifyEqual(tc, sq, 0.8 ^ 2 - 0.4 ^ 2 * v * (1 / 2 + 1 / 3), 'AbsTol', 1e-12);
+K = [1 1 1 0 0 0; 0 0 0 1 1 0; 1 1 1 1 1 1]';
+[bias, sq] = pipecompare.eval.Measure.eyeBias(x, b, K);
+verifyEqual(tc, bias, [0 0 0.8], 'AbsTol', 1e-12);
+verifyEqual(tc, sq(1:2), [0 0]);
+% unbiased: over many samples without a real bias, the mean of sq is about 0
+rng(3); q = zeros(1, 2000);
+for k = 1:2000
+    [~, q(k)] = pipecompare.eval.Measure.eyeBias(randn(40, 1), rand(40, 1) < 0.3, ones(40, 1));
+end
+verifyLessThan(tc, mean(q), 0.01);
+end
+
 function testSelectionFrequencyOfTheRecommendation(tc)
 % A pipeline clearly better than the others is recommended in nearly
 % every resample of the trials. Among pipelines with the same true noise

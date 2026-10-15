@@ -7,10 +7,14 @@ function [EEG, truth] = nqc_synth(opts)
 %   locations come from EEGLAB's sample 32-channel montage. p3AmpSd and
 %   p3Jitter make the P3's size (relative SD) and latency (SD, s) differ
 %   from trial to trial (truth.p3Amp, truth.p3Shift per trial).
+%   lockedBlinks: the share of target trials with a blink (lockedBlinkUv
+%   at FPz) at the P3's latency, time-locked to the stimulus
+%   (truth.lockedBlink per trial).
 if nargin < 1, opts = struct(); end
 d = struct('srate', 250, 'seconds', 400, 'nPerCond', 90, 'seed', 7, 'p3', 6, ...
     'noise', 8, 'drift', 25, 'line', 4, 'blinkRate', 0.25, 'artifactTrials', 0.15, ...
-    'p3Jitter', 0, 'p3AmpSd', 0, 'noisyChannels', {{}}, 'noisyUv', 60, 'alphaUv', 0);
+    'p3Jitter', 0, 'p3AmpSd', 0, 'noisyChannels', {{}}, 'noisyUv', 60, 'alphaUv', 0, ...
+    'lockedBlinks', 0, 'lockedBlinkUv', 200);
 for f = fieldnames(d)', if ~isfield(opts, f{1}), opts.(f{1}) = d.(f{1}); end, end
 rng(opts.seed, 'twister');
 locfile = fullfile(fileparts(which('eeglab')), 'sample_data', 'eeglab_chan32.locs');
@@ -79,6 +83,14 @@ end
 for k = 1:numel(opts.noisyChannels)   % broken electrodes: large broadband noise
     ch = strcmpi(lab, opts.noisyChannels{k});
     data(ch, :) = data(ch, :) + opts.noisyUv * randn(1, n);
+end
+truth.lockedBlink = false(1, nTrials);
+if opts.lockedBlinks > 0   % after the rest: the other draws stay the same
+    truth.lockedBlink = rand(1, nTrials) < opts.lockedBlinks & strcmp(types, '11');
+    for k = find(truth.lockedBlink)
+        at = lat(k) + round(truth.p3Latency * fs);
+        data(:, at + bw) = data(:, at + bw) + blinkTopo' * (opts.lockedBlinkUv / 120 * blink);
+    end
 end
 truth.alphaUv = opts.alphaUv;
 EEG = eeg_emptyset();
