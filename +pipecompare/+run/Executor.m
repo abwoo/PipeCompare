@@ -466,13 +466,16 @@ classdef Executor
             end
         end
 
-        function EEG = apply(EEG, steps, contract)
+        function EEG = apply(EEG, steps, contract, opts)
             % Run steps (rows of type, params) on any dataset as the search
             % runs them, so each step decides from these data (bad
             % channels, components, rejected epochs); used by saved
             % scripts. The preparation is the search's own (unit judged
             % from the amplitude scale); every command goes to EEG.history.
+            % opts.signalTemplate: the known signal's shape for the
+            % choices that use the signal check, as in the search.
             if nargin < 3 || isempty(contract), contract = pipecompare.eval.Contract(); end
+            if nargin < 4, opts = struct(); end
             state = pipecompare.live.DataState.fromEEG(EEG);
             EEG = pipecompare.run.Executor.prepareRoot(EEG, contract, struct('dataUnit', state.unitGuess));
             ctx = struct('contract', contract, 'highpass', rootHighpass(state));
@@ -484,7 +487,7 @@ classdef Executor
             S = []; truth = [];
             if any(chosen('threshold'))
                 % an ICLabel threshold chosen from the data uses the signal check
-                [S, truth] = pipecompare.eval.Injection.prepare(EEG, contract, ctx.ref);
+                [S, truth] = pipecompare.eval.Injection.prepare(EEG, contract, ctx.ref, opts);
             end
             insts = arrayfun(@(k) struct('type', steps{k, 1}, 'params', steps{k, 2}), 1:size(steps, 1), 'UniformOutput', false);
             for k = 1:numel(insts)

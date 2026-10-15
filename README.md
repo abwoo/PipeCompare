@@ -990,7 +990,8 @@ the time with 20 epochs per condition, nearly never with 90), the bump is used f
 and the result says which shape was used and why. Contralateral-minus-ipsilateral components (N2pc,
 LRP) and band power always use the standard signal. The shape comes from the data before any
 pipeline, unfiltered apart from the smoothing, so a slow drift that the averaging did not cancel can
-remain in it. A saved script (`apply`) checks with the bump.
+remain in it. A saved script uses the same shape for its own choices, estimated from the data it
+is run on.
 
 ### ICA on clean data
 
