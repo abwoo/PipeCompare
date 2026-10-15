@@ -243,11 +243,17 @@ classdef Rank
             W = full(sparse(idx, repmat(1:B, N, 1), 1, N, B));
         end
 
-        function keep = confidenceSet(pts, Bq, ib, alpha)
+        function [keep, equiv] = confidenceSet(pts, Bq, ib, alpha, margin)
             % Which of K options (point objectives pts, paired bootstrap
             % replicates Bq, K x B; ib the point-best) the data do not show
-            % to be worse than another one: the test of step 4.
-            keep = bestSet(pts(:), Bq, ib, alpha);
+            % to be worse than another one: the test of step 4. equiv:
+            % those also shown equivalent to the best (the whole interval of
+            % the difference within margin times the best objective; the
+            % best itself always).
+            [keep, ~, ~, hEq] = bestSet(pts(:), Bq, ib, alpha);
+            if nargin < 5, margin = 0; end
+            equiv = keep & hEq <= margin * pts(ib);
+            equiv(ib) = true;
         end
 
         function name = objectiveName(obj, ref)

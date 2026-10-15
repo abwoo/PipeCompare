@@ -5,6 +5,14 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- Fix: the rejection limit and the ICLabel threshold chosen from the data (`'auto'`) were
+  often too lenient, so the SME got larger instead of smaller. The tool used the most lenient
+  option among all those the data could not tell apart from the best; with few trials that set is
+  wide and reaches limits that reject almost nothing. Now it uses the most lenient option among
+  those shown to be within 5 % of the best (the ranking's *equivalent* test,
+  `equivalenceMargin`), and otherwise the best one. In simulation (15 % large-artifact trials,
+  100 per condition) the SME at the limit chosen went from 0.54 to 0.33 (best possible 0.33);
+  clean data are unchanged.
 - `pcomp` opens the PipeCompare window (the same as `pipecompare.start`), like `estudio`
   for ERPLAB Studio. The README's download steps say how to install PipeCompare and save the path
   once, so that `pcomp` works in every MATLAB session without EEGLAB's window.

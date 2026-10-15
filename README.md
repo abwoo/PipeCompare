@@ -152,8 +152,8 @@ pipeline, so that the comparison is about the settings that matter.
 8. **Epochs are cut** around the events you chose, and the **baseline** is subtracted.
 9. **Noisy epochs are rejected**, *limit chosen from the data*: an epoch is dropped when any EEG
    channel exceeds ±*x* µV (non-EEG channels are ignored), and *x* is found in each pipeline from its
-   own data: every limit is tried, not a few, and the highest limit that measures as precisely as
-   the best one is used (see [Rejection limit chosen from the data](#rejection-limit-chosen-from-the-data)).
+   own data: every limit is tried, not a few, and the highest limit whose SME is shown to be within
+   5 % of the best one's is used (see [Rejection limit chosen from the data](#rejection-limit-chosen-from-the-data)).
    For peak measures (peak amplitude or latency, advanced panel) the limits 75, 100 and 150 µV
    are compared instead.
 
@@ -763,10 +763,12 @@ pipeline's data at the rejection step:
    the kept trials.
 3. Only limits that keep at least 10 trials and 50 % of the trials of every condition (the
    ranking's own limits, `minTrials` and `minRetention`) count.
-4. Limits whose SME the data cannot tell apart from the best limit's (the same paired bootstrap
-   and simultaneous intervals as the ranking, over up to 60 limits spread over the range, the best
-   included) are equally good, and the **highest** of them is used: no epoch is rejected without
-   evidence that rejecting it makes the measure more precise. The number used is the roundest
+4. Limits whose SME is shown to be within 5 % of the best limit's (the *equivalent* test of the
+   ranking: the same paired bootstrap and simultaneous intervals, over up to 60 limits spread over
+   the range, the best included) are equally good, and the **highest** of them is used: an epoch
+   is kept unless keeping it makes the measure measurably less precise. A limit the data only
+   cannot tell apart from the best is not enough: with few trials that includes limits that
+   reject almost nothing even when rejecting clearly helps (the SME then gets larger). The number used is the roundest
    one among the limits that keep the same epochs (for example 120 µV rather than 117.43 µV).
 5. The limit is then applied with EEGLAB's own test (`pop_eegthresh`, or the peak-to-peak marks),
    so `EEG.history` records the number, and the signal check removes the same epochs from its
@@ -806,10 +808,10 @@ best one in each pipeline, together with the rejection limit that follows:
    the signal check goes through the same removal, and a set that fails the signal check (for
    example because it removes a component that carries the measured signal) does not count, nor
    does one that keeps too few trials.
-4. Sets whose SME the data cannot tell apart from the best set's (the same paired bootstrap and
-   simultaneous intervals as the ranking) are equally good, and the one removing the **fewest**
-   components is used: no component is removed without evidence that removing it makes the
-   measure more precise. The number used is the roundest threshold that removes exactly that set
+4. Sets whose SME is shown to be within 5 % of the best set's (the *equivalent* test of the
+   ranking: the same paired bootstrap and simultaneous intervals) are equally good, and the one
+   removing the **fewest** components is used: a component is kept unless keeping it makes the
+   measure measurably less precise. The number used is the roundest threshold that removes exactly that set
    (for example 0.8 rather than 0.8137).
 5. The threshold is then applied with EEGLAB's own functions (`pop_icflag`, `pop_subcomp`), so
    `EEG.history` records the number, and the rejection step that follows finds its limit on the

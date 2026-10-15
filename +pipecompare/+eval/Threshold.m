@@ -19,13 +19,17 @@ classdef Threshold
     %
     %   Only limits that keep at least minTrials trials and minRetention of
     %   the trials of every condition (the ranking's own limits) are
-    %   considered. Among them, the limits whose objective the data do not
-    %   distinguish from the best one's (the paired bootstrap and
-    %   simultaneous intervals of the ranking, over at most MaxCompared
-    %   limits spread over the range, the best included) are equally good,
-    %   and the highest of them is chosen: no epoch is rejected without
-    %   evidence that rejecting it makes the measure more precise. u is the
-    %   roundest number among the limits that keep the same epochs.
+    %   considered. Among them, the limits shown equivalent to the best one
+    %   (the paired bootstrap and simultaneous intervals of the ranking, over
+    %   at most MaxCompared limits spread over the range, the best included:
+    %   the whole interval of the difference within equivalenceMargin of the
+    %   best objective) are equally good, and the highest of them is chosen:
+    %   no epoch is rejected unless keeping it would make the measure
+    %   measurably less precise. A limit only not distinguished from the
+    %   best (too few trials to tell) is not enough: the lenient limits have
+    %   the widest intervals, so that set reaches limits that reject almost
+    %   nothing even when rejecting clearly helps. u is the roundest number
+    %   among the limits that keep the same epochs.
     %
     %   The scores are those of the data at this step (the steps after it
     %   are not run): exact when nothing after it changes the scores other
@@ -51,7 +55,7 @@ classdef Threshold
             [v, ok, obj, X, M] = pipecompare.eval.Threshold.curve(EEG, m, contract, ref, opts, [], []);
             U = numel(v);
             info = struct('uvBest', NaN, 'uvChosen', NaN, 'limits', U, 'feasible', sum(ok), 'compared', 0, ...
-                'equallyGood', 0, 'objectiveBest', NaN, 'objectiveChosen', NaN, 'rejectedBest', 0, 'rejectedChosen', 0, ...
+                'notDistinguished', 0, 'equallyGood', 0, 'objectiveBest', NaN, 'objectiveChosen', NaN, 'rejectedBest', 0, 'rejectedChosen', 0, ...
                 'note', '');
             nAll = numel([M{:}]);
             if ~any(ok)
@@ -68,11 +72,12 @@ classdef Threshold
                 pick = unique([F(round(linspace(1, numel(F), pipecompare.eval.Threshold.MaxCompared - 1))) best]);
             end
             Bq = pipecompare.eval.Threshold.bootstrap(X, M, v(pick), opts, ref);
-            keep = pipecompare.eval.Rank.confidenceSet(obj(pick)', Bq, find(pick == best), opts.alpha);
-            chosen = max(pick(keep));
+            [keep, equiv] = pipecompare.eval.Rank.confidenceSet(obj(pick)', Bq, find(pick == best), ...
+                opts.alpha, opts.equivalenceMargin);
+            chosen = max(pick(equiv));
             u = roundIn(v(chosen), nextAbove(v, chosen));
             info.uvBest = roundIn(v(best), nextAbove(v, best)); info.uvChosen = u;
-            info.compared = numel(pick); info.equallyGood = sum(keep);
+            info.compared = numel(pick); info.notDistinguished = sum(keep); info.equallyGood = sum(equiv);
             info.objectiveBest = obj(best); info.objectiveChosen = obj(chosen);
             info.rejectedBest = sum([M{:}] > v(best)); info.rejectedChosen = sum([M{:}] > v(chosen));
             pipecompare.utils.log(['Rejection limit chosen from the data: %g uV (best %g uV; %d different limits, ', ...

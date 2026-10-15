@@ -23,11 +23,13 @@ classdef IcThreshold
     %   ranking's (gain-corrected SME), the gain and the signal check coming
     %   from the known-signal copy (ctx.signal) with the same components
     %   removed; a set that fails the signal check or keeps too few trials is
-    %   not a candidate. Among the sets whose objective the data do not
-    %   distinguish from the best one's (paired bootstrap, simultaneous
-    %   intervals), the one removing the fewest components is chosen: no
-    %   component is removed without evidence that it makes the measure more
-    %   precise. t is the roundest number among the thresholds that remove
+    %   not a candidate. Among the sets shown equivalent to the best one
+    %   (paired bootstrap, simultaneous intervals: the whole interval of the
+    %   difference within equivalenceMargin of the best objective), the one
+    %   removing the fewest components is chosen: no component is removed
+    %   unless keeping it would make the measure measurably less precise. A
+    %   set only not distinguished from the best (too few trials to tell) is
+    %   not enough. t is the roundest number among the thresholds that remove
     %   that set.
     %
     %   The signal check of each set is that of all epochs (the rejected
@@ -96,7 +98,7 @@ classdef IcThreshold
             % per set (fewest components first): its objective at its best
             % limit (NaN: not a candidate, why says why) and the number removed
             info = struct('thresholdBest', NaN, 'thresholdChosen', NaN, 'sets', K, 'feasible', sum(isfinite(f)), ...
-                'equallyGood', 0, 'objectiveBest', NaN, 'objectiveChosen', NaN, 'removedBest', 0, 'removedChosen', 0, ...
+                'notDistinguished', 0, 'equallyGood', 0, 'objectiveBest', NaN, 'objectiveChosen', NaN, 'removedBest', 0, 'removedChosen', 0, ...
                 'objectives', f, 'removed', cellfun(@sum, R), 'why', {why}, 'note', '');
             F = find(isfinite(f));
             if isempty(F)
@@ -110,9 +112,10 @@ classdef IcThreshold
                 for i = 1:numel(F)
                     Bq(i, :) = pipecompare.eval.Threshold.bootstrap(X{F(i)}, M{F(i)}, u(F(i)), opts, ref);
                 end
-                keep = pipecompare.eval.Rank.confidenceSet(f(F)', Bq, find(F == best), opts.alpha);
-                chosen = min(F(keep));
-                info.equallyGood = sum(keep);
+                [keep, equiv] = pipecompare.eval.Rank.confidenceSet(f(F)', Bq, find(F == best), ...
+                    opts.alpha, opts.equivalenceMargin);
+                chosen = min(F(equiv));
+                info.notDistinguished = sum(keep); info.equallyGood = sum(equiv);
                 info.objectiveBest = f(best); info.objectiveChosen = f(chosen);
             end
             t = roundIn(lo(chosen), hi(chosen), qr, R{chosen});

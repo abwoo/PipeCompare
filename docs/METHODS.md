@@ -420,9 +420,15 @@ a stricter limit may be chance. The limits are therefore compared as the ranking
 pipelines (section 3): a paired bootstrap over trials (the same resampled trials for every limit;
 moving blocks for segments of one recording) with the simultaneous max statistic over all pairs
 gives the limits not shown worse than another. At most 60 limits enter the bootstrap: the
-feasible ones spread evenly by rank over the range, the minimizer included. Among those not
-distinguished from the best, the highest is used (the least aggressive, as in step 5 of the
-ranking), so an epoch is rejected only when the data show that rejecting it improves precision.
+feasible ones spread evenly by rank over the range, the minimizer included. Among those shown
+*equivalent* to the best (section 3: θ̂ᵢ − θ̂_b + *c*_K ≤ δ·θ̂_b, δ = `equivalenceMargin`), the highest
+is used (the least aggressive), so an epoch is kept unless keeping it makes the measure measurably
+less precise. Not distinguished alone is not enough: the lenient limits keep the most variable
+epochs, so their bootstrap differences are the widest and set the critical value *c*; the set not
+shown worse then reaches limits that reject almost nothing even when rejecting clearly helps (in
+simulation with 15% large-artifact trials and 100 trials per condition, the true SME of the limit
+chosen was 0.54 with that rule, 0.33 with equivalence and 0.33 at the true best limit; on clean
+data both rules gave the best limit's SME).
 The value used is the number with the fewest significant digits in [*v*ⱼ, *v*ⱼ₊₁) (any number
 there keeps the same epochs). It is applied by `pop_eegthresh` (or the peak-to-peak marks) and
 recorded in `EEG.history`, and the signal check removes the same epochs from its copy. When no
@@ -465,14 +471,15 @@ brute-force limits; `test_engine`).
 
 **Choice.** The sets are compared as the ranking compares pipelines (section 3): the same paired
 bootstrap (the same resampled trials for every set, each at its own best limit) with the
-simultaneous max statistic gives the sets not shown worse than another. Among them, the one
-removing the fewest components (the highest threshold) is used, so a component is removed only
-when the data show that removing it improves precision. The value used is the number with the
+simultaneous max statistic gives the sets not shown worse than another. Among those also shown
+equivalent to the best (as in section 9c), the one removing the fewest components (the highest
+threshold) is used, so a component is kept unless keeping it makes the measure measurably less
+precise. The value used is the number with the
 fewest decimals in [*c*_{j+1}, *c*_j) that removes exactly that set under `pop_icflag`'s comparison
 (in the class ICLabel stores, single precision). It is applied by `pop_icflag` and `pop_subcomp`
 and recorded in `EEG.history`; the rejection step that follows then chooses its own limit on the
 data left by section 9c (the sets are compared at their best limits; the step uses, as always,
-the highest limit not distinguished from the best). When no set is
+the highest limit equivalent to the best). When no set is
 feasible, the set removing nothing is used and the ranking reports why.
 
 **Scope.** Exact when only epoching, baseline removal and an amplitude rejection that removes

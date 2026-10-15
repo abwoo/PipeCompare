@@ -170,6 +170,27 @@ verifyTrue(tc, all(R.table.notDistinguished));
 verifyEqual(tc, sum(R.table.equivalent), 1);                   % only the best itself
 end
 
+function testConfidenceSetEquivalentIsWithinTheMargin(tc)
+% The automatic thresholds choose among the options shown equivalent to
+% the best, not among all those not distinguished from it: the
+% equivalent ones are a subset, always hold the best, and none is more
+% than the margin worse at the point estimate. Options: the same scores
+% scaled (1% and 2% noisier, three times noisier), so the paired
+% bootstrap replicates are the same SME scaled.
+rs = RandStream('mt19937ar', 'Seed', 41); N = 40; B = 999;
+x = randn(rs, N, 1); W = pipecompare.eval.Rank.resampleWeights(rs, N, B, false);
+n = sum(W, 1); m1 = sum(x .* W, 1) ./ n;
+smeB = sqrt((sum(x .^ 2 .* W, 1) - n .* m1 .^ 2) ./ (n - 1) ./ n);
+s = [1 1.01 1.02 3]';
+pts = s * (std(x) / sqrt(N)); Bq = s * smeB;
+[keep, equiv] = pipecompare.eval.Rank.confidenceSet(pts, Bq, 1, 0.02, 0.05);
+verifyEqual(tc, keep(:)', [true true true false]);
+verifyEqual(tc, equiv(:)', [true true true false]);
+verifyTrue(tc, all(pts(equiv) <= 1.05 * pts(1)));
+[~, e0] = pipecompare.eval.Rank.confidenceSet(pts, Bq, 1, 0.02);   % no margin: the best only
+verifyEqual(tc, e0(:)', [true false false false]);
+end
+
 function testCrossfitRemovesTheOptimismOfTheBest(tc)
 % 24 pipelines with the same true noise: the best-looking one's SME
 % underestimates the true SME (selection), the cross-fitted value of the

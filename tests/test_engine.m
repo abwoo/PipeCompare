@@ -860,7 +860,7 @@ end
 function testRejectionLimitFromTheDataIsTheExactOptimum(tc)
 % uv 'auto': every limit that keeps a different set of epochs is scored;
 % the best one equals a brute-force search, the one chosen is the highest
-% the data do not distinguish from it, and pop_eegthresh rejects exactly
+% the data show equivalent to it, and pop_eegthresh rejects exactly
 % the epochs over it.
 EEG = nqc_synth(struct('seconds', 150, 'nPerCond', 30));
 [~, E] = evalc('nqc_epoched(EEG)');
@@ -874,6 +874,7 @@ m = reshape(max(max(abs(double(E.data)), [], 1), [], 2), 1, []);
 verifyEqual(tc, sort(info.rejIdx(:)'), find(m > u));              % exactly the epochs over the limit
 verifyTrue(tc, contains(coms{1}, 'pop_eegthresh'));
 verifyGreaterThanOrEqual(tc, u, th.uvBest);
+verifyLessThanOrEqual(tc, th.objectiveChosen, 1.05 * th.objectiveBest);   % equivalent to the best, not only not distinguished
 verifyGreaterThan(tc, info.rejected, 0);                          % the movement artifacts go
 % brute force over every limit (one per value of m)
 T = pipecompare.eval.Measure.trials(E, c); mt = m(T.epoch);
@@ -984,6 +985,7 @@ for k = 1:numel(sets)
 end
 verifyEqual(tc, info.objectiveBest, min(info.objectives));
 verifyLessThanOrEqual(tc, info.removedChosen, info.removedBest);
+verifyLessThanOrEqual(tc, info.objectiveChosen, 1.05 * info.objectiveBest);   % equivalent to the best
 verifyEqual(tc, sum(q > t), info.removedChosen);                 % pop_icflag flags q > t
 verifyTrue(tc, any(isnan(info.objectives)), mat2str(info.objectives));   % removing Pz loses the signal
 % in the step: the same threshold, and pop_icflag removes exactly that set
