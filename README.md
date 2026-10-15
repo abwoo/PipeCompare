@@ -1426,6 +1426,24 @@ install, such as parallel execution (Parallel Computing Toolbox), are skipped th
 require clicking in EEGLAB's own dialogs cannot be automated and are listed in
 [tests/MANUAL_GUI_CHECK.md](tests/MANUAL_GUI_CHECK.md).
 
+**Ground-truth benchmark.** `benchmarks/pipecompare_benchmark.m` asks whether the pipeline
+PipeCompare recommends measures the P3 more accurately than common fixed pipelines. It simulates
+recordings (`benchmarks/bench_synth.m`: 32 channels, cortical background activity, alpha, drifts,
+line noise, random blinks and blinks time-locked to the targets inside the P3 window, temporal
+muscle bursts, movement artifacts and a bad channel) with a known P3, then measures the P3 (Pz,
+300-600 ms) of targets and standards with the pipeline `pop_pipecompare` recommends, a minimal
+pipeline (0.1-30 Hz, average reference, rejection at 100 µV) and a common one (the same with
+bad-channel interpolation and ICA with ICLabel). It reports, per pipeline, the bias and the root
+mean square error of each condition and of their difference against the P3 actually in the data,
+the trials kept, and where the recommendation ranks by actual error among all the pipelines
+PipeCompare compared. It runs on GitHub when the benchmark changes or by hand (workflow
+*benchmark*, its results kept as an artifact), or locally:
+
+```matlab
+eeglab nogui; addpath(fullfile(pwd, 'benchmarks'));
+out = pipecompare_benchmark(8);           % 8 recordings; results also in tempdir
+```
+
 Two optional checks use your own data, which is never committed: set the environment variable
 `PIPECOMPARE_REAL_SET` to a `.set` file, or run `tests/realdata_validation.m`.
 

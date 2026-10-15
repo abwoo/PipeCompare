@@ -5,6 +5,9 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- Ground-truth benchmark (`benchmarks/pipecompare_benchmark.m`, workflow *benchmark*): simulated
+  recordings with a known P3 and realistic artifacts, measured by the pipeline PipeCompare
+  recommends and by a minimal and a common fixed pipeline; bias and RMSE against the true P3.
 - Bad channels: a third test, noise the other channels do not explain (measure `resid`): a
   least-squares fit of each channel on all the others, bad when what is left of it stands out
   (robust z over 5). Kurtosis and joint probability depend only on the shape of a channel's
