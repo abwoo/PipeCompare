@@ -58,10 +58,20 @@ classdef IcThreshold
     %   path, the one with the fewest components among those shown
     %   equivalent to the best is chosen, as above. info.order: the
     %   components in the order they were added.
+    %   Components that carry time-locked activity into a measured window
+    %   are not candidates (info.protected): removing one alone would move
+    %   a condition's mean score by more than EvokedShare times its SME,
+    %   with |t| > EvokedT against the component's own trial-to-trial
+    %   spread. The SME counts real trial-to-trial brain activity as noise,
+    %   so without this a brain component that ICLabel does not recognise
+    %   could be removed for lowering it. Components whose likeliest
+    %   ICLabel class is Eye are exempt (blinks can be time-locked).
 
     properties (Constant)
         MinProbability = 0.5   % lowest threshold compared
         MaxRemoved = 30        % 'sme': at most this many components removed
+        EvokedT = 3            % 'sme': a component this clearly time-locked ...
+        EvokedShare = 0.5      % ... and moving a condition's mean by this many SMEs is kept
     end
 
     methods (Static)
@@ -82,11 +92,17 @@ classdef IcThreshold
             P = projection(EEG, Ep.data);
             chans = [];
             if ~isempty(rej), chans = pipecompare.run.Steps.testedChannels(Ep, rej.params); end
+            % components that carry time-locked activity into a measured
+            % window are not candidates (the SME counts real trial-to-trial
+            % brain activity as noise; ICLabel's Eye components excepted)
+            cand = cand(:)';
+            ev = evokedGuard(EEG, Ep, P, contract, cand);
+            protected = cand(ev.protect);
+            cand = cand(~ev.protect);
             % the path: nothing removed, then one component more at a time
             [f, u, why, X, M] = scoreSet(Ep, Sp, rej, chans, contract, ref, opts, sig);
             sets = {zeros(1, 0)}; why = {why}; X = {X}; M = {M};
             cur = zeros(1, 0); base = P.PX; baseS = []; if ~isempty(PS), baseS = PS.PX; end
-            cand = cand(:)';
             for step = 1:min(numel(cand), pipecompare.eval.IcThreshold.MaxRemoved)
                 left = setdiff(cand, cur, 'stable');
                 fb = Inf; kb = 0; out = {};
@@ -108,7 +124,8 @@ classdef IcThreshold
             K = numel(sets);
             info = struct('sets', K, 'considered', numel(cand), 'feasible', sum(isfinite(f)), ...
                 'notDistinguished', 0, 'equallyGood', 0, 'objectiveBest', NaN, 'objectiveChosen', NaN, ...
-                'removedBest', 0, 'removedChosen', 0, 'objectives', f, 'order', cur, 'why', {why}, 'note', '');
+                'removedBest', 0, 'removedChosen', 0, 'objectives', f, 'order', cur, 'why', {why}, 'note', '', ...
+                'protected', protected, 'evoked', ev);
             F = find(isfinite(f));
             if isempty(F)
                 chosen = 1; best = 1;
@@ -128,8 +145,9 @@ classdef IcThreshold
             comps = sort(sets{chosen});
             info.removedBest = numel(sets{best}); info.removedChosen = numel(comps);
             pipecompare.utils.log(['ICA components chosen by their effect on the SME: %d removed (best %d; %d of %d ', ...
-                'components could be removed, %d sets on the path, %d equally good).'], numel(comps), numel(sets{best}), ...
-                numel(cand), size(EEG.icaweights, 1), K, info.equallyGood);
+                'components could be removed, %d kept because they carry time-locked activity into the measured ', ...
+                'window, %d sets on the path, %d equally good).'], numel(comps), numel(sets{best}), ...
+                numel(cand), size(EEG.icaweights, 1), numel(protected), K, info.equallyGood);
         end
 
         function [t, info] = choose(EEG, q, ctx)
@@ -194,6 +212,64 @@ classdef IcThreshold
                 info.removedChosen, numel(q));
         end
     end
+end
+
+function ev = evokedGuard(EEG, Ep, P, contract, cand)
+% For each candidate component and each condition: what removing it alone
+% does to the condition's mean score of each mean-amplitude component (the
+% component's part of the score, linear: its ROI weight times its
+% activation's window mean, baseline removed), as a t value against its
+% own trial-to-trial spread and as a share of the score's standard error
+% (SME). Protected (not removed by 'sme'): |t| > EvokedT and shift >
+% EvokedShare SME in some condition, i.e. clearly time-locked and large
+% enough to change the measure; components whose likeliest ICLabel class
+% is Eye are not protected (blinks can be time-locked to the stimulus).
+% Band power and contralateral minus ipsilateral components are not
+% checked.
+nK = numel(cand);
+ev = struct('protect', false(1, nK), 't', zeros(1, nK), 'shift', zeros(1, nK));
+if ~strcmp(contract.analysis, 'erp') || isempty(contract.components), return; end
+T = pipecompare.eval.Measure.trials(Ep, contract);
+times = Ep.xmin + (0:Ep.pnts-1) / Ep.srate;
+labs = lower({Ep.chanlocs.labels});
+[~, rowOf] = ismember(1:Ep.nbchan, P.ch);                     % data channel -> row of A
+isEye = false(1, nK);
+if isfield(EEG.etc, 'ic_classification') && isfield(EEG.etc.ic_classification, 'ICLabel')
+    L = EEG.etc.ic_classification.ICLabel;
+    [~, top] = max(L.classifications, [], 2);
+    isEye = strcmp(cellstr(L.classes(top(cand))), 'Eye'); isEye = isEye(:)';
+end
+bl = [];
+if ~isempty(contract.baseline)
+    bl = times >= contract.baseline(1) - 1e-9 & times <= contract.baseline(2) + 1e-9;
+end
+for j = 1:numel(contract.components)
+    comp = contract.components(j);
+    if contract.isLateral(j) || ~strcmp(comp.measure, 'mean'), continue; end
+    roi = find(ismember(labs, lower(comp.roi)));
+    roi = roi(rowOf(roi) > 0);
+    if isempty(roi), continue; end
+    w = times >= comp.window(1) - 1e-9 & times <= comp.window(2) + 1e-9;
+    sc = T.data{j};                                              % the scores (trials)
+    for i = 1:nK
+        k = cand(i);
+        Sk = reshape(P.S(k, :), Ep.pnts, Ep.trials);
+        a = mean(Sk(w, :), 1);
+        if ~isempty(bl) && any(bl), a = a - mean(Sk(bl, :), 1); end
+        d = mean(P.A(rowOf(roi), k)) * a(T.epoch);               % the component's part of each trial's score
+        for c = unique(T.cond(:))'
+            r = T.cond == c; n = sum(r);
+            if n < 3, continue; end
+            dm = mean(d(r)); sd = std(d(r)); sme = std(sc(r)) / sqrt(n);
+            t = dm / max(sd / sqrt(n), eps); sh = abs(dm) / max(sme, eps);
+            if abs(t) > abs(ev.t(i)), ev.t(i) = t; end
+            ev.shift(i) = max(ev.shift(i), sh);
+            if abs(t) > pipecompare.eval.IcThreshold.EvokedT && sh > pipecompare.eval.IcThreshold.EvokedShare && ~isEye(i)
+                ev.protect(i) = true;
+            end
+        end
+    end
+end
 end
 
 function P = projection(EEG, X)

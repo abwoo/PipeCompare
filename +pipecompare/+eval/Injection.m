@@ -23,8 +23,11 @@ classdef Injection
     %   it is reliable: its split-half reliability over that stretch (the
     %   cosine of odd against even epochs, Spearman-Brown) at least
     %   MinReliability, and
-    %   one sign in the window (|mean| at least half its largest value).
-    %   Otherwise, and for contralateral minus ipsilateral components and
+    %   one sign in the window (|mean| at least half its largest value),
+    %   and it does not look like eye activity (no eye channel - EOG by
+    %   type or name, else Fp1, Fp2, FPz - whose average over that stretch
+    %   has a cosine above EyeSimilarity with it and is more than twice as
+    %   large: a blink locked to the stimulus). Otherwise, and for contralateral minus ipsilateral components and
     %   band power, the bump above. truth.template says which was used and
     %   why (docs/METHODS.md, section 4).
     %
@@ -58,6 +61,7 @@ classdef Injection
 
     properties (Constant)
         MinReliability = 0.8   % 'data' template: lowest split-half reliability used
+        EyeSimilarity = 0.8    % 'data' template: an eye channel this alike (and twice as large) means a blink
     end
 
     methods (Static)
@@ -455,52 +459,51 @@ end
 
 function [g, info] = dataTemplate(root, contract, tt)
 % The recording's own average waveform at each component's ROI, sampled
-% at tt (s), where it is reliable; the bump elsewhere. info per component:
-% used, reliability (split-half, Spearman-Brown), why (when not used).
+% at tt (s), where it is reliable and does not look like eye activity;
+% the bump elsewhere. info per component: used, reliability (split-half,
+% Spearman-Brown), why (when not used).
 g = template(tt, contract);
 nJ = numel(contract.components);
 info = struct('used', false(1, nJ), 'reliability', nan(1, nJ), 'why', {repmat({''}, 1, nJ)});
 labs = lower({root.chanlocs.labels});
+% the eye channels (EOG by type or name), else the frontal poles: a blink
+% locked to the stimulus would otherwise pass for the component's shape
+eyes = find(pipecompare.simple.Presets.isNonEeg(root.chanlocs) & ...
+    ~cellfun(@isempty, regexpi({root.chanlocs.labels}, 'EOG|EYE', 'once')));
+if isfield(root.chanlocs, 'type')
+    ty = arrayfun(@(c) upper(strtrim(char(string(c.type)))), root.chanlocs(:)', 'UniformOutput', false);
+    eyes = union(eyes, find(ismember(ty, {'EOG', 'HEOG', 'VEOG'})));
+end
+if isempty(eyes), eyes = find(ismember(labs, {'fp1', 'fp2', 'fpz'})); end
 for j = 1:nJ
     comp = contract.components(j);
     if contract.isLateral(j), info.why{j} = 'contralateral minus ipsilateral'; continue; end
-    idx = find(ismember(labs, lower(comp.roi)));
-    E = root; E.icaact = []; E.icaweights = []; E.icasphere = []; E.icawinv = []; E.icachansind = [];
-    [~, E] = evalc('pop_select(E, ''channel'', idx)');
-    if E.trials == 1, [~, E] = evalc('pop_epoch(E, contract.allEvents(), contract.epoch, ''epochinfo'', ''yes'')'); end
-    T = pipecompare.eval.Measure.trials(E, contract, true);
-    times = E.xmin + (0:E.pnts-1) / E.srate;
-    X = reshape(mean(double(E.data), 1), E.pnts, E.trials);       % the ROI's mean, samples x epochs
-    bl = times >= contract.baseline(1) - 1e-9 & times <= contract.baseline(2) + 1e-9;
-    if any(bl), X = X - mean(X(bl, :), 1); end
-    % each condition weighted equally: the full average and its two halves
-    a = zeros(E.pnts, 3); n = 0;
-    for c = unique(T.cond(:))'
-        ep = T.epoch(T.cond == c);
-        if numel(ep) < 4, continue; end
-        a = a + [mean(X(:, ep), 2) mean(X(:, ep(1:2:end)), 2) mean(X(:, ep(2:2:end)), 2)];
-        n = n + 1;
+    roi = find(ismember(labs, lower(comp.roi)));
+    try
+        [a, e] = stretchAverages(root, contract, comp, roi, setdiff(eyes, roi));
+    catch ME
+        info.why{j} = sprintf('could not be computed (%s)', ME.message); continue;
     end
-    if n == 0, info.why{j} = 'too few epochs'; continue; end
-    sd = 0.005 * E.srate; k = exp(-0.5 * ((-ceil(3 * sd):ceil(3 * sd)) / sd) .^ 2); k = k(:) / sum(k);
-    a = conv2(a / n, k, 'same');
-    % the component's own stretch: the window, tapered to zero over half
-    % its width (at least 25 ms) on each side
-    h = max(diff(comp.window), 0.050) / 2;
-    tap = @(t) (t >= comp.window(1) & t <= comp.window(2)) + ...
-        (t < comp.window(1) & t > comp.window(1) - h) .* (0.5 + 0.5 * cos(pi * (comp.window(1) - t) / h)) + ...
-        (t > comp.window(2) & t < comp.window(2) + h) .* (0.5 + 0.5 * cos(pi * (t - comp.window(2)) / h));
-    a = a .* tap(times(:));
+    if isempty(a), info.why{j} = 'too few epochs'; continue; end
     % how alike the two halves are (uncentred: the tapered stretch starts
     % and ends at zero, so a deflection of one sign counts), stepped up to
     % all epochs (Spearman-Brown)
-    r = (a(:, 2)' * a(:, 3)) / max(norm(a(:, 2)) * norm(a(:, 3)), eps);
+    r = cosine(a(:, 2), a(:, 3));
     info.reliability(j) = max(0, 2 * r / (1 + r));
-    x = interp1(times, a(:, 1), tt, 'linear', 0);
+    x = interp1(a(:, 4)', a(:, 1)', tt, 'linear', 0);
     w = tt >= comp.window(1) - 1e-9 & tt <= comp.window(2) + 1e-9;
+    % eye activity: an eye channel with the same shape over the stretch
+    % and more than twice as large
+    blink = false;
+    for q = 1:size(e, 2)
+        blink = blink || (abs(cosine(e(:, q), a(:, 1))) > pipecompare.eval.Injection.EyeSimilarity && ...
+            norm(e(:, q)) > 2 * norm(a(:, 1)));
+    end
     if ~(info.reliability(j) >= pipecompare.eval.Injection.MinReliability)
         info.why{j} = sprintf('not reliable enough (split-half reliability %.2f, needs %.2f)', ...
             info.reliability(j), pipecompare.eval.Injection.MinReliability);
+    elseif blink
+        info.why{j} = 'it looks like eye activity (an eye channel has the same shape, more than twice as large)';
     elseif ~any(w) || abs(mean(x(w))) < 0.5 * max(abs(x(w)))
         info.why{j} = 'no clear deflection of one sign in the window';
     else
@@ -508,6 +511,47 @@ for j = 1:nJ
         info.used(j) = true;
     end
 end
+end
+
+function [a, e] = stretchAverages(root, contract, comp, roi, eyes)
+% Over the component's stretch (its window, faded to zero over half its
+% width, at least 25 ms, on each side): a = [average, odd-epoch average,
+% even-epoch average, times] of the ROI's mean, e = the average of each eye
+% channel; each condition weighted equally, baseline removed, smoothed
+% with a 5 ms Gaussian. a = [] when no condition has 4 epochs.
+E = root; E.icaact = []; E.icaweights = []; E.icasphere = []; E.icawinv = []; E.icachansind = [];
+chans = [roi(:)' eyes(:)'];
+[~, E] = evalc('pop_select(E, ''channel'', chans)');
+if E.trials == 1, [~, E] = evalc('pop_epoch(E, contract.allEvents(), contract.epoch, ''epochinfo'', ''yes'')'); end
+T = pipecompare.eval.Measure.trials(E, contract, true);
+times = E.xmin + (0:E.pnts-1) / E.srate;
+nR = numel(roi);
+D = double(E.data);
+bl = times >= contract.baseline(1) - 1e-9 & times <= contract.baseline(2) + 1e-9;
+if any(bl), D = D - mean(D(:, bl, :), 2); end
+X = reshape(mean(D(1:nR, :, :), 1), E.pnts, E.trials);         % the ROI's mean, samples x epochs
+Y = permute(D(nR+1:end, :, :), [2 3 1]);                          % samples x epochs x eye channels
+a = zeros(E.pnts, 3); e = zeros(E.pnts, size(Y, 3)); n = 0;
+for c = unique(T.cond(:))'
+    ep = T.epoch(T.cond == c);
+    if numel(ep) < 4, continue; end
+    a = a + [mean(X(:, ep), 2) mean(X(:, ep(1:2:end)), 2) mean(X(:, ep(2:2:end)), 2)];
+    e = e + reshape(mean(Y(:, ep, :), 2), E.pnts, []);
+    n = n + 1;
+end
+if n == 0, a = []; return; end
+sd = 0.005 * E.srate; k = exp(-0.5 * ((-ceil(3 * sd):ceil(3 * sd)) / sd) .^ 2); k = k(:) / sum(k);
+h = max(diff(comp.window), 0.050) / 2;
+t = times(:);
+tap = (t >= comp.window(1) & t <= comp.window(2)) + ...
+    (t < comp.window(1) & t > comp.window(1) - h) .* (0.5 + 0.5 * cos(pi * (comp.window(1) - t) / h)) + ...
+    (t > comp.window(2) & t < comp.window(2) + h) .* (0.5 + 0.5 * cos(pi * (t - comp.window(2)) / h));
+a = [conv2(a / n, k, 'same') .* tap, t];
+e = conv2(e / n, k, 'same') .* tap;
+end
+
+function r = cosine(a, b)
+r = (a(:)' * b(:)) / max(norm(a(:)) * norm(b(:)), eps);
 end
 
 function E = expectedWeights(truth, S, path)

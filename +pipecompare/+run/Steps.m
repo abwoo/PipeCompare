@@ -409,6 +409,7 @@ classdef Steps
                     comps = ctx.chosenComps;   % re-running a pipeline: the components the search chose
                 else
                     [comps, info.icSme] = pipecompare.eval.IcThreshold.chooseBySme(EEG, cand, ctx);
+                    info.icsProtected = numel(info.icSme.protected);   % kept: time-locked activity in a measured window
                 end
                 nIc = size(EEG.icaweights, 1);
                 EEG.reject.gcompreject = false(1, nIc); EEG.reject.gcompreject(comps) = true;

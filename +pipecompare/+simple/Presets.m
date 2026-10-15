@@ -500,6 +500,10 @@ classdef Presets
                             t = sprintf(['ICA components chosen by their effect on the noise: %s of %s removed (one at a ', ...
                                 'time, the one that lowers the noise most; never one ICLabel takes for brain activity)'], ...
                                 numText(f.icsRemoved), numText(f.icsTotal));
+                            kp = pipecompare.utils.fieldOr(f, 'icsProtected', NaN);
+                            if isfinite(kp) && kp > 0
+                                t = sprintf('%s; %d kept because they carry time-locked activity into the measured window', t, kp);
+                            end
                         else
                             if ischar(th)
                                 th = pipecompare.utils.fieldOr(f, 'thresholdChosen', NaN);

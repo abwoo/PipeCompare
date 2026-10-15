@@ -86,6 +86,18 @@ verifyFalse(tc, t0.shape.info.used(1));
 verifyTrue(tc, contains(t0.shape.info.why{1}, 'reliab') || contains(t0.shape.info.why{1}, 'one sign'), t0.shape.info.why{1});
 bump = exp(-0.5 * ((t0.shape.t - 0.4) / (0.2 / 2.355)) .^ 2);
 verifyEqual(tc, t0.shape.g, bump, 'AbsTol', 1e-12);
+% a blink locked to the stimulus, seen at Pz at a tenth of its size: not
+% the component's shape, the bump is used
+labs = upper({E0.chanlocs.labels});
+wgt = 0.1 * ones(E0.nbchan, 1); wgt(ismember(labs, {'EOG1', 'EOG2', 'FPZ'})) = 1;
+lat = [E0.event(ismember({E0.event.type}, {'11', '31'})).latency];
+b = zeros(1, E0.pnts); tt = 0:E0.pnts-1;
+for L = lat, b = b + 80 * exp(-0.5 * ((tt - L - 0.42 * E0.srate) / (0.08 * E0.srate)) .^ 2); end
+E1 = E0; E1.data = E1.data + single(wgt * b);
+[~, t1] = pipecompare.eval.Injection.prepare(E1, c, pipecompare.eval.Measure.reference(E1, c), ...
+    struct('signalTemplate', 'data'));
+verifyFalse(tc, t1.shape.info.used(1));
+verifyTrue(tc, contains(t1.shape.info.why{1}, 'eye activity'), t1.shape.info.why{1});
 end
 
 function testReReferencingIsNotDistortion(tc)

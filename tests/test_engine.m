@@ -1020,10 +1020,16 @@ n = EEG.nbchan; rng(4);
 roi = find(ismember(lower({EEG.chanlocs.labels}), lower(c.components(1).roi)));
 xyz = [[EEG.chanlocs.X]' [EEG.chanlocs.Y]' [EEG.chanlocs.Z]']; xyz = xyz ./ vecnorm(xyz, 2, 2);
 [~, far] = sort(xyz * mean(xyz(roi, :), 1)');                  % farthest from the measured electrodes first
-art = sort(far(1:3))';
-A = eye(n); A(roi, art) = 1;                                     % component k: its channel and the ROI
+art = sort(far(1:3))'; evk = far(4);
+A = eye(n); A(roi, [art evk]) = 1;                               % component k: its channel and the ROI
 src = filter(1, [1 -0.9], randn(numel(art), EEG.pnts), [], 2);
 EEG.data = EEG.data + single(A(:, art) * (30 * src / std(src(:))));
+% one more carries a time-locked deflection into the measured window: brain
+% activity ICLabel did not recognise; it may not be removed
+lat = [EEG.event(ismember({EEG.event.type}, {'11', '31'})).latency];
+p3 = zeros(1, EEG.pnts); tt = (0:EEG.pnts-1);
+for L = lat, p3 = p3 + 6 * exp(-0.5 * ((tt - L - 0.4 * EEG.srate) / (0.07 * EEG.srate)) .^ 2); end
+EEG.data = EEG.data + single(A(:, evk) * p3);
 EEG.icawinv = A; EEG.icaweights = inv(A); EEG.icasphere = eye(n); EEG.icachansind = 1:n;
 EEG.icaact = []; EEG = eeg_checkset(EEG);
 ref = pipecompare.eval.Measure.reference(EEG, c);
@@ -1036,6 +1042,8 @@ brain = roi(:)';                                                % may not be rem
 cand = setdiff(1:n, brain);
 [comps, info] = pipecompare.eval.IcThreshold.chooseBySme(EEG, cand, x);
 verifyFalse(tc, any(ismember(info.order, brain)), mat2str(info.order));
+verifyEqual(tc, info.protected, evk);                            % time-locked: kept
+verifyFalse(tc, ismember(evk, info.order));
 verifyEqual(tc, numel(unique(info.order)), numel(info.order));
 verifyEqual(tc, info.sets, numel(info.order) + 1);
 verifyGreaterThan(tc, info.sets, 3);
