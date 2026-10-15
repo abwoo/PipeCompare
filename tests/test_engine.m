@@ -1012,24 +1012,34 @@ function testIcComponentsChosenBySme(tc)
 % that may not be removed (ICLabel takes it for brain activity) never is;
 % the one chosen removes no more components than the best and is
 % equivalent to it; in the step, exactly those components are removed.
-EEG = nqc_synth(struct('seconds', 150, 'nPerCond', 30));
+% Three components carry a strong artifact into the measured electrodes
+% (and almost none of the known signal): they are the first ones removed.
+EEG = nqc_synth(struct('seconds', 150, 'nPerCond', 30, 'blinkRate', 0, 'artifactTrials', 0));
 c = nqc_c();
 n = EEG.nbchan; rng(4);
-EEG.icaweights = eye(n) + 0.3 * randn(n); EEG.icasphere = eye(n); EEG.icachansind = 1:n;
-EEG.icawinv = []; EEG.icaact = []; EEG = eeg_checkset(EEG);
+roi = find(ismember(lower({EEG.chanlocs.labels}), lower(c.components(1).roi)));
+xyz = [[EEG.chanlocs.X]' [EEG.chanlocs.Y]' [EEG.chanlocs.Z]']; xyz = xyz ./ vecnorm(xyz, 2, 2);
+[~, far] = sort(xyz * mean(xyz(roi, :), 1)');                  % farthest from the measured electrodes first
+art = sort(far(1:3))';
+A = eye(n); A(roi, art) = 1;                                     % component k: its channel and the ROI
+src = filter(1, [1 -0.9], randn(numel(art), EEG.pnts), [], 2);
+EEG.data = EEG.data + single(A(:, art) * (30 * src / std(src(:))));
+EEG.icawinv = A; EEG.icaweights = inv(A); EEG.icasphere = eye(n); EEG.icachansind = 1:n;
+EEG.icaact = []; EEG = eeg_checkset(EEG);
 ref = pipecompare.eval.Measure.reference(EEG, c);
 [S, truth] = pipecompare.eval.Injection.prepare(EEG, c, ref);
 ins = @(type, params) struct('type', type, 'params', params, 'key', type, 'slot', type, 'label', type);
 after = {ins('epoch', struct()), ins('baseline', struct()), ins('reject_threshold', struct('uv', 'auto', 'exclude', {{}}))};
 x = struct('contract', c, 'highpass', 0, 'ref', ref, 'rank', struct(), 'after', {after}, ...
     'signal', struct('S', S, 'truth', truth));
-brain = [find(strcmpi({EEG.chanlocs.labels}, 'Pz')) 7 8];   % may not be removed
+brain = roi(:)';                                                % may not be removed
 cand = setdiff(1:n, brain);
 [comps, info] = pipecompare.eval.IcThreshold.chooseBySme(EEG, cand, x);
 verifyFalse(tc, any(ismember(info.order, brain)), mat2str(info.order));
 verifyEqual(tc, numel(unique(info.order)), numel(info.order));
 verifyEqual(tc, info.sets, numel(info.order) + 1);
-verifyGreaterThan(tc, info.sets, 2);
+verifyGreaterThan(tc, info.sets, 3);
+verifyEqual(tc, sort(info.order(1:3)), art);                     % the artifact components first
 need = max(10, ceil(0.5 * ref.n));
 for k = 1:info.sets
     R = info.order(1:k-1);

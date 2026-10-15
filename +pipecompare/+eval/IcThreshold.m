@@ -84,8 +84,8 @@ classdef IcThreshold
             if ~isempty(rej), chans = pipecompare.run.Steps.testedChannels(Ep, rej.params); end
             % the path: nothing removed, then one component more at a time
             [f, u, why, X, M] = scoreSet(Ep, Sp, rej, chans, contract, ref, opts, sig);
-            sets = {[]}; why = {why}; X = {X}; M = {M};
-            cur = []; base = P.PX; baseS = []; if ~isempty(PS), baseS = PS.PX; end
+            sets = {zeros(1, 0)}; why = {why}; X = {X}; M = {M};
+            cur = zeros(1, 0); base = P.PX; baseS = []; if ~isempty(PS), baseS = PS.PX; end
             cand = cand(:)';
             for step = 1:min(numel(cand), pipecompare.eval.IcThreshold.MaxRemoved)
                 left = setdiff(cand, cur, 'stable');
