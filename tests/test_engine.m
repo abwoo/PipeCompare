@@ -1086,7 +1086,9 @@ for k = cand(1:5)
 end
 % in the step: exactly those components removed, none ICLabel takes for brain activity
 if exist('pop_iclabel', 'file') == 2
-    cls = repmat(single([0.1 0 0.9 0 0 0 0]), n, 1); cls(brain, :) = repmat(single([0.9 0 0.1 0 0 0 0]), numel(brain), 1);
+    % the others Other, as on recordings ICLabel recognises little (an Eye
+    % component would not be kept for being time-locked)
+    cls = repmat(single([0.1 0 0 0 0 0 0.9]), n, 1); cls(brain, :) = repmat(single([0.9 0 0 0 0 0 0.1]), numel(brain), 1);
     x.iclabel = struct('classification', struct('ICLabel', struct('classes', {{'Brain','Muscle','Eye','Heart', ...
         'Line Noise','Channel Noise','Other'}}, 'classifications', cls, 'version', 'default')), ...
         'com', 'EEG = pop_iclabel(EEG, ''default'');');

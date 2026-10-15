@@ -520,17 +520,17 @@ function [a, e] = stretchAverages(root, contract, comp, roi, eyes)
 % channel; each condition weighted equally, baseline removed, smoothed
 % with a 5 ms Gaussian. a = [] when no condition has 4 epochs.
 E = root; E.icaact = []; E.icaweights = []; E.icasphere = []; E.icawinv = []; E.icachansind = [];
-chans = [roi(:)' eyes(:)'];
-[~, E] = evalc('pop_select(E, ''channel'', chans)');
+[~, E] = evalc('pop_select(E, ''channel'', [roi(:)'' eyes(:)''])');   % (kept in the montage's order)
 if E.trials == 1, [~, E] = evalc('pop_epoch(E, contract.allEvents(), contract.epoch, ''epochinfo'', ''yes'')'); end
 T = pipecompare.eval.Measure.trials(E, contract, true);
 times = E.xmin + (0:E.pnts-1) / E.srate;
-nR = numel(roi);
+labs = {root.chanlocs.labels}; here = {E.chanlocs.labels};
+isRoi = ismember(here, labs(roi)); isEye = ismember(here, labs(eyes));
 D = double(E.data);
 bl = times >= contract.baseline(1) - 1e-9 & times <= contract.baseline(2) + 1e-9;
 if any(bl), D = D - mean(D(:, bl, :), 2); end
-X = reshape(mean(D(1:nR, :, :), 1), E.pnts, E.trials);         % the ROI's mean, samples x epochs
-Y = permute(D(nR+1:end, :, :), [2 3 1]);                          % samples x epochs x eye channels
+X = reshape(mean(D(isRoi, :, :), 1), E.pnts, E.trials);       % the ROI's mean, samples x epochs
+Y = permute(D(isEye, :, :), [2 3 1]);                             % samples x epochs x eye channels
 a = zeros(E.pnts, 3); e = zeros(E.pnts, size(Y, 3)); n = 0;
 for c = unique(T.cond(:))'
     ep = T.epoch(T.cond == c);
