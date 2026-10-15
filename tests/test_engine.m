@@ -1405,18 +1405,19 @@ end
 
 function testBlinksCountInTheTotalError(tc)
 % Simulation: in 30% of the target trials a blink time-locked to the
-% stimulus falls in the P3 window. It moves the target mean much more than
+% stimulus falls in the window, measured at Cz (a blink at FPz reaches Pz
+% with well under 1% of its size, Cz with a few %). It moves the target mean much more than
 % it raises the SME. The estimate of what the blinks add (eyeBias) is
 % close to what they add in fact (the same pipeline on the same data
 % without those blinks: everything else is drawn the same), a pipeline
 % that rejects the blink trials adds almost nothing, and it is
 % recommended.
-o = struct('seconds', 300, 'nPerCond', 80, 'lockedBlinks', 0.3, 'lockedBlinkUv', 1000, 'artifactTrials', 0, 'blinkRate', 0);
-[EEG, truth] = nqc_synth(o);
+o = struct('seconds', 300, 'nPerCond', 80, 'lockedBlinks', 0.3, 'lockedBlinkUv', 500, 'artifactTrials', 0, 'blinkRate', 0);
+EEG = nqc_synth(o);
 o.lockedBlinks = 0; EEG0 = nqc_synth(o);
 nqc_setBase(EEG);
 c = pipecompare.eval.Contract('conditions', {'target', {'11'}; 'standard', {'31'}}, ...
-    'epoch', [-0.2 1.0], 'baseline', [-0.2 0], 'components', {'P3', [0.30 0.50], truth.roi});
+    'epoch', [-0.2 1.0], 'baseline', [-0.2 0], 'components', {'P3', [0.30 0.50], {'Cz'}});
 p = pipecompare.plan.Plan();
 p = p.add('epoch'); p = p.add('baseline');
 p = p.add('reject_threshold', 'uv', {1000, 100}, 'exclude', {{'EOG1', 'EOG2'}});
@@ -1431,7 +1432,9 @@ m1 = pipecompare.eval.Measure.candidate(E1, c, r.ref); m0 = pipecompare.eval.Mea
 actual = m1.objectives(1).estimate(1) - m0.objectives(1).estimate(1);
 o1 = r.cands(kAll).m.objectives(1);
 eb = T.(matlab.lang.makeValidName(['eyeBias_' r.ref.objectives{1}]));   % the table column of the P3's eye bias
-x = o1.X{1}(:, 1); b = r.ref.blink{1}{1}; pb = mean(b);
+x = o1.X{1}(:, 1); b = r.ref.blink{1}{1};
+in = ~isnan(x); x = x(in); b = b(in); pb = mean(b);            % the trials it scored
+verifyGreaterThan(tc, sum(b), 10);                             % the blink trials are found
 se = pb * std(x) * sqrt(1 / sum(b) + 1 / sum(~b));
 fprintf(['blinks: they add %.2f uV to the target mean; estimated %.2f uV (SE %.2f); rejecting them: %.2f uV; ', ...
     'noise %.3f keeping them, %.3f rejecting them\n'], actual, eb(kAll), se, eb(kRej), T.noise(kAll), T.noise(kRej));
