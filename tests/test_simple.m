@@ -213,7 +213,7 @@ verifyTrue(tc, contains(a, 'Ear/mastoid channels left out: A1, POL A2, m1'), a);
 verifyFalse(tc, contains(strjoin(P.dataAdvice(pipecompare.live.DataState.fromEEG(EEG)), ' '), 'Ear/mastoid'));
 c = P.contract(E, 'P3', {'11'});
 p = P.recipe('standard', st, c, 'average', ex);
-for k = [1 2 numel(p.Slots)]   % badchannels, reref, reject_threshold
+for k = [1 2 find(strcmp({p.Slots.id}, 'reject_threshold'))]   % badchannels, reref, reject_threshold
     verifyTrue(tc, all(ismember({'A1', 'POL A2', 'm1'}, p.Slots(k).alternatives{1}.params.exclude)), p.Slots(k).id);
 end
 % data already referenced to linked ears: A1 and A2 near flat and mirrored,
@@ -332,7 +332,7 @@ st = pipecompare.live.DataState.fromEEG(EEG);
 p = pipecompare.simple.Presets.recipe('filters', st, c);
 verifyEqual(tc, ids(p), {'highpass', 'lowpass', 'epoch', 'baseline'});
 [p, notes] = pipecompare.simple.Presets.recipe('standard', st, c);
-verifyEqual(tc, ids(p), {'badchannels', 'ica', 'highpass', 'lowpass', 'icremove', 'epoch', 'baseline', 'reject_threshold'});
+verifyEqual(tc, ids(p), {'badchannels', 'ica', 'highpass', 'lowpass', 'icremove', 'epoch', 'baseline', 'reject_threshold', 'weight'});
 verifyEmpty(tc, notes);                                          % ICA first: one decomposition for every filter choice
 th = @(p) p.Slots(strcmp(ids(p), 'icremove')).alternatives{1}.params;
 verifyEqual(tc, th(p).threshold, 'auto');                        % the ICLabel threshold chosen from the data
@@ -341,10 +341,10 @@ verifyFalse(tc, isfield(a, 'threshold') && ischar(a.threshold)); % repaired epoc
 % the average reference: fixed, after the bad channels (a bad channel
 % would spread into every channel) and before ICA
 p = pipecompare.simple.Presets.recipe('standard', st, c, 'average', {'VEOG'});
-verifyEqual(tc, ids(p), {'badchannels', 'reref', 'ica', 'highpass', 'lowpass', 'icremove', 'epoch', 'baseline', 'reject_threshold'});
+verifyEqual(tc, ids(p), {'badchannels', 'reref', 'ica', 'highpass', 'lowpass', 'icremove', 'epoch', 'baseline', 'reject_threshold', 'weight'});
 verifyEqual(tc, p.Slots(2).alternatives{1}.params.exclude, {'VEOG'});   % non-EEG channels left out of the average
 verifyEqual(tc, p.Slots(1).alternatives{1}.params.exclude, {'VEOG'});   % nor tested for bad channels
-verifyEqual(tc, p.Slots(end).alternatives{1}.params.exclude, {'VEOG'}); % nor for the epoch threshold
+verifyEqual(tc, p.Slots(strcmp(ids(p), 'reject_threshold')).alternatives{1}.params.exclude, {'VEOG'}); % nor for the epoch threshold
 verifyEqual(tc, p.Slots(1).alternatives{1}.params.detectHighpass, 1);  % bad channels found on a 1 Hz high-passed copy
 verifyEqual(tc, p.Slots(1).alternatives{1}.params.measure, 'kurt+prob');  % spiky or noisy
 % in Filters only too: the bad channels are interpolated before the average
@@ -354,7 +354,7 @@ verifyEqual(tc, ids(p), {'badchannels', 'reref', 'highpass', 'lowpass', 'epoch',
 % which removes a bad channel's share of the earlier average
 avg = st; avg.reference = 'average';
 verifyEqual(tc, ids(pipecompare.simple.Presets.recipe('standard', avg, c)), ...
-    {'badchannels', 'reref', 'ica', 'highpass', 'lowpass', 'icremove', 'epoch', 'baseline', 'reject_threshold'});
+    {'badchannels', 'reref', 'ica', 'highpass', 'lowpass', 'icremove', 'epoch', 'baseline', 'reject_threshold', 'weight'});
 verifyEqual(tc, ids(pipecompare.simple.Presets.recipe('filters', avg, c)), ...
     {'badchannels', 'reref', 'highpass', 'lowpass', 'epoch', 'baseline'});
 noloc = st; noloc.nLocated = 0;
@@ -428,12 +428,21 @@ d = pipecompare.gui.SimpleDialog(EEG); c = onCleanup(@() delete(d)); %#ok<NASGU>
 d.EventList.Value = {'11', '31'}; d.MeasureDrop.Value = 'P3'; d.measureChanged();
 names = pipecompare.simple.Presets.stepNames();
 box = @(s) d.StepBoxes(strcmp(names, s));
-verifyEqual(tc, d.update(), 4 * 3);                             % Standard (ICLabel threshold and rejection limit chosen from the data)
+verifyEqual(tc, d.update(), 4 * 3 * 2);                         % Standard (ICLabel threshold and rejection limit chosen from the data; weighted or not)
+verifyFalse(tc, box('icsme').Value);                            % off in Standard
+d.tick(find(strcmp(names, 'icsme')), true);
+verifyEqual(tc, d.update(), 2 * 4 * 3 * 2);                     % components also chosen by their effect on the noise
+verifyTrue(tc, ismember('icsme', d.options().steps));
+d.tick(find(strcmp(names, 'icsme')), false);
 d.tick(find(strcmp(names, 'ica')), false);
-verifyEqual(tc, d.update(), 4 * 3);                             % without ICA
+verifyEqual(tc, d.update(), 4 * 3 * 2);                         % without ICA
 verifyFalse(tc, box('ica').Value);
+verifyEqual(tc, char(box('icsme').Enable), 'off');              % only with ICA
 o = d.options();
-verifyEqual(tc, o.steps, {'badchannels', 'highpass', 'lowpass', 'reject'});
+verifyEqual(tc, o.steps, {'badchannels', 'highpass', 'lowpass', 'reject', 'weight'});
+d.tick(find(strcmp(names, 'weight')), false);
+verifyEqual(tc, d.update(), 4 * 3);                             % equal weights only
+d.tick(find(strcmp(names, 'weight')), true);
 verifyEmpty(tc, o.recipe);                                      % not one of the two recipes
 d.usePreset('filters');
 verifyEqual(tc, d.update(), 12);
@@ -465,7 +474,7 @@ R = pop_select(EEG, 'nochannel', {'O1', 'O2'});
 st = pipecompare.live.DataState.fromEEG(R);
 verifyTrue(tc, all(ismember({'O1', 'O2'}, st.removedChannels(st.restorableChannels))));
 verifyEqual(tc, ids(pipecompare.simple.Presets.recipe('standard', st, c, 'average')), ...
-    {'restore', 'badchannels', 'reref', 'ica', 'highpass', 'lowpass', 'icremove', 'epoch', 'baseline', 'reject_threshold'});
+    {'restore', 'badchannels', 'reref', 'ica', 'highpass', 'lowpass', 'icremove', 'epoch', 'baseline', 'reject_threshold', 'weight'});
 verifyFalse(tc, ismember('restore', ids(pipecompare.simple.Presets.recipe('standard', st, c))));   % as recorded
 V = EEG; V.chanlocs(1).labels = 'VEOG';
 V = pop_select(V, 'nochannel', {'VEOG'});
@@ -535,12 +544,12 @@ verifyEqual(tc, char(d.RunButton.Enable), 'off');
 verifyEqual(tc, d.Grid.RowHeight{3}, 0);                        % nothing chosen yet
 d.EventList.Value = {'11', '31'}; d.MeasureDrop.Value = 'P3'; d.measureChanged();
 [n, msg] = d.update();
-verifyEqual(tc, n, 4 * 3);                                      % filters (ICLabel threshold and rejection limit chosen from the data)
+verifyEqual(tc, n, 4 * 3 * 2);                                  % filters (ICLabel threshold and rejection limit chosen from the data), weighted or not
 verifyTrue(tc, contains(msg, '(1 ICA decomposition)'));
 verifyEqual(tc, char(d.RunButton.Enable), 'on');
 verifyEqual(tc, d.RefDrop.Value, 'asis');                       % the reference as recorded unless chosen
 d.RefDrop.Value = 'average';
-verifyEqual(tc, d.update(), 4 * 3);                             % fixed: no more pipelines
+verifyEqual(tc, d.update(), 4 * 3 * 2);                         % fixed: no more pipelines
 o = d.options();
 verifyEqual(tc, o.reference, 'average');
 d.RefDrop.Value = 'asis';
@@ -662,6 +671,56 @@ o = d.options();
 verifyTrue(tc, o.pool);
 end
 
+function testOnePipelineForAGroup(tc)
+% Three recordings compared with the simple mode's settings, then ranked
+% together: the group objective is the root mean square of each
+% recording's, the recommendation passes on every recording, the current
+% dataset is put back, and the recommended pipeline is written as a script.
+E = tc.TestData.EEG;
+D = [E nqc_synth(struct('seconds', 120, 'nPerCond', 30, 'seed', 8)) nqc_synth(struct('seconds', 120, 'nPerCond', 30, 'seed', 9))];
+nqc_setBase(E); before = evalin('base', 'EEG');
+G = pipecompare.Group.run(D, 'measure', 'P3', 'events', {'11', '31'}, 'recipe', 'filters', 'show', 'on');
+verifyEqual(tc, evalin('base', 'EEG'), before);                 % the current dataset again
+verifyEqual(tc, size(G.perRecording), [3 height(G.table)]);
+verifyGreaterThanOrEqual(tc, height(G.table), 12);
+verifyEqual(tc, G.table.objective', sqrt(mean(G.perRecording .^ 2, 1)), 'RelTol', 1e-12);
+verifyNotEmpty(tc, G.recommended);
+k = G.recommended;
+verifyEqual(tc, G.table.status{k}, 'passed');
+verifyEqual(tc, G.table.passedIn(k), 3);
+verifyTrue(tc, G.table.notDistinguished(k));
+verifyEqual(tc, evalin('base', 'pipecompare_group.recommended'), k);
+f = fullfile(tempdir, 'pc_group_script.m'); cl = onCleanup(@() delete(f)); %#ok<NASGU>
+pipecompare.Group.writeScript(G, f);
+verifyTrue(tc, contains(fileread(f), G.labels{k}), fileread(f));
+end
+
+function testGroupPipelineMustPassOnEveryRecording(tc)
+% The pipeline best on two recordings but rejected on the third is not
+% recommended; a recording on which nothing passes is left out.
+rs = RandStream('mt19937ar', 'Seed', 5); N = 40; ref = nqc_ref(N);
+o = pipecompare.eval.Rank.defaults(); o.nBoot = 200;
+rk = struct('objective', 'composite', 'options', o);
+S = struct('name', {}, 'keys', {}, 'labels', {}, 'table', {}, 'cands', {}, 'ref', {}, 'ranking', {});
+for i = 1:4
+    x = randn(rs, N, 1);
+    cs = [nqc_cand(x) nqc_cand(2 * x)]; cs(1).id = 1; cs(2).id = 2;   % pipeline a: half the noise of b
+    st = {'feasible'; 'feasible'};
+    if i == 3, st{1} = 'rejected'; end                              % a fails on recording 3
+    if i == 4, st = {'rejected'; 'rejected'}; end                   % nothing passes on recording 4
+    T = table([1; 2], {''; ''}, st, [std(x); 2 * std(x)] / sqrt(N), [1; 1], [0; 0], ...
+        'VariableNames', {'id', 'stratum', 'status', 'objective', 'minRetention', 'ampError'});
+    S(i) = struct('name', sprintf('r%d', i), 'keys', {{'a', 'b'}}, 'labels', {{'a', 'b'}}, 'table', T, ...
+        'cands', {cs}, 'ref', ref, 'ranking', rk);
+end
+G = pipecompare.Group.rank(S);
+verifyEqual(tc, G.leftOut, {'r4'});
+verifyEqual(tc, G.table.status, {'excluded'; 'passed'});
+verifyEqual(tc, G.table.passedIn, [2; 3]);
+verifyEqual(tc, G.recommended, 2);
+verifyEqual(tc, size(G.perRecording), [3 2]);
+end
+
 function testPopFunctionFromAScript(tc)
 EEG = tc.TestData.EEG;
 nqc_setBase(EEG);
@@ -672,7 +731,8 @@ verifyTrue(tc, contains(logText, 'candidate 12'));              % every pipeline
 verifyFalse(tc, contains(logText, 'pipelines compared'));       % not the summary after it
 verifyEqual(tc, char(get(0, 'Diary')), 'off');                  % the diary is off again
 verifyEqual(tc, out, EEG);                                      % the dataset is not modified
-verifyEqual(tc, numel(r.cands), 12);
+verifyEqual(tc, r.report.nLeaves, 12);
+verifyTrue(tc, any(numel(r.cands) == [12 13]));                 % fine-tuned cutoffs: one more
 verifyEqual(tc, com, ['EEG = pop_pipecompare(EEG, ''measure'',''P3'',''events'',{''11'',''31''},''recipe'',''filters'',', ...
     '''show'',''off'');']);                                      % 'show','off' is repeated too
 evalin('base', 'clear pipecompare_result');
@@ -689,7 +749,7 @@ verifyTrue(tc, startsWith(com, 'EEG = pop_pipecompare(EEG, ''measure'',''custom'
 verifyTrue(tc, contains(com, '''channels'',{''Pz''},''events'',{''11'',''31''}'));
 [~, com, rs] = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'11', '31'}, 'steps', {'lowpass', 'highpass'}, 'show', 'off');
 verifyTrue(tc, contains(com, '''recipe'',''filters'''));         % the steps of a recipe: written as the recipe
-verifyEqual(tc, numel(rs.cands), 12);
+verifyEqual(tc, rs.report.nLeaves, 12);
 [~, com] = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'11', '31'}, 'steps', {'lowpass'}, 'show', 'off');
 verifyTrue(tc, contains(com, '''steps'',{''lowpass''}'));
 [~, com, rc] = pop_pipecompare(EEG, 'measure', 'P3', 'channels', {'Pz', 'Cz'}, 'events', {'11', '31'}, ...
@@ -751,7 +811,7 @@ verifyTrue(tc, startsWith(w.Table.Data{1, 6}, 'high-pass '));
 verifyEqual(tc, size(w.Table.Data, 1), 5);
 verifyEqual(tc, w.Table.Data{1, 1}, sprintf('%d*', r.ranking.recommended));   % always shown, first
 w.AllBox.Value = true; w.showRows();
-verifyEqual(tc, size(w.Table.Data), [12 7]);                   % every pipeline, with why it was excluded
+verifyEqual(tc, size(w.Table.Data), [numel(r.cands) 7]);       % every pipeline, with why it was excluded
 i = find(strcmp(w.Table.Data(:, 2), 'passed') & ~endsWith(w.Table.Data(:, 1), '*'), 1);
 w.Table.Selection = [i 1]; k = str2double(w.Table.Data{i, 1});
 w.adopt();

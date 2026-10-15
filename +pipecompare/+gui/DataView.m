@@ -100,9 +100,11 @@ classdef DataView < handle
             else
                 m = c.components(1); roi = find(ismember(labels, lower(m.roi)));
                 if E.trials == 1, [~, E] = evalc('pop_epoch(E, c.allEvents(), c.epoch)'); end
+                ew = pipecompare.eval.Measure.epochWeights(E);   % 1 unless the pipeline weights its epochs
+                if any(ew ~= 1), note = ['Weighted averages (the pipeline weights the epochs by their noise). ' note]; end
                 for k = 1:numel(c.conditions)
                     sel = pipecompare.eval.Measure.lockingEvents(E, c.conditions(k).events) > 0;
-                    w = mean(mean(double(E.data(roi, :, sel)), 3), 1);
+                    w = sum(mean(double(E.data(roi, :, sel)), 1) .* reshape(ew(sel), 1, 1, []), 3) / sum(ew(sel));
                     plot(ax, E.times, w, 'DisplayName', sprintf('%s, %s (%d trials)', name, c.conditions(k).name, sum(sel)));
                 end
                 if isempty(obj.Names), markRange(ax, 1000 * m.window); end

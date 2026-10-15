@@ -378,6 +378,14 @@ classdef Plan
             end
             alt = struct('type', 'native', 'params', struct('command', command));
         end
+
+        function in = reparam(in, name, value)
+            % A step instance with one parameter changed, its key and
+            % label made as enumerate makes them (a pipeline built after
+            % the search, e.g. a fine-tuned filter cutoff).
+            in.params.(name) = value;
+            in.key = instKey(in.type, in.params); in.label = instLabel(in.type, in.params);
+        end
     end
 
     methods (Access = private)

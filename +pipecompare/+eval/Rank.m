@@ -58,10 +58,24 @@ classdef Rank
     %      choose it: the trials of each condition are split in halves,
     %      the pipeline best on one half is scored on the other (rescaled
     %      to the full number of trials), and back; opts.nSplits random
-    %      splits (consecutive halves for segments of one recording).
+    %      splits (consecutive halves for segments of one recording). A
+    %      choice a pipeline makes from the measure itself (a rejection
+    %      limit, an ICLabel threshold or components chosen from the data)
+    %      is made again on the selecting half too (nested cross-fitting),
+    %      so its advantage by chance is held out as well.
     %   5. Among candidates the data do not distinguish from the best, the
     %      recommendation is the least aggressive: highest minimum trial
     %      retention, then smallest signal distortion, then best objective.
+    %   5b. Stability: how often the recommendation would be the same with
+    %      other trials. In each paired bootstrap resample of the trials
+    %      (those of step 4), the choice of steps 4 and 5 is made again on
+    %      the resampled objectives (with the critical value of step 4:
+    %      a candidate is not distinguished from the best when its
+    %      objective is within it of the lowest); the share of resamples in
+    %      which each candidate is recommended is its selection frequency
+    %      (the bootstrap selection frequency of model selection; Efron,
+    %      2014, JASA). A low frequency of the recommended pipeline says the
+    %      data do not single it out.
     %   6. Candidates are compared only within a stratum: candidates that
     %      differ in a parameter that changes the measured quantity (e.g.
     %      the reference) are ranked separately and never against each
@@ -132,14 +146,15 @@ classdef Rank
 
             lo = nan(n, 1); hi = nan(n, 1); hiKept = nan(n, 1); notDist = false(n, 1); equiv = false(n, 1);
             recommended = []; best = [];
-            byStratum = struct('stratum', {}, 'best', {}, 'recommended', {}, 'set', {}, 'crossfit', {});
+            byStratum = struct('stratum', {}, 'best', {}, 'recommended', {}, 'set', {}, 'crossfit', {}, 'stability', {});
+            chosen = nan(n, 1);
             strata = unique(stratum(strcmp(status, 'feasible')), 'stable');
             for s = 1:numel(strata)
                 feas = find(strcmp(status, 'feasible') & strcmp(stratum, strata{s}));
                 boot = pipecompare.eval.Rank.bootstrap(cands(feas), ref, opts, {objName});
                 pts = primary(feas);
                 [~, ib] = min(pts);
-                [keep, l, h, hEq] = bestSet(pts(:), boot{1}, ib, opts.alpha);
+                [keep, l, h, hEq, crit] = bestSet(pts(:), boot{1}, ib, opts.alpha);
                 lo(feas) = l; hi(feas) = h; notDist(feas(keep)) = true;
                 % equivalent: the whole interval within the margin of the best
                 hEq(~keep) = NaN; hiKept(feas) = hEq;
@@ -149,18 +164,20 @@ classdef Rank
                 key = [-minRet(t), ampErr(t), primary(t)];
                 [~, o] = sortrows(round(key, 10));
                 cf = pipecompare.eval.Rank.crossfit(cands(feas), ref, opts, objName, pts(ib));
+                f = selectionFrequency(boot{1}, crit, minRet(feas), ampErr(feas));
+                chosen(feas) = f;
                 byStratum(end+1) = struct('stratum', strata{s}, 'best', feas(ib), 'recommended', t(o(1)), 'set', t, ...
-                    'crossfit', cf); %#ok<AGROW>
+                    'crossfit', cf, 'stability', f(feas == t(o(1)))); %#ok<AGROW>
             end
             if isscalar(byStratum)
                 recommended = byStratum.recommended; best = byStratum.best;
             end
             feasAll = find(strcmp(status, 'feasible'));
             order = [sortBy(feasAll, primary); find(strcmp(status, 'rejected')); find(strcmp(status, 'failed'))];
-            T = table((1:n)', stratum, status, primary, lo, hi, notDist, equiv, hiKept, minRet, minKept, interp, ...
+            T = table((1:n)', stratum, status, primary, lo, hi, notDist, equiv, hiKept, chosen, minRet, minKept, interp, ...
                 ampErr, latSh, artPct, wCorr, tCorr, reasons, notes, ...
                 'VariableNames', {'id','stratum','status','objective','diffLo','diffHi','notDistinguished','equivalent','diffHiKept', ...
-                'minRetention','minTrials','interpolated','ampError', ...
+                'chosenShare','minRetention','minTrials','interpolated','ampError', ...
                 'latencyShiftMs','artifactPct','waveformCorr','topoCorr','reason','note'});
             for k = 1:nO
                 T.(matlab.lang.makeValidName(['sme_' ref.objectives{k}])) = objAgg(:, k);   % gain-corrected
@@ -243,11 +260,24 @@ classdef Rank
             W = full(sparse(idx, repmat(1:B, N, 1), 1, N, B));
         end
 
-        function keep = confidenceSet(pts, Bq, ib, alpha)
+        function [keep, equiv] = confidenceSet(pts, Bq, ib, alpha, margin)
             % Which of K options (point objectives pts, paired bootstrap
             % replicates Bq, K x B; ib the point-best) the data do not show
-            % to be worse than another one: the test of step 4.
-            keep = bestSet(pts(:), Bq, ib, alpha);
+            % to be worse than another one: the test of step 4. equiv:
+            % those also shown equivalent to the best (the whole interval of
+            % the difference within margin times the best objective; the
+            % best itself always).
+            [keep, ~, ~, hEq] = bestSet(pts(:), Bq, ib, alpha);
+            if nargin < 5, margin = 0; end
+            equiv = keep & hEq <= margin * pts(ib);
+            equiv(ib) = true;
+        end
+
+        function v = pointObjective(m, ref, opts, g)
+            % The ranking's objective of one candidate's measures m with
+            % the signal gains g (one per measure): what Rank.run ranks by.
+            opts = pipecompare.utils.withDefaults(opts, pipecompare.eval.Rank.defaults());
+            v = primaryPoint(m, resolveObjective(opts.objective, ref), ref, g);
         end
 
         function name = objectiveName(obj, ref)
@@ -266,9 +296,18 @@ classdef Rank
             % made on half the trials is somewhat worse than one made on all,
             % so the overstatement is, if anything, too large. [] when a
             % condition has fewer than 4 trials or nSplits is 0.
-            % The data-driven decisions of each pipeline (bad channels, ICA,
-            % rejected epochs) were made on all trials; only the selection
-            % among pipelines is held out.
+            % The choices a pipeline makes from the measure itself (a
+            % rejection limit, an ICLabel threshold or components chosen by
+            % the SME: the steps that store the scores of every option they
+            % chose among, 'curves') are made again on the selecting half
+            % (nestedHalf), so their advantage by chance is held out too
+            % (nested cross-fitting); nested: how many candidates had one.
+            % A candidate is not nested when the stored scores of its own
+            % choice do not reproduce its scores (a step after the choice
+            % changed them, or its cutoffs were fine-tuned afterwards).
+            % The other data-driven decisions (bad channels, the ICA
+            % decomposition, fine-tuned cutoffs, trial weights) were made
+            % on all trials.
             cf = [];
             if nargin < 5, apparent = NaN; end
             opts = pipecompare.utils.withDefaults(opts, pipecompare.eval.Rank.defaults());
@@ -278,6 +317,8 @@ classdef Rank
             segmented = isfield(ref, 'segmented') && ref.segmented;
             nS = opts.nSplits; if segmented, nS = 1; end
             honest = []; inSample = [];
+            inner = arrayfun(@(c) innerOf(c, ref, objName), cands, 'UniformOutput', false);
+            nest = find(~cellfun(@isempty, inner));
             for sp = 1:nS
                 WA = cell(1, nC); WB = cell(1, nC); scA = ones(1, nC); scB = ones(1, nC);
                 for c = 1:nC
@@ -289,16 +330,22 @@ classdef Rank
                 end
                 vA = combine(perObjective(cands, ref, opts, WA, scA), objName, ref);
                 vB = combine(perObjective(cands, ref, opts, WB, scB), objName, ref);
-                vA(~isfinite(vA)) = NaN; vB(~isfinite(vB)) = NaN;
-                if all(isnan(vA)) || all(isnan(vB)), continue; end
-                [~, ia] = min(vA); [~, ib] = min(vB);
-                honest = [honest vB(ia) vA(ib)]; inSample = [inSample vA(ia) vB(ib)]; %#ok<AGROW>
+                % vXY: chosen on half X, scored on half Y
+                vAA = vA; vAB = vB; vBB = vB; vBA = vA;
+                for k = nest(:)'
+                    [vAA(k), vAB(k)] = nestedHalf(inner{k}, WA, WB, scA, scB, ref, opts);
+                    [vBB(k), vBA(k)] = nestedHalf(inner{k}, WB, WA, scB, scA, ref, opts);
+                end
+                vAA(~isfinite(vAA)) = NaN; vBB(~isfinite(vBB)) = NaN;
+                if all(isnan(vAA)) || all(isnan(vBB)), continue; end
+                [~, ia] = min(vAA); [~, ib] = min(vBB);
+                honest = [honest vAB(ia) vBA(ib)]; inSample = [inSample vAA(ia) vBB(ib)]; %#ok<AGROW>
             end
             ok = isfinite(honest);
             if ~any(ok), return; end
             h = mean(honest(ok));
             cf = struct('apparent', apparent, 'honest', h, 'overstatement', h / apparent - 1, ...
-                'halfInSample', mean(inSample(ok)), 'nSplits', nS);
+                'halfInSample', mean(inSample(ok)), 'nSplits', nS, 'nested', numel(nest));
         end
 
         function T = marginal(R, leaves, searched)
@@ -417,11 +464,16 @@ classdef Rank
                 lab = ''; if ~isempty(b.stratum), lab = sprintf(' [stratum %s]', b.stratum); end
                 pipecompare.utils.log(['Recommended (*)%s: candidate %d (fewest trials lost, then least distortion, among the %d ', ...
                     'not distinguished from the best); best objective: candidate %d.'], lab, b.recommended, numel(b.set), b.best);
+                if isfinite(b.stability)
+                    pipecompare.utils.log('Stability: in resamples of the trials, candidate %d is recommended in %.0f%% of them.', ...
+                        b.recommended, 100 * b.stability);
+                end
                 if ~isempty(b.crossfit)
                     pipecompare.utils.log(['Selection check: the pipeline best on half of the trials has objective %.4g on the ', ...
                         'other half (rescaled to all trials), against %.4g for the best on all trials: the best looks %.0f%% ', ...
-                        'better than it is (%d split(s), both directions).'], b.crossfit.honest, b.crossfit.apparent, ...
-                        100 * b.crossfit.overstatement, b.crossfit.nSplits);
+                        'better than it is (%d split(s), both directions; the limits, thresholds or components chosen ', ...
+                        'from the data made again on the selecting half for %d pipeline(s)).'], b.crossfit.honest, b.crossfit.apparent, ...
+                        100 * b.crossfit.overstatement, b.crossfit.nSplits, pipecompare.utils.fieldOr(b.crossfit, 'nested', 0));
                 end
             end
             if numel(R.byStratum) > 1
@@ -472,11 +524,12 @@ end
 g(~(g > 0)) = NaN;
 end
 
-function [keep, lo, hi, hiEq] = bestSet(pts, Bq, ib, alpha)
+function [keep, lo, hi, hiEq, c] = bestSet(pts, Bq, ib, alpha)
 % Which candidates the data do not show to be worse than another one.
 % pts: point objectives (K x 1); Bq: paired bootstrap replicates (K x B);
 % ib: index of the point-best. lo/hi: interval of each difference from
-% the best (0 for the best itself).
+% the best (0 for the best itself). c: the critical value (a candidate is
+% kept when its objective is within c of the lowest).
 K = numel(pts); keep = false(K, 1); lo = nan(K, 1); hi = nan(K, 1);
 keep(ib) = true;
 % Simultaneous over ALL ordered pairs (bootstrap max statistic): with
@@ -514,6 +567,23 @@ end
 z = maxK(isfinite(maxK));
 if isempty(z), cK = 0; else, cK = max(upperQuantile(z, alpha), 0); end
 hiEq = Dhat(:, ib) + cK; hiEq(ib) = 0; hiEq(~keep) = Inf;
+end
+
+function f = selectionFrequency(Bq, c, ret, amp)
+% The share of the bootstrap resamples (columns of Bq, K x B) in which
+% each of K candidates is recommended: those within c of the lowest
+% objective of the resample, then the rule of step 5 (highest minimum
+% retention, smallest amplitude error, lowest objective).
+K = size(Bq, 1); cnt = zeros(K, 1); used = 0;
+for b = 1:size(Bq, 2)
+    v = Bq(:, b); ok = isfinite(v);
+    if ~any(ok), continue; end
+    t = find(ok & v - min(v(ok)) <= c);
+    [~, o] = sortrows(round([-ret(t), amp(t), v(t)], 10));
+    cnt(t(o(1))) = cnt(t(o(1))) + 1; used = used + 1;
+end
+f = cnt / max(used, 1);
+if used == 0, f(:) = NaN; end
 end
 
 function v = upperQuantile(z, alpha)
@@ -573,4 +643,122 @@ if strcmp(name, 'composite')
 else
     v = per(:, :, strcmp(ref.objectives, name));
 end
+end
+
+function in = innerOf(c, ref, objName)
+% The choice candidate c made from the measure itself, for nestedHalf: the
+% scores of every option of the last such step (components chosen before
+% a rejection limit come first: their options cover the limit too),
+% divided by the gain, with zeros where a trial is absent (M: NaN), the
+% options that passed the signal check (ok) and c's trial weights (w, {}
+% when not weighted; trials c did not keep get the median weight). []
+% when c has none, its cutoffs were fine-tuned after it, or the stored
+% scores of its own choice do not reproduce c's scores: the same trials
+% kept (those up to one limit) and the same scores (cosine of the centred
+% scores at least 0.999).
+in = [];
+if ~strcmp(c.status, 'ok') || ~isfield(c, 'steps') || isempty(c.steps), return; end
+ty = cellfun(@(st) st.type, c.steps, 'UniformOutput', false);
+has = cellfun(@(st) isfield(st, 'curves') && ~isempty(st.curves), c.steps);
+refined = cellfun(@(st) isfield(st, 'cutoffRefined') && isequal(st.cutoffRefined, true), c.steps);
+if ~any(has) || any(refined), return; end
+k = find(has & strcmp(ty, 'icremove'), 1, 'last');
+if isempty(k), k = find(has, 1, 'last'); end
+cv = c.steps{k}.curves;
+nO = numel(ref.objectives);
+use = 1:nO;
+if ~strcmp(objName, 'composite'), use = find(strcmp(ref.objectives, objName)); end
+O = cv.options{cv.chosen};
+objs = c.m.objectives(use);
+if ~isequal(O.use(:)', use(:)') || ~all(strcmp({objs.kind}, 'scalar')), return; end
+g = gainOf(c, nO); g = g(use);
+if ~all(g > 0), return; end
+nC = numel(ref.ids);
+for q = 1:nC
+    kept = ~isnan(objs(1).X{q}(:, 1)); pres = ~isnan(O.M{q});
+    if nnz(kept) < 2 || any(kept & ~pres), return; end
+    drop = pres & ~kept;
+    if any(drop) && ~(max(O.M{q}(kept)) < min(O.M{q}(drop))), return; end
+    for j = 1:numel(use)
+        a = objs(j).X{q}(kept, 1); b = O.X{q}(kept, j);
+        a = a - mean(a); b = b - mean(b);
+        if norm(a) > 0 && (a' * b) / max(norm(a) * norm(b), eps) < 0.999, return; end
+    end
+end
+w = {};
+if isfield(objs(1), 'w') && ~isempty(objs(1).w)
+    w = objs(1).w;
+    for q = 1:nC
+        w{q}(isnan(w{q})) = median(w{q}(~isnan(w{q})));
+    end
+end
+opt = cv.options;
+for j = 1:numel(opt)
+    for q = 1:nC
+        X = opt{j}.X{q};
+        if ~opt{j}.gained, X = X ./ g; end
+        X(isnan(X)) = 0; opt{j}.X{q} = X;
+    end
+end
+in = struct('options', {opt}, 'ok', logical(cv.ok), 'w', {w});
+end
+
+function [vH, vO] = nestedHalf(in, H, O, scH, scO, ref, opts)
+% The candidate's choice (innerOf) made again on the trials of half H
+% (H{c}: 1 for the reference trials in it), as its step makes it on all
+% of them, with the margin in place of the bootstrap: per option its best
+% limit (a fixed limit: that one), the first option (fewest components)
+% within equivalenceMargin of the best option, and in it the most lenient
+% limit within equivalenceMargin of its best. Its objective on H (vH) and
+% on the other half O (vO), rescaled by scH and scO like perObjective;
+% NaN when no option keeps enough trials of H.
+vH = NaN; vO = NaN;
+nC = numel(ref.ids); nOpt = numel(in.options);
+need = max(opts.minTrials, ceil(opts.minRetention * ref.n - 1e-9));
+mg = 1 + opts.equivalenceMargin;
+objs = cell(1, nOpt); lims = cell(1, nOpt); best = inf(1, nOpt);
+for j = find(in.ok(:)')
+    P = in.options{j};
+    v = P.v;
+    if isempty(v)
+        v = [];
+        for q = 1:nC, v = [v; P.M{q}(H{q} > 0)]; end %#ok<AGROW>
+        v = unique(v(~isnan(v)))';
+    end
+    if isempty(v), continue; end
+    v = v(:)';
+    ok = true(1, numel(v)); acc = zeros(1, numel(v));
+    for q = 1:nC
+        K = double(P.M{q}(:) <= v) .* H{q}(:);           % trials x limits
+        n = sum(K, 1);
+        ok = ok & n >= max(ceil(need(q) * sum(H{q}) / ref.n(q) - 1e-9), 2);
+        for o = 1:size(P.X{q}, 2)
+            x = P.X{q}(:, o);
+            s1 = x' * K; s2 = (x .^ 2)' * K;
+            acc = acc + max((s2 - s1 .^ 2 ./ n) ./ (n - 1), 0) ./ n;
+        end
+    end
+    obj = sqrt(acc / (nC * size(P.X{1}, 2)));
+    obj(~ok | ~isfinite(obj)) = Inf;
+    objs{j} = obj; lims{j} = v; best(j) = min(obj);
+end
+if ~any(isfinite(best)), return; end
+j = find(best <= mg * min(best), 1);
+u = lims{j}(find(objs{j} <= mg * best(j), 1, 'last'));
+P = in.options{j};
+vH = scoredAt(P, u, H, scH, in.w, opts); vO = scoredAt(P, u, O, scO, in.w, opts);
+end
+
+function v = scoredAt(P, u, W, sc, w, opts)
+% The objective of option P with the trials kept at limit u, under the
+% trial weights W (Measure.smeBoot, rescaled by sc; RMS over the measures)
+nC = numel(P.X); per = zeros(1, size(P.X{1}, 2));
+for o = 1:numel(per)
+    X = cell(1, nC);
+    for q = 1:nC
+        X{q} = P.X{q}(:, o); X{q}(~(P.M{q} <= u)) = NaN;
+    end
+    per(o) = pipecompare.eval.Measure.smeBoot(struct('kind', 'scalar', 'X', {X}, 'w', {w}), W, opts, 0, sc);
+end
+v = sqrt(mean(per .^ 2));
 end

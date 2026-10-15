@@ -27,7 +27,9 @@ function [EEG, com, result] = pop_pipecompare(EEG, varargin)
 %   'recipe'   'standard' (default) | 'filters': which steps are compared
 %              (standard: all the steps below; filters: the two filters)
 %   'steps'    instead of 'recipe', any of 'badchannels', 'ica',
-%              'highpass', 'lowpass', 'reject' (epoch rejection; the
+%              'icsme' (with 'ica': the components to remove also chosen
+%              by their effect on the noise, compared with ICLabel's
+%              automatic threshold), 'highpass', 'lowpass', 'reject' (epoch rejection; the
 %              limit is chosen from the data in each pipeline),
 %              'peaktopeak' (with 'reject': the limit is measured
 %              peak-to-peak in moving 200 ms windows, as in ERP CORE),
@@ -35,7 +37,8 @@ function [EEG, com, result] = pop_pipecompare(EEG, varargin)
 %              channels over the limit keeps them, interpolated within the
 %              epoch, instead of being rejected; fixed limits 75, 100 and
 %              150 uV, or 100, 150 and 200 uV peak-to-peak, are then
-%              compared), e.g.
+%              compared), 'weight' (ERP: the epochs weighted by their
+%              noise, compared with equal weights), e.g.
 %              {'highpass', 'lowpass', 'reject'}; they always run in that
 %              order, with epoching and baseline in every pipeline
 %   'reference' 'asis' (default) | 'average': the average reference as a
@@ -123,7 +126,8 @@ assert(nTotal > 1, 'PipeCompare:Simple', 'On these data the steps chosen (%s) gi
     strjoin(steps, ', '), nTotal, pipecompare.utils.ternary(isempty(notes), '', [': ' strjoin(notes, '; ')]));
 % the unit judged from the amplitude scale, as in the panel: rejection
 % thresholds in uV would remove nothing from data stored in V
-runOpts = struct('dataUnit', state.unitGuess);
+runOpts = struct('dataUnit', state.unitGuess, 'refineCutoffs', true, ...   % compared filter cutoffs: also a finer grid
+    'signalTemplate', 'data');   % the signal check with this recording's own waveform where it is reliable
 if strcmp(state.unitGuess, 'V'), pipecompare.utils.log('The data are in volts (judged from the amplitude scale); they are compared in uV.'); end
 prog = pipecompare.gui.Progress.empty;
 if ~strcmp(opts.show, 'off')

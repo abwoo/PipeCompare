@@ -109,6 +109,12 @@ classdef SimpleResults < handle
             if ~isempty(rej), t = sprintf('%s %s', t, rej); end
             prior = pipecompare.simple.Presets.priorFilterText(obj.Result);
             if ~isempty(prior), t = sprintf('%s %s', t, prior); end
+            tpl = pipecompare.simple.Presets.templateText(obj.Result);
+            if ~isempty(tpl), t = sprintf('%s %s', t, tpl); end
+            ks = pipecompare.simple.Presets.keptShiftText(obj.Result);
+            if ~isempty(ks), t = sprintf('%s %s', t, ks); end
+            wt = pipecompare.simple.Presets.weightsText(obj.Result);
+            if ~isempty(wt), t = sprintf('%s %s', t, wt); end
         end
 
         function showSteps(obj)
@@ -283,7 +289,9 @@ switch [type '.' param]
     case 'highpass.cutoff', t = sprintf('high-pass %s Hz', x);
     case 'lowpass.cutoff', t = sprintf('low-pass %s Hz', x);
     case 'icremove.threshold'
-        if strcmp(x, 'auto'), t = 'ICLabel threshold chosen from the data'; else, t = sprintf('ICLabel %s', x); end
+        if strcmp(x, 'auto'), t = 'ICLabel threshold chosen from the data';
+        elseif strcmp(x, 'sme'), t = 'ICA components chosen by their effect on the noise';
+        else, t = sprintf('ICLabel %s', x); end
     case 'reject_threshold.uv'
         if strcmp(x, 'auto'), t = 'rejection limit chosen from the data'; else, t = sprintf('reject above %s uV', x); end
     case {'reject_threshold.interpolate', 'reject_jointprob.interpolate', 'reject_kurtosis.interpolate'}
@@ -296,6 +304,7 @@ end
 function t = noneText(slot, state)
 % A skipped step in words; a filter the data already had is kept.
 t = sprintf('no %s', strrep(slot, 'pass', '-pass'));
+if startsWith(slot, 'weight'), t = 'epochs weighted equally'; return; end   % (weight_trials skipped)
 if ~any(strcmp(slot, {'highpass', 'lowpass'})) || ~isfield(state, 'filters') || isempty(state.filters.(slot)), return; end
 edge = pipecompare.utils.ternary(strcmp(slot, 'highpass'), max(state.filters.(slot)), min(state.filters.(slot)));
 t = sprintf('%s as in the data (%g Hz)', strrep(slot, 'pass', '-pass'), edge);
@@ -309,6 +318,7 @@ switch type
     case 'icremove', t = 'ICLabel component removal';
     case 'epoch', t = 'epochs';
     case 'baseline', t = 'baseline removal';
+    case 'weight_trials', t = 'epochs weighted by their noise';
     otherwise
         d = pipecompare.plan.Catalog.get(type); t = lower(d.label);
 end

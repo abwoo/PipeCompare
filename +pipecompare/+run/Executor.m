@@ -29,6 +29,16 @@ classdef Executor
     %     filterCheck   true (default): pipelines whose filters alone break
     %                   a signal-check limit are excluded before anything
     %                   runs (Injection.filterCheck)
+    %     refineCutoffs false (default; true in the simple mode): when filter cutoffs are compared,
+    %                   the recommended pipeline's are fine-tuned on a finer
+    %                   grid with its decisions held fixed
+    %                   (pipecompare.eval.Cutoff), and the pipeline with the
+    %                   best ones is run and ranked with the others
+    %     signalTemplate 'bump' (default) | 'data' (the simple mode's
+    %                   default): the time course of the known signal of the
+    %                   signal check, a bump centred in each window or this
+    %                   recording's own average waveform at the ROI where it
+    %                   is reliable (pipecompare.eval.Injection)
     %     progress      function stop = f(n), called with the number of
     %                   candidates just evaluated (0 = only asking); when it
     %                   returns true, no further step runs and the
@@ -42,7 +52,9 @@ classdef Executor
         function result = run(plan, contract, opts)
             if nargin < 3, opts = struct(); end
             opts = pipecompare.utils.withDefaults(opts, struct('dryRun', false, 'injectUv', 5, 'filterCheck', true, ...
-                'dataUnit', 'uV', 'checkpoint', '', 'parallel', false, 'verbose', 'normal', 'progress', []));
+                'refineCutoffs', false, 'signalTemplate', 'bump', 'dataUnit', 'uV', 'checkpoint', '', 'parallel', false, 'verbose', 'normal', 'progress', []));
+            assert(any(strcmp(opts.signalTemplate, {'bump', 'data'})), 'PipeCompare:Options', ...
+                'signalTemplate must be ''bump'' or ''data''.');
             [EEG, live] = pipecompare.live.Session.current();
             assert(~isempty(EEG), 'PipeCompare:NoDataset', 'No dataset is loaded in EEGLAB.');
             if ~live.stored
@@ -115,6 +127,19 @@ classdef Executor
             [S, env.truth] = pipecompare.eval.Injection.prepare(root, contract, ref, opts);
             pipecompare.utils.log(['Signal check: a known %g uV signal is carried through every candidate with the ', ...
                 'same decisions (matched-decision injection).'], opts.injectUv);
+            result.signalTemplate = [];
+            if isfield(env.truth, 'shape') && ~isempty(env.truth.shape)
+                result.signalTemplate = env.truth.shape.info;
+                for j = 1:numel(contract.components)
+                    if result.signalTemplate.used(j)
+                        pipecompare.utils.log('Signal check, %s: the shape of this recording''s own average (split-half reliability %.2f).', ...
+                            contract.components(j).name, result.signalTemplate.reliability(j));
+                    else
+                        pipecompare.utils.log('Signal check, %s: the standard bump (this recording''s average: %s).', ...
+                            contract.components(j).name, result.signalTemplate.why{j});
+                    end
+                end
+            end
             % depth-first execution holds the data and the signal copy once per
             % level of the current branch (the price of sharing prefixes)
             % (a level after a resample step holds data smaller by fs_new/fs)
@@ -177,11 +202,15 @@ classdef Executor
                     numel(notRun), numel(allc));
             end
             result.notRun = numel(notRun);
-            result.cands = allc;
             R = pipecompare.eval.Rank.run(allc, ref, opts);
+            if pipecompare.utils.fieldOr(opts, 'refineCutoffs', false) && isempty(notRun)
+                [result, allc, added] = refineCutoffs(result, env, root, S, ctx0, acc0, allc, R);
+                if added, R = pipecompare.eval.Rank.run(allc, ref, opts); end
+            end
+            result.cands = allc;
             result.ranking = R;
-            result.marginal = pipecompare.eval.Rank.marginal(R, leaves, result.report.searched);
-            result.robustness = pipecompare.eval.Rank.robustness(allc, R, leaves, result.report.searched, ref);
+            result.marginal = pipecompare.eval.Rank.marginal(R, result.leaves, result.report.searched);
+            result.robustness = pipecompare.eval.Rank.robustness(allc, R, result.leaves, result.report.searched, ref);
             pipecompare.eval.Rank.print(R, result.labels);
             notes = unique([allc.unmatched]);
             if ~isempty(notes)
@@ -412,7 +441,13 @@ classdef Executor
                         % the threshold the search chose on these same data
                         in.params.threshold = result.cands(idx).steps{k}.thresholdChosen;
                     end
-                    [EEG, coms] = runStep(in, EEG, ctx, result.options.verbose);
+                    cx = ctx;
+                    if strcmp(in.type, 'icremove') && isequal(in.params.threshold, 'sme') && isfield(result, 'cands') && ...
+                            numel(result.cands) >= idx && numel(result.cands(idx).steps) >= k
+                        % the components the search chose on these same data
+                        cx.chosenComps = result.cands(idx).steps{k}.comps;
+                    end
+                    [EEG, coms] = runStep(in, EEG, cx, result.options.verbose);
                 end
                 for q = 1:numel(coms)
                     fprintf('    %s\n', coms{q});
@@ -431,13 +466,16 @@ classdef Executor
             end
         end
 
-        function EEG = apply(EEG, steps, contract)
+        function EEG = apply(EEG, steps, contract, opts)
             % Run steps (rows of type, params) on any dataset as the search
             % runs them, so each step decides from these data (bad
             % channels, components, rejected epochs); used by saved
             % scripts. The preparation is the search's own (unit judged
             % from the amplitude scale); every command goes to EEG.history.
+            % opts.signalTemplate: the known signal's shape for the
+            % choices that use the signal check, as in the search.
             if nargin < 3 || isempty(contract), contract = pipecompare.eval.Contract(); end
+            if nargin < 4, opts = struct(); end
             state = pipecompare.live.DataState.fromEEG(EEG);
             EEG = pipecompare.run.Executor.prepareRoot(EEG, contract, struct('dataUnit', state.unitGuess));
             ctx = struct('contract', contract, 'highpass', rootHighpass(state));
@@ -449,7 +487,7 @@ classdef Executor
             S = []; truth = [];
             if any(chosen('threshold'))
                 % an ICLabel threshold chosen from the data uses the signal check
-                [S, truth] = pipecompare.eval.Injection.prepare(EEG, contract, ctx.ref);
+                [S, truth] = pipecompare.eval.Injection.prepare(EEG, contract, ctx.ref, opts);
             end
             insts = arrayfun(@(k) struct('type', steps{k, 1}, 'params', steps{k, 2}), 1:size(steps, 1), 'UniformOutput', false);
             for k = 1:numel(insts)
@@ -465,6 +503,7 @@ classdef Executor
             end
             [EEG, com] = pipecompare.run.Executor.selectEligible(EEG, contract);
             if ~isempty(com), EEG = eeg_hist(EEG, com); end
+            EEG = storeWeightedAverages(EEG, contract);
         end
 
         function [elig, EEG] = eligibleUrevents(EEG, contract)
@@ -568,6 +607,7 @@ classdef Executor
                     'adopt(result, %d, true) to store it anyway.'], idx, idx);
                 if ~same, pipecompare.utils.log('WARNING: storing a rebuilt candidate that differs from the evaluated one.'); end
             end
+            EEG = storeWeightedAverages(EEG, result.contract);
             EEG.setname = sprintf('%s PipeCompare#%d', result.state.setname, idx);
             assignin('base', 'PIPECOMPARE_ADOPT__', EEG);
             evalin('base', ['[ALLEEG, EEG, CURRENTSET] = pop_newset(ALLEEG, PIPECOMPARE_ADOPT__, CURRENTSET, ', ...
@@ -620,6 +660,20 @@ classdef Executor
 end
 
 % ---------------------------------------------------------------------
+function EEG = storeWeightedAverages(EEG, contract)
+% Epochs weighted by weight_trials: their weighted average per condition in
+% EEG.etc.pipecompare.weightedERP (Measure.weightedAverages), since EEGLAB's
+% and ERPLAB's own averages would count every epoch equally.
+if isempty(pipecompare.eval.Measure.storedWeights(EEG)) || ~strcmp(contract.analysis, 'erp') || ...
+        isempty(contract.conditions) || EEG.trials < 2
+    return;
+end
+EEG.etc.pipecompare.weightedERP = pipecompare.eval.Measure.weightedAverages(EEG, contract);
+pipecompare.utils.log(['The epochs are weighted by their noise: the weighted average of each condition is in ', ...
+    'EEG.etc.pipecompare.weightedERP.data (channels x times x conditions). EEGLAB''s and ERPLAB''s own ', ...
+    'averages count every epoch equally and do not give the ERP this pipeline was scored on.']);
+end
+
 function c = emptyCand()
 % One evaluated pipeline. Every field is set here and only here; the
 % producers and consumers are:
@@ -715,14 +769,26 @@ function f = stepFacts(in, info)
 % points ICA had (the ICA check); for a rejection limit chosen from the
 % data, the limit (uvChosen); for an ICLabel threshold chosen from the
 % data, the threshold (thresholdChosen) and how many components it
-% considered (icsConsidered).
+% considered (icsConsidered); the components and epochs removed (comps,
+% rejIdx), which fine-tuning the cutoffs holds fixed; for a filter,
+% whether its cutoff was fine-tuned from the data (cutoffRefined); for
+% weighted epochs, how much more the cleanest counts than the noisiest
+% (weightRatio) and the weights (trialWeights), which fine-tuning the
+% cutoffs also holds fixed; for a choice made from the data (rejection
+% limit, ICLabel threshold, components by SME), the scores of every option
+% it chose among (curves), with which the ranking's selection check makes
+% the choice again on half of the trials (Rank.crossfit); for a rejection,
+% how far the mean score of the epochs kept is from that of all of them
+% (keptShift, Presets.keptShiftText).
 f = struct('type', in.type, 'params', in.params, 'interpolated', {{}}, 'removed', {{}}, ...
     'icsRemoved', NaN, 'icsTotal', NaN, 'rejected', NaN, 'epochsBefore', NaN, 'epochsInterpolated', NaN, ...
-    'icsBrain', NaN, 'icsOther', NaN, 'otherMedian', NaN, 'icaPoints', NaN, 'uvChosen', NaN, 'thresholdChosen', NaN, 'icsConsidered', NaN);
+    'icsBrain', NaN, 'icsOther', NaN, 'otherMedian', NaN, 'icaPoints', NaN, 'uvChosen', NaN, 'thresholdChosen', NaN, 'icsConsidered', NaN, 'icsProtected', NaN, ...
+    'comps', [], 'rejIdx', [], 'cutoffRefined', false, 'weightRatio', NaN, 'trialWeights', [], 'curves', [], 'keptShift', []);
 for n = {'interpolated', 'removed'}
     if isfield(info, n{1}), f.(n{1}) = cellstr(info.(n{1})); end
 end
-for n = {'icsRemoved', 'icsTotal', 'rejected', 'epochsBefore', 'epochsInterpolated', 'icsBrain', 'icsOther', 'otherMedian', 'icaPoints', 'uvChosen', 'thresholdChosen', 'icsConsidered'}
+for n = {'icsRemoved', 'icsTotal', 'rejected', 'epochsBefore', 'epochsInterpolated', 'icsBrain', 'icsOther', 'otherMedian', 'icaPoints', 'uvChosen', 'thresholdChosen', 'icsConsidered', 'icsProtected', ...
+        'comps', 'rejIdx', 'cutoffRefined', 'weightRatio', 'trialWeights', 'curves', 'keptShift'}
     if isfield(info, n{1}), f.(n{1}) = info.(n{1}); end
 end
 end
@@ -752,9 +818,12 @@ in = env.tree(node).inst;
 if ~(strcmp(in.type, 'icremove') && ischar(in.params.threshold)), return; end
 d = env.tree(node).depth;
 under = leavesUnder(env.tree, node);
-after = env.leaves(under(1)).path(d+1:end);
+% the steps it is chosen for: up to the epoch rejection that follows (the
+% steps after that do not change the choice)
+upto = @(path) path(1:min([numel(path) find(cellfun(@(x) strcmp(x.type, 'reject_threshold'), path), 1)]));
+after = upto(env.leaves(under(1)).path(d+1:end));
 plain = @(path) cellfun(@(x) {x.type, x.params}, path, 'UniformOutput', false);
-same = all(arrayfun(@(li) isequal(plain(env.leaves(li).path(d+1:end)), plain(after)), under));
+same = all(arrayfun(@(li) isequal(plain(upto(env.leaves(li).path(d+1:end))), plain(after)), under));
 assert(same, 'PipeCompare:IcThreshold', ['An ICLabel threshold chosen from the data (''auto'') needs the same steps ', ...
     'after it in every pipeline that shares it (it is chosen for the rejection that follows); compare the steps ', ...
     'after it in separate runs, or set the thresholds (e.g. 0.7 | 0.8 | 0.9).']);
@@ -804,6 +873,128 @@ if strcmp(c.status, 'ok')
 else
     pipecompare.utils.log('candidate %d failed: %s', li, c.message);
 end
+end
+
+function [result, allc, added] = refineCutoffs(result, env, root, S, ctx, acc, allc, R)
+% The filter cutoffs of the recommended pipeline fine-tuned from the data
+% (pipecompare.eval.Cutoff): with its decisions held fixed, the objective
+% is computed on a finer grid of cutoffs between those compared. When
+% other cutoffs are better, the pipeline with them runs like every other
+% one (its steps take their own decisions on these data) and joins the
+% ranking. Its steps before the first filter run again from the starting
+% data (the search does not keep intermediate data), its ICA reused.
+added = false;
+ib = R.recommended;
+if isempty(ib) || isempty(S) || root.trials > 1, return; end
+c = allc(ib); path = env.leaves(ib).path;
+types = cellfun(@(i) i.type, path, 'UniformOutput', false);
+fi = find(ismember(types, {'highpass', 'lowpass'}));
+if isempty(fi) || numel(fi) > 2 || ~all(cellfun(@(i) isnumeric(i.params.cutoff), path(fi))), return; end
+% the cutoffs compared in each of its filters' slots
+cuts = cell(1, numel(fi));
+for k = 1:numel(fi)
+    in = path{fi(k)}; v = [];
+    for L = env.leaves(:)'
+        for j = find(cellfun(@(x) strcmp(x.slot, in.slot) && strcmp(x.type, in.type), L.path))
+            if isnumeric(L.path{j}.params.cutoff), v(end+1) = L.path{j}.params.cutoff; end %#ok<AGROW>
+        end
+    end
+    if numel(unique(v)) > 1, cuts{k} = pipecompare.eval.Cutoff.grid(v); end
+end
+if all(cellfun(@isempty, cuts)), return; end
+first = fi(1); rest = path(first:end); rt = types(first:end);
+why = '';
+if ~strcmp(env.contract.analysis, 'erp') || ~pipecompare.eval.Threshold.applies(env.contract)
+    why = 'it needs mean amplitudes';
+elseif ~all(ismember(rt, {'highpass', 'lowpass', 'icremove', 'epoch', 'baseline', 'reject_threshold', 'weight_trials'})) || ...
+        sum(strcmp(rt, 'epoch')) ~= 1
+    why = 'only IC removal, epoching, baseline removal, an amplitude rejection and weighting the epochs may follow the filters';
+elseif any(cellfun(@(i) strcmp(i.type, 'reject_threshold') && pipecompare.utils.fieldOr(i.params, 'interpolate', 0) > 0, rest))
+    why = 'epochs are repaired (the rejection then also interpolates channels)';
+elseif any(ismember(types(1:first-1), {'icremove', 'resample'}))
+    why = 'components are removed or the data resampled before the filters';
+elseif numel(c.steps) ~= numel(path)
+    why = 'the steps of the pipeline were not recorded';
+end
+if ~isempty(why)
+    pipecompare.utils.log('Filter cutoffs not fine-tuned: %s.', why);
+    return;
+end
+dec = struct('comps', [], 'rejIdx', []);
+k = find(strcmp(types, 'icremove'), 1); if ~isempty(k), dec.comps = c.steps{k}.comps; end
+k = find(strcmp(types, 'reject_threshold'), 1); if ~isempty(k), dec.rejIdx = c.steps{k}.rejIdx; end
+k = find(strcmp(types, 'weight_trials'), 1); if ~isempty(k), dec.weights = c.steps{k}.trialWeights; end
+pipecompare.utils.log(['Fine-tuning the filter cutoffs of pipeline %d: its decisions held fixed, only the measured ', ...
+    'electrodes are filtered for each pair of cutoffs on a finer grid.'], ib);
+S0 = S; E = root; nIca = 0;
+try
+    for k = 1:first-1
+        in = path{k};
+        if tick(env, 0, in), return; end
+        if strcmp(in.type, 'ica') && nIca < numel(c.ica)
+            nIca = nIca + 1; d = c.ica{nIca};
+            E.icaweights = d.icaweights; E.icasphere = d.icasphere;
+            E.icachansind = d.icachansind; E.icawinv = []; E.icaact = [];
+            E = eeg_checkset(E);
+            coms = d.coms; info = struct('ica', d);
+        else
+            [E, coms, info] = runStep(in, E, ctx, env.opts.verbose);
+        end
+        for q = 1:numel(coms), E = eeg_hist(E, coms{q}); end
+        [S, unmatched] = replayCopy(in, S, info, ctx);
+        [ctx, acc] = advance(in, ctx, acc, info, coms, unmatched, 0);
+    end
+    cenv = struct('contract', env.contract, 'ref', env.ref, 'rank', env.opts, 'S', S0, 'truth', env.truth, 'grid', {cuts});
+    [cut, cinfo] = pipecompare.eval.Cutoff.search(E, rest, dec, struct('m', c.m, 'gain', c.signal.gain), cenv);
+catch ME
+    pipecompare.utils.log('Filter cutoffs not fine-tuned: %s', ME.message);
+    return;
+end
+own = cellfun(@(i) i.params.cutoff, path(fi));
+if isempty(cut)
+    pipecompare.utils.log('Filter cutoffs: %s (%d pairs of cutoffs computed).', cinfo.note, cinfo.pairs);
+    return;
+end
+path2 = path;
+for k = 1:numel(fi), path2{fi(k)} = pipecompare.plan.Plan.reparam(path{fi(k)}, 'cutoff', cut(k)); end
+key2 = strjoin(cellfun(@(i) i.key, path2, 'UniformOutput', false), ' > ');
+pipecompare.utils.log(['Filter cutoffs: %s Hz instead of %s Hz would lower the objective from %.4g to %.4g with the ', ...
+    'same decisions (%d pairs computed); that pipeline now runs with its own decisions.'], mat2str(cut), mat2str(own), ...
+    cinfo.objectiveBase, cinfo.objectiveBest, cinfo.pairs);
+if any(strcmp(result.labels, key2))
+    pipecompare.utils.log('That pipeline was already compared.');
+    return;
+end
+li = numel(env.leaves) + 1;
+leaf = struct('path', {path2}, 'key', key2, 'order', env.leaves(ib).order, 'stratum', env.leaves(ib).stratum);
+env.leaves(li) = leaf;
+try
+    for k = first:numel(path2)
+        in = path2{k};
+        if tick(env, 0, in), return; end
+        pipecompare.utils.log('step %s', in.label);
+        cx = ctx;
+        if strcmp(in.type, 'icremove') && ischar(in.params.threshold)
+            cx.after = path2(k+1:end); cx.signal = struct('S', S, 'truth', env.truth);
+        end
+        t0 = tic;
+        [E, coms, info] = runStep(in, E, cx, env.opts.verbose);
+        if any(k == fi) && in.params.cutoff ~= path{k}.params.cutoff, info.cutoffRefined = true; end
+        for q = 1:numel(coms), fprintf('    %s\n', coms{q}); E = eeg_hist(E, coms{q}); end
+        [S, unmatched] = replayCopy(in, S, info, ctx);
+        [ctx, acc] = advance(in, ctx, acc, info, coms, unmatched, toc(t0));
+    end
+catch ME
+    pipecompare.utils.log('The pipeline with the fine-tuned cutoffs failed at step %s: %s', in.label, ME.message);
+    return;
+end
+cand = evaluateLeaf(env, li, E, S, acc);
+cand.notes{end+1} = sprintf(['filter cutoffs fine-tuned from these data, starting from pipeline %d (%s Hz; ', ...
+    'objective %.4g with its decisions, %.4g with the fine-tuned cutoffs)'], ib, mat2str(own), ...
+    cinfo.objectiveBase, cinfo.objectiveBest);
+result.leaves(li) = leaf; result.labels{li} = key2;
+allc(li, 1) = cand;
+added = true;
 end
 
 function stop = tick(env, n, in)

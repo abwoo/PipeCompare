@@ -12,9 +12,10 @@ classdef PipeCompare
     %   pipecompare.PipeCompare.script(r, id)           EEGLAB commands of a candidate
     %   pipecompare.PipeCompare.writeScript(r, id, f)   ... as a function file that runs
     %                                           the same steps on any dataset
-    %   EEG = pipecompare.PipeCompare.apply(EEG, steps, contract)
+    %   EEG = pipecompare.PipeCompare.apply(EEG, steps, contract[, opts])
     %                                           run steps (rows of type, params) on
-    %                                           a dataset (what that file calls)
+    %                                           a dataset (what that file calls;
+    %                                           opts.signalTemplate as in the search)
     %   r = pipecompare.PipeCompare.resume(folder)      continue an interrupted search
     %                                           (opts.checkpoint = folder)
     %   pipecompare.PipeCompare.app()                   panel (also EEGLAB > Tools > PipeCompare)
@@ -111,7 +112,12 @@ classdef PipeCompare
             for k = 1:numel(path)
                 L{end+1} = sprintf('    %s, %s', literal(path{k}.type), literal(path{k}.params)); %#ok<AGROW>
             end
-            L = [L {'    };', 'EEG = pipecompare.PipeCompare.apply(EEG, steps, contract);', 'end', '', ...
+            call = 'EEG = pipecompare.PipeCompare.apply(EEG, steps, contract);';
+            if strcmp(pipecompare.utils.fieldOr(result.options, 'signalTemplate', 'bump'), 'data')
+                % the signal check of the choices made from the data, as in the search
+                call = 'EEG = pipecompare.PipeCompare.apply(EEG, steps, contract, struct(''signalTemplate'', ''data''));';
+            end
+            L = [L {'    };', call, 'end', '', ...
                 sprintf('%% The EEGLAB commands this pipeline ran on %s:', result.state.setname)}, ...
                 cellfun(@(x) ['% ' strrep(x, newline, [newline '% '])], scriptLines(result, idx), 'UniformOutput', false)];
             fid = fopen(file, 'w', 'n', 'UTF-8'); assert(fid > 0, 'PipeCompare:Export', 'Cannot write %s', file);
@@ -119,9 +125,10 @@ classdef PipeCompare
             pipecompare.utils.log('Wrote %s', file);
         end
 
-        function EEG = apply(EEG, steps, contract)
+        function EEG = apply(EEG, steps, contract, opts)
             if nargin < 3, contract = []; end
-            EEG = pipecompare.run.Executor.apply(EEG, steps, contract);
+            if nargin < 4, opts = struct(); end
+            EEG = pipecompare.run.Executor.apply(EEG, steps, contract, opts);
         end
 
         function txt = script(result, idx)

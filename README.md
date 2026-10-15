@@ -141,7 +141,10 @@ pipeline, so that the comparison is about the settings that matter.
    The resulting decomposition is applied to all of the data. All pipelines share this one
    decomposition, which saves the largest part of the computing time.
 5. **High-pass filter**, *compared*: 0.1, 0.3, 0.5 and 1 Hz.
-6. **Low-pass filter**, *compared*: 20, 30 and 40 Hz.
+6. **Low-pass filter**, *compared*: 20, 30 and 40 Hz. After the comparison, the cutoffs of the
+   recommended pipeline are also tried on a finer grid between these values (0.1, 0.15, … 1 Hz and
+   20, 22, … 40 Hz), and when a pair is better, that pipeline is run as well and ranked with the
+   others (see [Filter cutoffs fine-tuned from the data](#filter-cutoffs-fine-tuned-from-the-data)).
 7. **Artifact components are removed with ICLabel**, *threshold chosen from the data*: a
    component is removed when ICLabel gives it a probability above a threshold of being eye,
    muscle, heart, line noise or channel noise, and the threshold is found in each pipeline from its
@@ -152,10 +155,14 @@ pipeline, so that the comparison is about the settings that matter.
 8. **Epochs are cut** around the events you chose, and the **baseline** is subtracted.
 9. **Noisy epochs are rejected**, *limit chosen from the data*: an epoch is dropped when any EEG
    channel exceeds ±*x* µV (non-EEG channels are ignored), and *x* is found in each pipeline from its
-   own data: every limit is tried, not a few, and the highest limit that measures as precisely as
-   the best one is used (see [Rejection limit chosen from the data](#rejection-limit-chosen-from-the-data)).
+   own data: every limit is tried, not a few, and the highest limit whose SME is shown to be within
+   5 % of the best one's is used (see [Rejection limit chosen from the data](#rejection-limit-chosen-from-the-data)).
    For peak measures (peak amplitude or latency, advanced panel) the limits 75, 100 and 150 µV
    are compared instead.
+10. **Epochs weighted by their noise**, *compared with equal weights*: in half of the pipelines
+   the average counts every remaining epoch the same, in the other half a noisier epoch counts
+   less, and no epoch is removed for it (see [Epochs weighted by their noise](#epochs-weighted-by-their-noise)).
+   ERP only.
 
 Two more options of the rejection can be ticked; they are not part of *Standard*.
 **Peak-to-peak limits** (ERP CORE's method): instead of testing whether any value is beyond ±*x*
@@ -168,8 +175,14 @@ channels over the limit is still rejected. With repair, the limit is not chosen 
 (100, 150 and 200 µV peak-to-peak) and the ICLabel thresholds 0.7, 0.8 and 0.9 are compared, which
 makes nine times as many pipelines. See
 [Repairing epochs with a few bad channels](#repairing-epochs-with-a-few-bad-channels).
+An option of ICA can also be ticked, not part of *Standard*:
+**choosing the components by their effect on the noise**. Every pipeline is then also run with
+the components to remove chosen not by what ICLabel says they look like, but by how much removing
+each one lowers the SME, one at a time; ICLabel is only used to protect the components it takes
+for brain activity. Both ways are compared, which doubles the number of pipelines. See
+[ICA components chosen by their effect on the noise](#ica-components-chosen-by-their-effect-on-the-noise).
 
-That makes 4 × 3 = 12 pipelines for an ERP, each with its own best ICLabel threshold and rejection limit. The *Filters only* recipe compares only
+That makes 4 × 3 × 2 = 24 pipelines for an ERP, each with its own best ICLabel threshold and rejection limit. The *Filters only* recipe compares only
 steps 5 and 6. For band power, the data are cut into 2 s segments instead of epochs, and only the
 filter edges nearest the band, outside it, are used (a filter outside a band does not change its
 power), which leaves 1 pipeline (its ICLabel threshold and rejection limit still chosen from the
@@ -242,6 +255,21 @@ Along the way PipeCompare also takes care of the following, so you do not have t
 - **Exact best rejection limit and ICLabel threshold.** Within each pipeline, the epoch-rejection
   limit and the ICLabel threshold are chosen from the data together, among all values that give
   different results, not from a short list.
+- **Filter cutoffs fine-tuned from the data.** Between the compared cutoffs, a finer grid is
+  scored exactly from the measured electrodes alone, with the recommended pipeline's decisions held
+  fixed; a better pair runs as one more pipeline.
+- **ICA components chosen by their effect on the noise.** Optionally, the components to remove are
+  chosen by how much removing each lowers the SME (never one ICLabel takes for brain activity),
+  compared with ICLabel's threshold.
+- **Signal check with your recording's own waveform.** In the simple mode, the known signal takes
+  the shape of your data's own average waveform at each measured site, where that average is
+  reliable, instead of a standard bump.
+- **Epochs weighted by their noise.** Instead of only keeping or dropping epochs, the average can
+  count each epoch by how clean it is (inverse-variance weights), compared with equal weights.
+- **How stable the recommendation is.** The result says how often the same pipeline would be
+  recommended if the trials were drawn again.
+- **One pipeline for a group.** `pipecompare.Group.run` compares the pipelines on every
+  recording and recommends the one that is best for the group as a whole.
 - **Statistically controlled ranking.** A paired bootstrap with simultaneous intervals identifies
   the pipelines that cannot be distinguished from the best, controlling the error rate across all
   candidates.
@@ -553,7 +581,14 @@ data are not cleaned more than they need to be. The result then says whether the
 pipeline's noise is within 5 % of the best one's (a negligible difference) or whether the data are
 too few to tell, with how much noisier it could be. It also says how the best pipeline does on
 trials that were not used to choose it: either *its advantage is not luck*, or its noise there is
-about X % higher than it looks (see [How a pipeline is chosen](#how-a-pipeline-is-chosen)). When the settings compared make no difference on
+about X % higher than it looks. The automatic settings inside each pipeline (the rejection limit,
+the ICLabel threshold, the components chosen by their effect on the noise) are chosen again on
+the trials used to choose, so their luck is left out of that number too; the sentence then says
+*trials not used to choose it or to set its automatic settings* (see [How a pipeline is chosen](#how-a-pipeline-is-chosen)). Last, it
+says how often the same pipeline would be recommended with the trials drawn again at random, for
+example *this pipeline is recommended 85% of the time: a stable choice* (70 % or more), or *45% of
+the time, No. 7 30% of the time: the data do not single out one pipeline clearly*; then the
+pipelines it names are about equally good on these data and either can be used. When the settings compared make no difference on
 these data, the result says so. When no pipeline passes because most lost too many epochs to
 rejection, it names the channels most often over the rejection limit (likely bad channels to
 remove or interpolate before running again) and, for data that keep their recorded reference,
@@ -763,10 +798,12 @@ pipeline's data at the rejection step:
    the kept trials.
 3. Only limits that keep at least 10 trials and 50 % of the trials of every condition (the
    ranking's own limits, `minTrials` and `minRetention`) count.
-4. Limits whose SME the data cannot tell apart from the best limit's (the same paired bootstrap
-   and simultaneous intervals as the ranking, over up to 60 limits spread over the range, the best
-   included) are equally good, and the **highest** of them is used: no epoch is rejected without
-   evidence that rejecting it makes the measure more precise. The number used is the roundest
+4. Limits whose SME is shown to be within 5 % of the best limit's (the *equivalent* test of the
+   ranking: the same paired bootstrap and simultaneous intervals, over up to 60 limits spread over
+   the range, the best included) are equally good, and the **highest** of them is used: an epoch
+   is kept unless keeping it makes the measure measurably less precise. A limit the data only
+   cannot tell apart from the best is not enough: with few trials that includes limits that
+   reject almost nothing even when rejecting clearly helps (the SME then gets larger). The number used is the roundest
    one among the limits that keep the same epochs (for example 120 µV rather than 117.43 µV).
 5. The limit is then applied with EEGLAB's own test (`pop_eegthresh`, or the peak-to-peak marks),
    so `EEG.history` records the number, and the signal check removes the same epochs from its
@@ -781,6 +818,18 @@ those of the data at the rejection step; it is exact when nothing after the reje
 `reject_threshold` parameter `uv` to `auto` (it can be compared with fixed limits, as
 `auto | 100`). A saved script keeps `auto`, so on another recording the limit is found from that
 recording's data.
+
+**Rejected for its P3?** A rejection looks at the largest value anywhere in the epoch, the measured
+electrodes and window included. A low limit can therefore reject a trial because its P3 is large,
+and the average of the trials kept is then smaller than the real one. The signal check cannot see
+this, because the known signal is the same in every epoch. So every rejection (with a fixed limit
+too) compares, at the measured electrodes in the window, the average of the trials kept with that
+of all trials, as a z value: their difference divided by the spread it would have if the rejected
+trials were a random draw. When the trials kept have clearly less of the component (z below −3),
+the result says so for the recommended pipeline, with both averages. If the rejected trials are
+artifacts that happen to push the window the same way (blinks at the P3's electrodes, for example),
+nothing needs to change; otherwise a higher limit, or leaving the measured electrodes out of the
+test, avoids it.
 
 ### ICLabel threshold chosen from the data
 
@@ -806,10 +855,10 @@ best one in each pipeline, together with the rejection limit that follows:
    the signal check goes through the same removal, and a set that fails the signal check (for
    example because it removes a component that carries the measured signal) does not count, nor
    does one that keeps too few trials.
-4. Sets whose SME the data cannot tell apart from the best set's (the same paired bootstrap and
-   simultaneous intervals as the ranking) are equally good, and the one removing the **fewest**
-   components is used: no component is removed without evidence that removing it makes the
-   measure more precise. The number used is the roundest threshold that removes exactly that set
+4. Sets whose SME is shown to be within 5 % of the best set's (the *equivalent* test of the
+   ranking: the same paired bootstrap and simultaneous intervals) are equally good, and the one
+   removing the **fewest** components is used: a component is kept unless keeping it makes the
+   measure measurably less precise. The number used is the roundest threshold that removes exactly that set
    (for example 0.8 rather than 0.8137).
 5. The threshold is then applied with EEGLAB's own functions (`pop_icflag`, `pop_subcomp`), so
    `EEG.history` records the number, and the rejection step that follows finds its limit on the
@@ -825,6 +874,166 @@ own signal check is the one the ranking uses. In the advanced panel and in scrip
 `icremove` parameter `threshold` to `auto`; every pipeline below it must then have the same steps
 after it. When the search adopts a pipeline, the threshold it chose is reused; a saved script keeps
 `auto`, so on another recording the threshold is found from that recording's data.
+
+### ICA components chosen by their effect on the noise
+
+ICLabel decides from what a component looks like (its scalp map, spectrum and time course). On
+some recordings it recognises little (for example when most components are labelled *Other*),
+and then no threshold removes the eye or muscle activity that is still in the data. With this
+option ticked (*also choose the components by their effect on the noise*), every pipeline is
+also run with the components chosen by what removing them does to the measure:
+
+1. The components that may be removed are all those whose likeliest ICLabel class is not
+   *Brain*: a component ICLabel takes for brain activity is never removed. A component that
+   carries clear time-locked activity into the measured window is not removed either, even when
+   ICLabel calls it *Other*: removing it alone would move a condition's average in the window by
+   more than half its SME, with a t value above 3 across trials. The noise measure counts real
+   brain activity that varies from trial to trial as noise, so without this a P3 component that
+   ICLabel did not recognise could be removed for lowering it. Components ICLabel calls *Eye* are
+   not kept this way, since blinks can be time-locked to the stimulus too. The steps of the
+   pipeline say how many were kept for this reason.
+2. Starting from removing nothing, the component whose removal gives the lowest SME is added to
+   the set, then the next one together with it, and so on (forward selection). Each set is scored
+   exactly as in [ICLabel threshold chosen from the data](#iclabel-threshold-chosen-from-the-data):
+   the components are taken out of the epoched data directly (removal is linear), the rejection
+   limit that follows is found at its best, the SME is divided by the signal gain, and a set that
+   fails the signal check (for example because it removes the measured signal) or keeps too few
+   trials does not count. This gives a path of sets, each one component larger, ordered by what
+   the components do to the measure.
+3. The path stops after 30 components, when no larger set passes, or when the SME has risen more
+   than 10 % above the best on the path.
+4. Among the sets on the path, those whose SME is shown to be within 5 % of the best one's are
+   equally good, and the one removing the **fewest** components is used, as for the threshold.
+5. The components are flagged (`EEG.reject.gcompreject`, recorded in `EEG.history`) and removed
+   with EEGLAB's `pop_subcomp`.
+
+Both ways, the ICLabel threshold and this one, are compared in the ranking. The steps of each
+pipeline in the results say *ICA components chosen by their effect on the noise* with how many
+were removed. It needs a score per trial (mean amplitude or band power) and epochs that are
+removed, not repaired; it takes longer than the threshold (one score per component and step).
+It chooses what lowers the noise of this measure in this recording, so a component that only
+matters for another measure may stay. In the advanced panel and in scripts, set the `icremove`
+parameter `threshold` to `sme` (or compare `auto | sme`); as with `auto`, every pipeline below it
+must have the same steps after it. When the search adopts a pipeline, the components it chose are
+reused; a saved script keeps `sme`, so on another recording they are chosen from its own data.
+
+### Filter cutoffs fine-tuned from the data
+
+Comparing 4 high-pass and 3 low-pass cutoffs leaves the best value between two of them untried
+(for example 0.2 Hz between 0.1 and 0.3 Hz). Filtering the whole recording again for many more
+cutoffs would take long, so PipeCompare uses a shortcut that gives the same numbers:
+
+1. It takes the recommended pipeline and keeps what it decided on these data fixed: the
+   components it removed and the epochs it rejected.
+2. With those fixed, everything from the filters to the scores is adding and multiplying the data
+   by fixed numbers. Filtering acts on each channel alone, and removing components is the same
+   mixture of channels at every moment, so the order of the two does not matter. The scores
+   therefore need only the electrodes you measure: the components are removed, the other channels
+   are left out, and only the measured electrodes are filtered, epoched and scored, which gives
+   exactly the numbers the whole data would give there.
+3. Every pair of cutoffs on a finer grid between the lowest and highest compared ones is scored
+   this way (with the default steps 0.1, 0.15, … 1 Hz and 20, 22, … 40 Hz: 209 pairs). The signal
+   gain comes from the pipeline's own signal check, corrected by what the filters alone do to the
+   known signal, and cutoffs whose filters alone distort the signal are left out. At the
+   pipeline's own cutoffs the result must equal the pipeline's SME, as a check; otherwise nothing
+   is fine-tuned.
+4. When another pair is better, the pipeline with those cutoffs is run like every other one (its
+   components and epochs are decided again on its own data, with the full signal check) and added
+   to the results; its filters say *fine-tuned from these data*. The ranking then decides whether
+   it is better.
+
+The Command Window shows the pair found and the SME before and after. It is done for mean
+amplitudes of an ERP on continuous data when only filters, IC removal, epoching, baseline removal
+and an amplitude rejection (without repairing epochs) follow the first filter; it is on in the
+simple mode. In the advanced panel tick *Options… > Fine-tune filter cutoffs*; in scripts pass
+`'refineCutoffs', true` to `pipecompare.PipeCompare.optimize`.
+
+### Epochs weighted by their noise
+
+Rejection treats epochs as all or nothing: an epoch just over the limit is dropped, one just under
+it counts as much as the cleanest epoch. Weighting instead counts each epoch by how clean it is,
+and drops none:
+
+1. For each epoch, its **noise** is measured at the electrodes you measure: the epoch minus the
+   average of the *other* epochs of its condition (so an epoch cannot make itself look clean),
+   squared and averaged over those electrodes and all samples of the epoch.
+2. Its **weight** is 1 / noise, scaled so that the weights of a condition average 1. If epochs
+   differ only in how much noise they have, these weights give the average with the smallest
+   possible error (inverse-variance weighting). Plain averaging and rejection are both special
+   cases of weighting (weights 1, or 1 and 0), so ideal weights are never worse than either;
+   weights estimated from the data can be, which is why the ranking compares them. So that no epoch can
+   count too much, a noise below a tenth of the condition's median counts as that tenth: no epoch
+   counts more than 10 times the typical one.
+3. The **average** of a condition is then sum(weight × epoch) / sum(weight), and its error (SME)
+   is computed for a weighted mean (the robust "sandwich" formula: sqrt(n / (n − 1) ×
+   sum(weight² × (score − average)²)) / sum(weight), which gives SD / sqrt(n) with equal weights
+   and stays correct even when the weights are not ideal). The bootstrap of the ranking and the
+   selection check resample the epochs with their weights.
+
+In *Standard* this comes after the rejection: every pipeline is run once with equal weights and
+once weighted, and the ranking decides. The rejection limit is chosen for equal weights. The
+known signal is the same in every epoch, so weighting does not change the signal check. Weights
+are for ERPs only: for band power, a weighted mean would favour the epochs with less power.
+
+The weights are stored in the dataset (`EEG.etc.pipecompare.trialWeights`, by the event each
+epoch is locked to, so they stay with their epochs) and listed in the steps as *Epochs weighted by
+their noise*, with how much more the cleanest epoch counts than the noisiest. EEGLAB's and
+ERPLAB's own averaging do not use them, so averaging such a dataset there would not give the ERP
+the pipeline was scored on. Therefore, when the recommended pipeline is weighted, the result says
+so and names the same pipeline with equal weights (use that one to average in EEGLAB or ERPLAB as
+usual). When you use a weighted pipeline (*Use this pipeline*, `adopt`) or run its saved script,
+the weighted average of each condition is stored in the dataset:
+
+```matlab
+A = EEG.etc.pipecompare.weightedERP;   % A.data: channels x time points x conditions
+A.conditions, A.times                  % condition names; times in ms
+plot(A.times, A.data(strcmpi(A.labels, 'Pz'), :, 1))   % e.g. the first condition at Pz
+```
+
+`pipecompare.eval.Measure.weightedAverages(EEG, contract)` computes it again. To average with
+the weights yourself:
+
+```matlab
+w = pipecompare.eval.Measure.epochWeights(EEG);              % one weight per epoch
+erp = sum(EEG.data .* reshape(w, 1, 1, []), 3) / sum(w);     % channels x time points
+```
+
+(for one condition, take its epochs and their weights only). The PipeCompare window's plots of a
+pipeline use them. In the advanced panel the step is *weight_trials*; in a plan,
+`p.addChoice('weight', {'weight_trials'}, 'none')` compares it with equal weights.
+
+### Signal check with your recording's own waveform
+
+The signal check carries a known signal through every pipeline (see
+[How a pipeline is chosen](#how-a-pipeline-is-chosen)). By default its shape is a smooth bump in
+each measurement window. Your real P3 may be broader, narrower or asymmetric, and a filter treats
+those shapes differently. In the simple mode (and with *Options… > Signal check with own waveform*
+in the advanced panel, `'signalTemplate', 'data'` in scripts) the shape is taken from your own
+recording, before any pipeline runs:
+
+1. The epochs of each condition are averaged at the measured electrodes, the baseline removed, and
+   the conditions averaged with equal weight. The average is smoothed lightly (a 5 ms Gaussian,
+   which keeps everything below about 25 Hz).
+2. Only the component's own stretch is kept: the measurement window, faded to zero over half the
+   window's width (at least 25 ms) on each side. What lies outside belongs to other components.
+3. It is used only when it is **reliable**: the averages of the odd and of the even epochs must
+   look alike over that stretch (split-half reliability, stepped up to all epochs with the
+   Spearman-Brown formula, at least 0.8), and it must be one deflection of one sign in the window.
+   A noisy average would make the check test noise instead of your component.
+   It must also not look like a **blink**: in many tasks people blink right after a target, at
+   about the P3's latency, and such a blink is as reliable as a component. So the eye channels
+   (EOG by type or name, for example EYEL/EYER; without them Fp1, Fp2 and FPz) are averaged the
+   same way, and when one of them has the same shape (similarity above 0.8) and is more than twice
+   as large, the bump is used and the result says it looks like eye activity.
+4. It is scaled to a peak of 5 µV in the window and checked exactly as the bump would be.
+
+When the average is not reliable enough (in a simulation with a 6 µV P3 in 8 µV noise: about half
+the time with 20 epochs per condition, nearly never with 90), the bump is used for that component,
+and the result says which shape was used and why. Contralateral-minus-ipsilateral components (N2pc,
+LRP) and band power always use the standard signal. The shape comes from the data before any
+pipeline, unfiltered apart from the smoothing, so a slow drift that the averaging did not cancel can
+remain in it. A saved script uses the same shape for its own choices, estimated from the data it
+is run on.
 
 ### ICA on clean data
 
@@ -964,6 +1173,38 @@ English letters, digits and underscores, must start with a letter, and must not 
 existing MATLAB or EEGLAB function (such as `pop_epoch`); PipeCompare refuses other names. Type
 `help pop_pipecompare` for all options.
 
+### One pipeline for a group of recordings
+
+For a study you usually want **one** pipeline for every participant, not a different one each.
+`pipecompare.Group.run` takes the recordings (a list of `.set` files, or datasets in EEGLAB) and
+the same options as `pop_pipecompare`:
+
+```matlab
+files = {'/path/to/sub01.set', '/path/to/sub02.set', '/path/to/sub03.set'};
+G = pipecompare.Group.run(files, 'measure', 'P3', 'events', {'target', 'standard'}, 'recipe', 'standard');
+G.table                                        % one row per pipeline; G.recommended is the row to use
+pipecompare.Group.writeScript(G, 'my_group_pipeline.m');   % then: EEG = my_group_pipeline(EEG); per recording
+```
+
+(or `G = pipecompare.Group.run(ALLEEG, ...)` for the datasets open in EEGLAB). It works like this:
+
+1. Each recording is compared on its own, exactly as `pop_pipecompare` does (without windows). The
+   steps still decide from each recording's own data: its bad channels, its ICA components, its
+   rejected epochs and its automatic limits.
+2. A pipeline counts for the group only when it **passes on every recording**. A recording on
+   which no pipeline passes is left out and named (`G.leftOut`); look at it on its own.
+3. The pipelines are ranked by the **root mean square of their noise over the recordings**: noise
+   in each participant's average adds the mean of the squared SMEs to the variance of the group
+   average, so this is what your group-level test loses to noise.
+4. Which pipelines cannot be told apart from the best, and which are within 5 % of it, come from
+   each recording's bootstrap of its trials, combined the same way. Among those that cannot be told
+   apart, the one that keeps the most trials in its worst recording is recommended, as for one
+   recording.
+
+The Command Window shows each recording's comparison, then the group's recommendation. `G` is also
+stored in the variable `pipecompare_group`; `G.perRecording` has each pipeline's noise on each
+recording. The current dataset in EEGLAB is left as it was.
+
 ## Scripting interface
 
 For full control, describe what is measured (an analysis *contract*) and what may vary (a *plan*):
@@ -1055,10 +1296,19 @@ and constraints and ranking options in `help pipecompare.eval.Rank`.
    held out.
 6. **Recommendation.** Within the set of step 3, PipeCompare recommends the least aggressive
    pipeline: the one with the highest trial retention, then the least signal distortion.
+7. **Stability.** In each bootstrap resample of step 3, steps 3 and 6 are done again on the
+   resampled values (with the same critical value), and PipeCompare counts how often each
+   pipeline would be recommended (the bootstrap selection frequency; Efron, 2014). The table has
+   it as `chosenShare`; the result reports it for the recommended pipeline. A low share means the
+   data do not single that pipeline out.
 
-The ICLabel threshold and the epoch-rejection limit of the *Standard* recipe are chosen inside
-each pipeline, before this ranking, with the same SME, constraints and bootstrap (see
-[ICLabel threshold chosen from the data](#iclabel-threshold-chosen-from-the-data) and
+The ICLabel threshold and the epoch-rejection limit of the *Standard* recipe (and, with that option,
+the ICA components chosen by their effect on the noise) are chosen inside each pipeline, before
+this ranking, with the same SME, constraints and bootstrap. The check on trials not used to choose
+makes these choices again on the half used to choose, so neither the choice between pipelines
+nor the choices inside them flatter the result (see
+[ICLabel threshold chosen from the data](#iclabel-threshold-chosen-from-the-data),
+[ICA components chosen by their effect on the noise](#ica-components-chosen-by-their-effect-on-the-noise) and
 [Rejection limit chosen from the data](#rejection-limit-chosen-from-the-data)).
 
 Pipelines that differ in something that changes the measured quantity, such as the reference, are
@@ -1078,15 +1328,19 @@ descriptive and not used in the ranking. The full derivations are in
 - The full EEGLAB command sequence for every candidate.
 - A MATLAB function that runs a chosen candidate's steps on any recording, deciding bad channels,
   components and rejected epochs from that recording's data (`writeScript`).
-- Adoption of a candidate as a new EEGLAB dataset whose `EEG.history` replays it (`adopt`).
+- Adoption of a candidate as a new EEGLAB dataset whose `EEG.history` replays it (`adopt`). For
+  a pipeline that weights its epochs, the weights are in `EEG.etc.pipecompare.trialWeights`
+  (see [Epochs weighted by their noise](#epochs-weighted-by-their-noise)).
 
 ## Limitations
 
 - **The analysis contract is fixed by you.** Event types, epoch and baseline windows, regions of
   interest and measurement windows define what is measured, and are never searched.
 - **The signal check is necessary, not sufficient.** The known signal has an assumed shape: a
-  smooth bump as wide at half maximum as your measurement window (at least 50 ms), with a
-  topography centred on the region of interest. Real components may be affected differently.
+  smooth bump as wide at half maximum as your measurement window (at least 50 ms), or in the simple
+  mode your recording's own average over the window when it is reliable (see
+  [Signal check with your recording's own waveform](#signal-check-with-your-recordings-own-waveform)),
+  with a topography centred on the region of interest. Real components may be affected differently.
 - **Some steps are re-run on the signal copy.** EEGLAB commands added as steps that make their
   own data-driven decisions, other than mark-and-remove workflows, are re-run on the copy carrying
   the known signal rather than replayed; this includes ASR added as an EEGLAB command. The built-in
@@ -1116,7 +1370,12 @@ addpath(fullfile(pwd, 'tests'));          % run from the PipeCompare folder
 results = run_all();
 ```
 
-The suite runs on synthetic data with known ground truth. It covers history parsing, plan
+The suite runs on synthetic data with known ground truth. Some of it is simulation, to show the
+methods do not mislead: a P3 that differs from trial to trial in size (SD 50 %) and latency (SD
+50 ms), which the SME counts as noise, is still measured without bias by every pipeline that
+passes, weighted epochs included; a rejection limit chosen by chance is caught by the selection
+check; a time-locked component ICLabel does not recognise is not removed; a stimulus-locked blink
+is not taken for the P3's shape. It covers history parsing, plan
 enumeration (checked against brute force), the statistics (validated by simulation), signal
 preservation for every built-in step except `resample`, end-to-end searches with resume and
 parallel execution, and EEGLAB and panel integration. Continuous integration runs every suite,

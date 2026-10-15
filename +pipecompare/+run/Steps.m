@@ -19,7 +19,8 @@ classdef Steps
     %   components they removed; epoch rejection replays the channels it
     %   interpolated within epochs (same epochs, same channels) and the
     %   epochs it removed. Other native commands are re-run and
-    %   reported as not decision-matched.
+    %   reported as not decision-matched. Weighting epochs replays the
+    %   weights of the real data.
 
     methods (Static)
         function [EEG, coms, info] = run(inst, EEG, ctx)
@@ -123,6 +124,16 @@ classdef Steps
                     coms = {com};
                 case {'reject_threshold','reject_jointprob','reject_kurtosis'}
                     [EEG, coms, info] = pipecompare.run.Steps.rejectEpochs(EEG, inst.type, p, ctx);
+                case 'weight_trials'
+                    c = ctx.contract;
+                    assert(strcmp(c.analysis, 'erp'), 'PipeCompare:Weights', ...
+                        'Weighting epochs by their noise is for ERPs (a weighted mean of band power would favour the epochs with less power).');
+                    roi = c.allRoi(); groups = {c.conditions.events};
+                    [EEG, info] = pipecompare.run.Steps.weightTrials(EEG, roi, groups);
+                    coms = {sprintf(['EEG = pipecompare.run.Steps.weightTrials(EEG, %s, %s); %% PipeCompare: epochs ', ...
+                        'weighted by their noise (EEG.etc.pipecompare.trialWeights; weighted average: ', ...
+                        'pipecompare.eval.Measure.epochWeights)'], strCells(roi), ...
+                        ['{' strjoin(cellfun(@strCells, groups, 'UniformOutput', false), ', ') '}'])};
                 case 'native'
                     [EEG, coms, info] = pipecompare.run.Steps.native(EEG, p.command);
                 otherwise
@@ -158,6 +169,8 @@ classdef Steps
                         EEG = pipecompare.run.Steps.interpolateEpochs(EEG, info.epochInterp.chans, info.epochInterp.epochs);
                     end
                     if ~isempty(info.rejIdx), EEG = pop_rejepoch(EEG, info.rejIdx, 0); end
+                case 'weight_trials'
+                    EEG.etc.pipecompare.trialWeights = info.trialWeights;
                 case 'native'
                     if isfield(info, 'decisions') && ~isempty(info.decisions)
                         % a workflow of marks and removals: the removals the
@@ -385,20 +398,43 @@ classdef Steps
             classes = cellstr(p.classes);
             assert(all(ismember(classes, cats)) && ~ismember('Brain', classes), 'PipeCompare:ICLabel', ...
                 'classes must be ICLabel artifact classes: %s', strjoin(cats(2:end), ', '));
-            if ischar(p.threshold)
-                % 'auto': the threshold chosen from these data
-                % (pipecompare.eval.IcThreshold), then applied as a fixed one
+            if strcmp(p.threshold, 'sme')
+                % the components chosen by their effect on the SME
+                % (pipecompare.eval.IcThreshold.chooseBySme), never one whose
+                % likeliest ICLabel class is Brain
                 L = EEG.etc.ic_classification.ICLabel;
-                P = L.classifications(:, ismember(cellstr(L.classes), classes));
-                P(P >= 1) = 0;   % pop_icflag flags t < p < 1
-                q = max(P, [], 2);
-                [p.threshold, info.icThreshold] = pipecompare.eval.IcThreshold.choose(EEG, q, ctx);
-                info.thresholdChosen = p.threshold;
-                info.icsConsidered = info.icThreshold.sets - 1;   % components over IcThreshold.MinProbability
+                [~, top] = max(L.classifications, [], 2);
+                cand = find(~strcmp(cellstr(L.classes(top)), 'Brain'))';
+                if isfield(ctx, 'chosenComps')
+                    comps = ctx.chosenComps;   % re-running a pipeline: the components the search chose
+                else
+                    [comps, info.icSme] = pipecompare.eval.IcThreshold.chooseBySme(EEG, cand, ctx);
+                    info.icsProtected = numel(info.icSme.protected);   % kept: time-locked activity in a measured window
+                    info.curves = info.icSme.curves;   % for the ranking's selection check (Rank.crossfit)
+                end
+                nIc = size(EEG.icaweights, 1);
+                EEG.reject.gcompreject = false(1, nIc); EEG.reject.gcompreject(comps) = true;
+                c2 = sprintf(['EEG.reject.gcompreject = false(1, %d); EEG.reject.gcompreject(%s) = true; ', ...
+                    '%% PipeCompare: components chosen by their effect on the SME (none whose likeliest ICLabel class is Brain)'], ...
+                    nIc, mat2str(comps));
+                info.icsConsidered = numel(cand);
+            else
+                if ischar(p.threshold)
+                    % 'auto': the threshold chosen from these data
+                    % (pipecompare.eval.IcThreshold), then applied as a fixed one
+                    L = EEG.etc.ic_classification.ICLabel;
+                    P = L.classifications(:, ismember(cellstr(L.classes), classes));
+                    P(P >= 1) = 0;   % pop_icflag flags t < p < 1
+                    q = max(P, [], 2);
+                    [p.threshold, info.icThreshold] = pipecompare.eval.IcThreshold.choose(EEG, q, ctx);
+                    info.thresholdChosen = p.threshold;
+                    info.curves = info.icThreshold.curves;
+                    info.icsConsidered = info.icThreshold.sets - 1;   % components over IcThreshold.MinProbability
+                end
+                T = nan(7, 2);
+                T(ismember(cats, classes), :) = repmat([p.threshold 1], sum(ismember(cats, classes)), 1);
+                [EEG, c2] = pop_icflag(EEG, T);
             end
-            T = nan(7, 2);
-            T(ismember(cats, classes), :) = repmat([p.threshold 1], sum(ismember(cats, classes)), 1);
-            [EEG, c2] = pop_icflag(EEG, T);
             comps = find(EEG.reject.gcompreject(:)');
             info.icsTotal = size(EEG.icaweights, 1);
             info.icsRemoved = numel(comps);
@@ -437,6 +473,7 @@ classdef Steps
                         m = pipecompare.run.Steps.limitStat(EEG, chans, p);
                         [uv, th] = pipecompare.eval.Threshold.choose(EEG, m, ctx);
                         p.uv = uv; info.threshold = th; info.uvChosen = uv;
+                        info.curves = th.curves;
                     end
                     if pp
                         EEG = pipecompare.run.Steps.markPeakToPeak(EEG, chans, p.uv, win);
@@ -509,6 +546,14 @@ classdef Steps
                 pipecompare.utils.log('%d/%d epochs rejected; channels most often over the limit: %s', ...
                     numel(idx), n0, info.topChannels);
             end
+            % whether the epochs kept differ in the measured window from all
+            % of them (a low limit can reject epochs for their large real
+            % activity there, which makes the average smaller)
+            info.keptShift = [];
+            if ~isempty(idx) && numel(idx) < n0 && nargin > 3 && isfield(ctx, 'contract') && ~isempty(ctx.contract) && ...
+                    strcmp(ctx.contract.analysis, 'erp')
+                info.keptShift = keptShift(EEG, idx, ctx.contract);
+            end
             coms = {c1, cInterp};
             if ~isempty(idx)
                 assert(numel(idx) < n0, 'PipeCompare:AllRejected', 'every epoch would be rejected');
@@ -516,6 +561,55 @@ classdef Steps
                 coms{end+1} = c2;
             end
             info.rejected = numel(idx); info.rejIdx = idx; info.epochsBefore = n0;
+        end
+
+        function [EEG, info] = weightTrials(EEG, roi, groups)
+            % Weights for averaging the epochs, from their noise at the
+            % electrodes roi (labels); groups: the event types of each
+            % condition. An epoch's noise is the mean square, over those
+            % electrodes and all its samples, of the epoch minus the mean of
+            % the other epochs of its condition (leave-one-out, so the epoch
+            % does not lower its own noise). Its weight is 1 / noise, scaled
+            % to a mean of 1 per condition: with noise that differs between
+            % epochs only in size, these weights give the weighted mean with
+            % the smallest error (inverse-variance weighting). A noise below
+            % a tenth of the condition's median counts as that tenth, so no
+            % epoch counts more than 10 times the typical one. Stored in
+            % EEG.etc.pipecompare.trialWeights by the urevent of each
+            % epoch's time-locking event, so they follow the epochs through
+            % later selections; no epoch is removed.
+            codes = {};
+            for c = 1:numel(groups), codes = [codes cellstr(groups{c})]; end %#ok<AGROW>
+            codes = unique(codes, 'stable');
+            lock = pipecompare.eval.Measure.lockingEvents(EEG, codes);
+            labels = lower({EEG.chanlocs.labels});
+            [ok, ch] = ismember(lower(cellstr(roi)), labels);
+            assert(all(ok), 'PipeCompare:RoiMissing', 'Electrode(s) missing for the weights: %s', strjoin(cellstr(roi(~ok)), ', '));
+            ch = unique(ch);
+            u = nan(1, EEG.trials); g = zeros(1, EEG.trials);
+            for k = find(lock > 0)
+                e = EEG.event(lock(k)); t = strtrim(char(string(e.type)));
+                g(k) = find(cellfun(@(ev) any(strcmp(cellstr(ev), t)), groups), 1);
+                u(k) = double(e.urevent);
+            end
+            w = nan(1, EEG.trials); X = double(EEG.data(ch, :, :));
+            ratio = 1;
+            for c = 1:numel(groups)
+                k = find(g == c); n = numel(k);
+                if n < 2, w(k) = 1; continue; end
+                Xc = X(:, :, k);
+                R = Xc - (sum(Xc, 3) - Xc) / (n - 1);
+                v = reshape(mean(mean(R .^ 2, 1), 2), 1, n);
+                v = max(v, median(v) / 10);
+                wc = 1 ./ v; wc = wc / mean(wc);
+                w(k) = wc;
+                ratio = max(ratio, max(wc) / min(wc));
+            end
+            keep = g > 0;
+            tw = struct('urevent', u(keep), 'weight', w(keep), 'events', {codes});
+            EEG.etc.pipecompare.trialWeights = tw;
+            info = struct('trialWeights', tw, 'weightRatio', ratio);
+            pipecompare.utils.log('Epochs weighted by their noise: the cleanest counts %.1f times as much as the noisiest.', ratio);
         end
 
         function chans = testedChannels(EEG, p)
@@ -651,6 +745,12 @@ function f = rejField(type)
 % the EEG.reject field a rejection step marks
 f = struct('reject_threshold', 'rejthresh', 'reject_jointprob', 'rejjp', 'reject_kurtosis', 'rejkurt');
 f = f.(type);
+end
+
+function t = strCells(c)
+% a cell of strings as MATLAB code
+c = cellstr(c);
+t = ['{' strjoin(cellfun(@(x) ['''' strrep(x, '''', '''''') ''''], c, 'UniformOutput', false), ' ') '}'];
 end
 
 function t = cellText(c)
@@ -807,5 +907,35 @@ r1 = rank(x);
 r = sum(diag(D) > 1e-7);
 if r1 ~= r
     if takeMin, r = min(r1, r); else, r = max(r1, r); end
+end
+end
+
+function s = keptShift(EEG, idx, contract)
+% For each mean-amplitude component (not contralateral minus ipsilateral)
+% and condition: the mean score of the epochs kept against that of all of
+% them, as z = (kept - all) / (SD * sqrt(1/nKept - 1/n)), the spread that
+% difference has when the rejected epochs are a random draw, signed so
+% that z < 0 means the kept epochs have less of the component (a smaller
+% positive or a smaller negative deflection). s: the component and
+% condition with the lowest z; [] when none is measured.
+s = [];
+T = pipecompare.eval.Measure.trials(EEG, contract);
+rej = ismember(T.epoch, idx);
+for j = 1:numel(contract.components)
+    comp = contract.components(j);
+    if contract.isLateral(j) || ~strcmp(comp.measure, 'mean'), continue; end
+    sg = 1; if strcmp(comp.polarity, 'negative'), sg = -1; end
+    x = double(T.data{j}(:, 1));
+    for c = unique(T.cond(:))'
+        r = T.cond == c; k = r & ~rej;
+        n = sum(r); nk = sum(k);
+        if nk < 2 || nk == n, continue; end
+        d = mean(x(k)) - mean(x(r));
+        z = sg * d / max(std(x(r)) * sqrt(1 / nk - 1 / n), eps);
+        if isempty(s) || z < s.z
+            s = struct('z', z, 'component', comp.name, 'condition', contract.conditions(c).name, ...
+                'kept', mean(x(k)), 'all', mean(x(r)), 'nKept', nk, 'n', n);
+        end
+    end
 end
 end

@@ -212,11 +212,49 @@ the objective of the pipeline chosen by minimum objective; reported against the 
 objective on all trials, as `crossfit.overstatement = honest / apparent − 1`. A choice made on
 half the trials is somewhat worse than one made on all of them, so the overstatement is, if
 anything, too large. For segments of one recording (band power), consecutive segments are
-dependent, so the halves are the earlier and the later half (*S* = 1). The data-driven decisions
-of the candidates (bad channels, ICA, rejected epochs) were made on all trials; only the choice
-between candidates is held out. In simulation (`test_statistics`), with 24 candidates of equal
+dependent, so the halves are the earlier and the later half (*S* = 1).
+
+*Nested.* A candidate also makes choices from the objective itself: a rejection limit (section
+9c), an ICLabel threshold (9d) or components chosen by the SME (9g). Chosen on all trials, they
+flatter its objective in the same way, and more so the more such choices it has, so they would
+favour pipelines with many of them. Each such step stores, for every option it chose among (one
+for a limit; one per component set for 9d and 9g), the scores of the reference trials divided by
+the gain and the limit statistic *m* of each trial (`curves`). Removing components and rejecting
+epochs are decisions followed by linear steps, so these stored scores are exactly what the
+candidate would have with any option and limit. On the selecting half *H* the choice is made
+again: per option, its best limit on *H* (a fixed limit: that one; feasibility with the trial
+limits scaled to the half); the first option (fewest components) whose objective is within the
+equivalence margin of the best option's; and in it the most lenient limit within the margin of
+its best. The point margin stands in for the bootstrap equivalence of sections 9c–9d, so on the
+half the choice is if anything more lenient. That choice is then scored on *H* (to compare
+candidates) and on the other half (the held-out score), with the candidate's trial weights
+(section 9f; a trial it did not keep gets the median weight; the weighted SME does not depend on
+the weights' scale). Only the last such step of a candidate is made again; components chosen
+before a rejection limit come first, as their options already contain every limit. A candidate is
+nested only when its own choice's stored scores reproduce its scores: the trials kept are those
+up to one limit and the cosine of the centred scores is at least 0.999 (otherwise a step after
+the choice changed the scores). `crossfit.nested` counts the nested candidates. The other
+data-driven decisions (bad channels, the ICA decomposition, trial weights and cutoffs fine-tuned
+afterwards, section 9e) are still made on all trials. In simulation (`test_statistics`: one
+candidate whose limit is chosen on a rejection statistic unrelated to the scores, 60 trials), the
+nested check finds the limit's chance advantage, about 3 %, where holding the kept trials fixed
+finds none.
+
+In simulation (`test_statistics`), with 24 candidates of equal
 true noise and 60 trials, the apparent best objective was below the true SME by more than 5 %,
 while the cross-fitted value was within 5 % of it. [`pipecompare.eval.Rank.crossfit`]
+
+**Selection frequency (stability of the recommendation).** The recommendation is a function of the
+trials. In each bootstrap draw *b* of the same paired resamples, the choice is made again on the
+replicates θ*ₖᵇ: the candidates within *c* of the lowest replicate (the kept set of that draw, with
+the critical value *c* of the full sample), then the recommendation rule of the ranking (highest
+minimum retention, smallest amplitude error, lowest objective). The share of draws in which
+candidate *k* is recommended is its selection frequency *f*ₖ (`chosenShare`; Σₖ *f*ₖ = 1), the
+bootstrap selection frequency used for model selection (Efron, 2014). *f* of the recommended
+pipeline is reported (`byStratum.stability`); below 0.7 the result names the next most often
+chosen one. In simulation (`test_statistics`) a candidate with a third of the others' noise was
+chosen in more than 95 % of the draws, and among 5 candidates of equal true noise with 60 trials
+the one recommended on the sample was recommended in about half of them. [`pipecompare.eval.Rank`]
 
 ## 4. Signal preservation: matched-decision injection
 
@@ -242,6 +280,29 @@ CORE components):
   fails at the LRP's realistic width. With σ = window/2.355, the pass/fail verdicts of every filter
   tested equal those at the realistic widths: a 1 Hz high-pass fails for N400, P3 and LRP, and
   nothing at 0.5 Hz or below, and no low-pass of 20 Hz or above, fails.
+
+**The recording's own waveform** (`signalTemplate` = `data`, the simple mode's default). The time
+course of component *j* is instead *ḡ*(t)·τ(t), where *ḡ* is the recording's average at its ROI
+before any pipeline (each condition's epochs averaged, baseline removed, conditions weighted
+equally, smoothed by a Gaussian of σ = 5 ms) and τ is 1 in the window and falls to 0 as a raised
+cosine over *h* = max(window, 50 ms)/2 on each side, scaled to peak 1 in the window. It is used
+when (i) its split-half reliability over the stretch is at least 0.8: *r* = ⟨*a*_odd, *a*_even⟩ /
+(‖*a*_odd‖ ‖*a*_even‖) for the tapered averages of the odd and even epochs (uncentred, since the
+stretch starts and ends at zero), stepped up to all epochs, 2*r*/(1 + *r*) (Spearman-Brown); and
+(ii) the window holds one deflection of one sign (|mean| ≥ half the largest absolute value),
+which keeps the gain's denominator away from zero; and (iii) it does not look like eye
+activity: for every eye channel *e* (EOG by type or by a name with EOG or EYE; without one, Fp1,
+Fp2 and FPz), averaged the same way over the same stretch, not both |⟨*a*_e, *a*⟩| / (‖*a*_e‖ ‖*a*‖) >
+0.8 and ‖*a*_e‖ > 2 ‖*a*‖. A blink time-locked to the stimulus (common in oddball tasks, and at the
+P3's latency) would otherwise pass every other test, since it is as reliable as a component, and
+the check would then test how a pipeline keeps the blink. Otherwise, and for contralateral-minus-ipsilateral
+components and band power, the Gaussian above. Any shape is a valid test signal: the copy is
+noise-free and every operation is linear given the decisions, so the check measures exactly how
+the pipeline transfers that shape. The data's shape only makes the test closer to the real
+component (its width and asymmetry, which decide what a high-pass removes); reliability keeps
+estimation noise, which a low-pass would remove and so be blamed for, out of it. In a simulation
+(6 µV P3 of σ = 70 ms in pink noise of SD 8 µV; standards 2 µV) the criterion passed in 58 % of
+datasets with 20 epochs per condition, 80 % with 30 and 100 % with 90, and in 0–2.5 % without any P3.
 
 Over the
 scalp it is a Gaussian in the angle θ between a channel's unit position vector and the ROI
@@ -420,9 +481,15 @@ a stricter limit may be chance. The limits are therefore compared as the ranking
 pipelines (section 3): a paired bootstrap over trials (the same resampled trials for every limit;
 moving blocks for segments of one recording) with the simultaneous max statistic over all pairs
 gives the limits not shown worse than another. At most 60 limits enter the bootstrap: the
-feasible ones spread evenly by rank over the range, the minimizer included. Among those not
-distinguished from the best, the highest is used (the least aggressive, as in step 5 of the
-ranking), so an epoch is rejected only when the data show that rejecting it improves precision.
+feasible ones spread evenly by rank over the range, the minimizer included. Among those shown
+*equivalent* to the best (section 3: θ̂ᵢ − θ̂_b + *c*_K ≤ δ·θ̂_b, δ = `equivalenceMargin`), the highest
+is used (the least aggressive), so an epoch is kept unless keeping it makes the measure measurably
+less precise. Not distinguished alone is not enough: the lenient limits keep the most variable
+epochs, so their bootstrap differences are the widest and set the critical value *c*; the set not
+shown worse then reaches limits that reject almost nothing even when rejecting clearly helps (in
+simulation with 15% large-artifact trials and 100 trials per condition, the true SME of the limit
+chosen was 0.54 with that rule, 0.33 with equivalence and 0.33 at the true best limit; on clean
+data both rules gave the best limit's SME).
 The value used is the number with the fewest significant digits in [*v*ⱼ, *v*ⱼ₊₁) (any number
 there keeps the same epochs). It is applied by `pop_eegthresh` (or the peak-to-peak marks) and
 recorded in `EEG.history`, and the signal check removes the same epochs from its copy. When no
@@ -434,6 +501,15 @@ out of *J*: the known signal is the same in every epoch, so *g* does not depend 
 several measures of different gains, their weights in the RMS would differ slightly). Peak
 measures have no per-trial score and keep fixed limits; so do repaired epochs (section 9), where
 the limit also decides which channels are interpolated.
+
+**Trials kept against all trials** (every rejection, `keptShift`). The statistic *m* includes the
+measured electrodes in the window, so a low limit can reject a trial for a large real component,
+and the known signal, the same in every epoch, cannot show it. For each mean-amplitude component
+and condition, with *x̄*_K the mean score of the *n*_K trials kept and *x̄* that of all *n*,
+*z* = s (*x̄*_K − *x̄*) / (SD(*x*) √(1/*n*_K − 1/*n*)), the standardized difference under random
+rejection (s = −1 for a negative component, so *z* < 0 means less of the component). The lowest
+*z* is stored; the results warn when it is below −3 (`Presets.KeptShiftZ`). Artifacts that push
+the window the same way give the same sign, so this is a warning, not a constraint.
 
 ## 9d. ICLabel threshold chosen from the data (exact joint optimum)
 
@@ -465,14 +541,15 @@ brute-force limits; `test_engine`).
 
 **Choice.** The sets are compared as the ranking compares pipelines (section 3): the same paired
 bootstrap (the same resampled trials for every set, each at its own best limit) with the
-simultaneous max statistic gives the sets not shown worse than another. Among them, the one
-removing the fewest components (the highest threshold) is used, so a component is removed only
-when the data show that removing it improves precision. The value used is the number with the
+simultaneous max statistic gives the sets not shown worse than another. Among those also shown
+equivalent to the best (as in section 9c), the one removing the fewest components (the highest
+threshold) is used, so a component is kept unless keeping it makes the measure measurably less
+precise. The value used is the number with the
 fewest decimals in [*c*_{j+1}, *c*_j) that removes exactly that set under `pop_icflag`'s comparison
 (in the class ICLabel stores, single precision). It is applied by `pop_icflag` and `pop_subcomp`
 and recorded in `EEG.history`; the rejection step that follows then chooses its own limit on the
 data left by section 9c (the sets are compared at their best limits; the step uses, as always,
-the highest limit not distinguished from the best). When no set is
+the highest limit equivalent to the best). When no set is
 feasible, the set removing nothing is used and the ranking reports why.
 
 **Scope.** Exact when only epoching, baseline removal and an amplitude rejection that removes
@@ -482,6 +559,138 @@ change the average of the known signal only where epochs overlap; the full pipel
 the one the ranking uses. Peak measures have no per-trial score, and repaired epochs are not a
 removal; both keep fixed thresholds. When adopting a pipeline, the threshold the search chose is
 reused; `apply` (saved scripts) chooses again on the data it is given, with its own signal copy.
+
+## 9e. Filter cutoffs fine-tuned from the data (decisions held fixed)
+
+**Decomposition.** A pipeline does two kinds of things to the data: it takes *decisions* from the
+data (bad channels, the ICA decomposition, the components removed, the epochs rejected) and it
+applies *linear operations* (interpolation, re-referencing, filtering, IC removal, epoching,
+baseline removal, the window mean). Once the decisions are fixed, the score of every trial is a
+fixed linear functional of the raw data. Let *D* be the data just before the first filter
+(channels × samples), *P*_R = I − A_R W_R the IC-removal matrix of the removed set *R*, *h* the
+impulse response of the filters (the same for every channel) and *k*ᵢ the epoching, baseline
+and window weights of trial *i* at the measured electrodes *w*. Then the score is
+*x*ᵢ(*h*) = *w*ᵀ *P*_R (*D* ∗ *h*) *k*ᵢ = (*w*ᵀ *P*_R *D*) ∗ *h* · *k*ᵢ, because the temporal filter and the
+spatial matrix commute. So only the measured electrodes of *P*_R *D* need to be filtered to
+obtain every trial's score for any cutoff: a few channels instead of the whole montage.
+
+**Gain.** The known signal is a time course times a scalp field, *s*(*c*, *t*) = *a*(*c*) *g*(*t*), so
+its score factorises into a spatial part, unchanged by the cutoffs, and the window mean of *g* ∗ *h*.
+The gain of other cutoffs *h*′ is therefore *G*(*h*′) = *G*(*h*) · *G*_F(*h*′) / *G*_F(*h*), where *G*(*h*) is
+the pipeline's gain from its full signal check and *G*_F the gain of the filters alone (section 1's
+filter check, which also excludes cutoffs whose filters alone distort the known signal).
+
+**Search.** For the recommended pipeline, the cutoffs of each compared filter are tried on a grid
+between the lowest and the highest value compared, in steps of 1, 2 or 5 times a power of ten
+(at most about 20 values per filter, the compared ones included; e.g. 0.1, 0.15, …, 1 Hz and 20,
+22, …, 40 Hz, 209 pairs). With the pipeline's components *R* and rejected epochs held fixed, the
+objective of the ranking (gain-corrected SME) is computed exactly for every pair. As a check of
+the assumptions, the objective at the pipeline's own cutoffs must reproduce the pipeline's
+(relative tolerance 10⁻³); otherwise nothing is fine-tuned. The epochs are located once in the
+continuous data (the epoching of a dataset that holds each sample's index), so each pair costs a
+filtering of the measured electrodes and an index operation.
+
+**Verification.** The pair with the lowest objective is a prediction under fixed decisions. When it
+differs from the pipeline's own cutoffs, the pipeline with those cutoffs is run like every other
+one, from the starting data (its ICA reused), its components and epochs decided again on its own
+data, with its own full signal check, and it joins the ranking. Its result is therefore exact in
+the same sense as every other pipeline's, and the ranking decides whether it is better.
+
+**Scope.** Mean amplitudes of an ERP on continuous data; after the first filter only filters, IC
+removal, epoching, baseline removal and an amplitude rejection that removes epochs (no repair);
+no IC removal or resampling before the filters. It is on in the simple mode, an option in the
+advanced panel (*Options… > Fine-tune filter cutoffs*) and `'refineCutoffs', true` in scripts.
+
+## 9f. Epochs weighted by their noise
+
+**Weights.** For epoch *i* of a condition with *n* epochs, let *r*ᵢ = *x*ᵢ − (Σ_{j≠i} *x*ⱼ)/(*n* − 1) be the
+epoch minus the leave-one-out mean of the others, at the measured electrodes (all of them, over
+all samples of the epoch). Its noise is *v*ᵢ = mean(*r*ᵢ²); the leave-one-out mean keeps the epoch
+from lowering its own noise. With *v*ᵢ floored at a tenth of the condition's median, the weight is
+*w*ᵢ = (1/*v*ᵢ) / mean(1/*v*). If the noise of each epoch is a common process scaled by a factor σᵢ
+(*e*ᵢ = σᵢ *u*ᵢ), its score has variance ∝ σᵢ² ∝ *v*ᵢ, and the weighted mean Σ *w*ᵢ *s*ᵢ / Σ *w*ᵢ with *w*ᵢ ∝ 1/σᵢ²
+has the smallest variance among weighted means (Gauss–Markov; for ERPs, weighted averaging goes
+back to Hoke et al., 1984). Plain averaging (all *w* = 1) and rejection (*w* ∈ {0, 1}) are special cases;
+the floor bounds any weight to 10 times the typical one. The weights are a data-driven decision
+like a rejection, stored by the `urevent` of each epoch's time-locking event
+(`EEG.etc.pipecompare.trialWeights`), and replayed on the signal copy.
+
+**Score and error.** The estimate is *ŝ* = Σ *w*ᵢ *s*ᵢ / Σ *w*ᵢ, and its error is the sandwich
+(heteroscedasticity-consistent) standard error of a weighted mean,
+
+  SME = √( *n*/(*n* − 1) · Σ *w*ᵢ² (*s*ᵢ − *ŝ*)² ) / Σ *w*ᵢ,
+
+which is SD/√*n* for equal weights and does not assume the weights are right. In each bootstrap
+draw a trial drawn *k* times counts *k* times with its weight (the weights are not estimated
+again); peak measures average the waveforms with the weights (inner bootstrap included). In
+simulation (`test_statistics`: 20 trials of noise SD 1 and 10 of SD 4) the error of the mean was
+0.22 with inverse-variance weights against 0.45 with equal weights, and the mean SME matched the
+spread over replications within 8 %.
+
+**Signal check.** The known signal is the same in every epoch, so its weighted average equals its
+plain average up to what differs between epochs (filter tails of neighbouring events); the check
+averages the copy with the same weights. **Scope:** ERP measures (for band power, a weighted mean
+of log power would favour the epochs with less power). The rejection limit chosen from the data
+(9c) is chosen for equal weights. Filter cutoffs can be fine-tuned (9e) with the weights held
+fixed, since the weights use the measured electrodes only.
+**Downstream averaging.** EEGLAB and ERPLAB average with equal weights, so a weighted pipeline's
+data averaged there do not give the ERP it was scored on. Adopting it (or `apply`) stores the
+weighted average of each condition, Σ*w*_i *x*_i / Σ*w*_i over its epochs, in
+`EEG.etc.pipecompare.weightedERP` (`Measure.weightedAverages`), and the results name the same
+pipeline with equal weights. In simulation (`test_engine`, a P3 whose size varies with SD 50 % and
+latency with SD 50 ms), the weighted estimate stays within 3 standard errors of the P3 in the
+data: the weights, from the noise over the whole epoch, do not count trials with a large P3
+measurably less.
+
+## 9g. ICA components chosen by their effect on the SME (forward selection)
+
+`icremove` with `threshold` = `sme` chooses the set R of components to remove by the objective
+instead of by ICLabel probability [`pipecompare.eval.IcThreshold.chooseBySme`].
+
+**The problem.** With *J*(R) = min over *u* of *J*(R, *u*) as in section 9d (the objective at the best
+limit of the rejection that follows, scores divided by the signal gain, infeasible when the
+signal check fails or too few trials are kept), choose R ⊆ C, where C is the set of components
+whose likeliest ICLabel class is not Brain (a component ICLabel takes for brain activity is never
+a candidate). ICLabel is used only to protect, not to decide.
+
+**Path.** The 2^|C| subsets cannot all be scored, so R is built by forward selection: R₀ = ∅, and
+R_{j+1} = R_j ∪ {*k*} with *k* ∈ C \ R_j minimising *J*(R_j ∪ {*k*}). Each evaluation is exact in the
+sense of section 9d: with P = A W X the back-projection of all components (`pop_subcomp`'s
+rebuild; X itself for R = ∅), removing R gives P − A_R S_R with S = W X the activations, so
+adding *k* subtracts the rank-one term A_{:,k} S_{k,:} from the current data; epoching and baseline
+removal commute with it, and the known-signal copy is updated the same way. The inner problem
+over *u* is solved exactly (section 9c). The path stops after 30 components (`MaxRemoved`), when no
+candidate gives a feasible set, or when *J*(R_j) > (1 + 2*m*) min_{i≤j} *J*(R_i) with *m* the
+equivalence margin (5 %): the path has passed its minimum by more than the margin covers. Forward
+selection is greedy, so the best set on the path need not be the best subset; what it guarantees
+is that every set on the path is scored exactly, that each step takes the component that lowers
+the objective most given those already removed (unlike a threshold, which orders components by
+probability), and that the threshold's own sets are not needed: both are compared in the ranking.
+
+**Time-locked components are not candidates.** The SME counts every trial-to-trial variation as
+noise, real brain activity that varies from trial to trial included, so removing a brain component
+lowers it too. ICLabel's Brain class protects only the components it recognises. So before the
+path, for each candidate *k* and condition *c*, the component's part of each trial's score is
+*d*_i = ā_k · (S̄_k,i(window) − S̄_k,i(baseline)), with ā_k the mean of its scalp map over the
+ROI and S̄ the window and baseline means of its activation in trial *i* (exact for a mean
+amplitude: the score is linear in the components). *k* is protected (`info.protected`) when in
+some condition |*t*| = |mean *d*| / (SD *d* / √*n*) > 3 and |mean *d*| > 0.5 SME of the scores:
+clearly time-locked, and large enough to change the measure. Components whose likeliest ICLabel
+class is Eye are not protected, as blinks can be time-locked. Mean amplitudes only;
+contralateral-minus-ipsilateral components and band power are not checked.
+
+**Choice.** As in section 9d: the sets on the path are compared with the same paired bootstrap and
+simultaneous max statistic, and among those shown equivalent to the best the one removing the
+fewest components is used. The components are flagged in `EEG.reject.gcompreject` (the command
+is recorded in `EEG.history`) and removed by `pop_subcomp`. Cost: at most |C| · min(|C|, 30)
+evaluations of the inner problem, against at most *K* + 1 for the threshold.
+
+**Scope.** As section 9d (per-trial scores; only epoching, baseline removal and an amplitude
+rejection that removes epochs between the removal and the rejection; the same steps after it in
+every pipeline below it). The objective is that of the measures chosen, so the set chosen lowers
+their noise; a component that matters only for other measures or electrodes may stay. When
+adopting a pipeline the components the search chose are reused; `apply` chooses again on the data
+it is given.
 
 ## 10. Montage check (before a run)
 
@@ -530,6 +739,22 @@ which scores the whole recording, does not catch. When no pipeline passed, the s
 `nextStep`'s list instead (channels with at least 10% of all over-limit marks).
 [`pipecompare.simple.Presets.rejectText`]
 
+## 14. One pipeline for a group of recordings
+
+[`pipecompare.Group`] Each recording *s* = 1…*S* is compared as in sections 1–13 (the simple mode's
+settings), its decisions made on its own data. For the pipelines *k* run on every recording, with
+*J*_{s,k} the gain-corrected objective of *k* on *s*: *k* passes when it passes on every recording
+(recordings on which nothing passes are left out); the group objective is
+*J*_k = √(mean_s *J*_{s,k}²). This is the quantity a group analysis pays for: if participant *s*'s
+score is its true value plus a measurement error of SD *J*_{s,k}, the variance of the group mean
+gains mean_s *J*_{s,k}² / *S* from measurement error. The paired bootstrap replicates of each
+recording (section 3, its own trials) are combined the same way, *J*_k^(b) = √(mean_s
+(*J*_{s,k}^(b))²), with independent draws per recording; the confidence and equivalence sets and
+the choice among those not distinguished from the best (highest minimum retention over the
+recordings, then smallest largest amplitude error, then lowest objective) follow section 3. The
+uncertainty is that of these recordings' trials, not of sampling other participants: the choice is
+for this group's data, as the single-recording choice is for one recording's.
+
 ## References
 
 - Clayson, P. E., Baldwin, S. A., Rocha, H. A., & Larson, M. J. (2021). The data-processing
@@ -540,6 +765,8 @@ which scores the whole recording, does not catch. When no pipeline passed, the s
 - Delorme, A., & Makeig, S. (2004). EEGLAB: an open source toolbox for analysis of single-trial EEG
   dynamics including independent component analysis. *Journal of Neuroscience Methods, 134*(1),
   9–21.
+- Efron, B. (2014). Estimation and accuracy after model selection. *Journal of the American
+  Statistical Association*, 109(507), 991–1007.
 - Efron, B., & Tibshirani, R. J. (1993). *An Introduction to the Bootstrap*. Chapman & Hall.
 - Hall, P., Horowitz, J. L., & Jing, B.-Y. (1995). On blocking rules for the bootstrap with dependent
   data. *Biometrika, 82*(3), 561–574.
@@ -547,6 +774,9 @@ which scores the whole recording, does not catch. When no pipeline passed, the s
   453–497.
 - Harris, F. J. (1978). On the use of windows for harmonic analysis with the discrete Fourier
   transform. *Proceedings of the IEEE, 66*(1), 51–83.
+- Hoke, M., Ross, B., Wickesberg, R., & Lütkenhöner, B. (1984). Weighted averaging: theory and
+  application to electric response audiometry. *Electroencephalography and Clinical
+  Neurophysiology*, 57(5), 484–489.
 - Kane, N., Acharya, J., Beniczky, S., Caboclo, L., Finnigan, S., Kaplan, P. W., et al. (2017). A
   revised glossary of terms most commonly used by clinical electroencephalographers and updated
   proposal for the report format of the EEG findings. *Clinical Neurophysiology Practice, 2*,

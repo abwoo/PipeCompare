@@ -19,17 +19,23 @@ classdef Threshold
     %
     %   Only limits that keep at least minTrials trials and minRetention of
     %   the trials of every condition (the ranking's own limits) are
-    %   considered. Among them, the limits whose objective the data do not
-    %   distinguish from the best one's (the paired bootstrap and
-    %   simultaneous intervals of the ranking, over at most MaxCompared
-    %   limits spread over the range, the best included) are equally good,
-    %   and the highest of them is chosen: no epoch is rejected without
-    %   evidence that rejecting it makes the measure more precise. u is the
-    %   roundest number among the limits that keep the same epochs.
+    %   considered. Among them, the limits shown equivalent to the best one
+    %   (the paired bootstrap and simultaneous intervals of the ranking, over
+    %   at most MaxCompared limits spread over the range, the best included:
+    %   the whole interval of the difference within equivalenceMargin of the
+    %   best objective) are equally good, and the highest of them is chosen:
+    %   no epoch is rejected unless keeping it would make the measure
+    %   measurably less precise. A limit only not distinguished from the
+    %   best (too few trials to tell) is not enough: the lenient limits have
+    %   the widest intervals, so that set reaches limits that reject almost
+    %   nothing even when rejecting clearly helps. u is the roundest number
+    %   among the limits that keep the same epochs.
     %
     %   The scores are those of the data at this step (the steps after it
     %   are not run): exact when nothing after it changes the scores other
-    %   than the baseline, which the scores already have removed.
+    %   than the baseline, which the scores already have removed. Epochs
+    %   weighted after it (weight_trials) are not modelled: the limit is
+    %   the one for equal weights.
     %   Needs per-trial scores: mean amplitude or band power.
 
     properties (Constant)
@@ -48,11 +54,13 @@ classdef Threshold
             assert(pipecompare.eval.Threshold.applies(contract), 'PipeCompare:Threshold', ...
                 ['A rejection limit chosen from the data (uv = ''auto'') needs mean amplitude or band power ', ...
                  '(peak measures have no score per trial); set the limits instead (e.g. 75 | 100 | 150).']);
-            [v, ok, obj, X, M] = pipecompare.eval.Threshold.curve(EEG, m, contract, ref, opts, [], []);
+            [v, ok, obj, X, M, C] = pipecompare.eval.Threshold.curve(EEG, m, contract, ref, opts, [], []);
             U = numel(v);
+            % curves: the choice as Rank.crossfit makes it again on half of
+            % the trials (one option: these data; its limit chosen there)
             info = struct('uvBest', NaN, 'uvChosen', NaN, 'limits', U, 'feasible', sum(ok), 'compared', 0, ...
-                'equallyGood', 0, 'objectiveBest', NaN, 'objectiveChosen', NaN, 'rejectedBest', 0, 'rejectedChosen', 0, ...
-                'note', '');
+                'notDistinguished', 0, 'equallyGood', 0, 'objectiveBest', NaN, 'objectiveChosen', NaN, 'rejectedBest', 0, 'rejectedChosen', 0, ...
+                'note', '', 'curves', struct('options', {{C}}, 'ok', true, 'chosen', 1));
             nAll = numel([M{:}]);
             if ~any(ok)
                 % no limit keeps enough trials: reject nothing (the ranking
@@ -68,31 +76,40 @@ classdef Threshold
                 pick = unique([F(round(linspace(1, numel(F), pipecompare.eval.Threshold.MaxCompared - 1))) best]);
             end
             Bq = pipecompare.eval.Threshold.bootstrap(X, M, v(pick), opts, ref);
-            keep = pipecompare.eval.Rank.confidenceSet(obj(pick)', Bq, find(pick == best), opts.alpha);
-            chosen = max(pick(keep));
+            [keep, equiv] = pipecompare.eval.Rank.confidenceSet(obj(pick)', Bq, find(pick == best), ...
+                opts.alpha, opts.equivalenceMargin);
+            chosen = max(pick(equiv));
             u = roundIn(v(chosen), nextAbove(v, chosen));
             info.uvBest = roundIn(v(best), nextAbove(v, best)); info.uvChosen = u;
-            info.compared = numel(pick); info.equallyGood = sum(keep);
+            info.compared = numel(pick); info.notDistinguished = sum(keep); info.equallyGood = sum(equiv);
             info.objectiveBest = obj(best); info.objectiveChosen = obj(chosen);
             info.rejectedBest = sum([M{:}] > v(best)); info.rejectedChosen = sum([M{:}] > v(chosen));
             pipecompare.utils.log(['Rejection limit chosen from the data: %g uV (best %g uV; %d different limits, ', ...
                 '%d equally good; %d/%d trials rejected).'], u, info.uvBest, U, info.equallyGood, info.rejectedChosen, nAll);
         end
 
-        function [v, ok, obj, X, M] = curve(EEG, m, contract, ref, opts, g, v)
+        function [v, ok, obj, X, M, C] = curve(EEG, m, contract, ref, opts, g, v)
             % The objective at each limit v (empty: every value of m, one
             % limit per kept set), and whether the limit keeps enough
             % trials. X{c}: the centred scores of condition c's reference
             % trials (time order) divided by the gain g of each measure
             % (empty: 1), so that their SD is the gain-corrected one; M{c}:
-            % their values of m.
+            % their values of m. C: the same scores and values of m at the
+            % rows of all ref.n(c) reference trials (NaN: not present at
+            % this step), the measures they belong to (use), the limits
+            % given (v: [] every one) and whether the gain is divided out
+            % (gained): what the ranking's selection check needs to make
+            % this choice again on half of the trials (Rank.crossfit).
+            vIn = v;
             name = pipecompare.eval.Rank.objectiveName(opts.objective, ref);
             use = 1:numel(ref.objectives);
             if ~strcmp(name, 'composite'), use = find(strcmp(ref.objectives, name)); end
+            gained = ~isempty(g);
             if isempty(g), g = ones(1, numel(ref.objectives)); end
             T = pipecompare.eval.Measure.trials(EEG, contract);
             m = double(m(:)');
             nC = numel(ref.ids); X = cell(1, nC); M = cell(1, nC);
+            C = struct('X', {cell(1, nC)}, 'M', {cell(1, nC)}, 'use', use, 'v', vIn, 'gained', gained);
             for c = 1:nC
                 % the reference trials of condition c, in time order
                 rows = find(T.cond == c);
@@ -102,6 +119,8 @@ classdef Threshold
                 Xc = [T.data{use}] ./ double(g(use));
                 X{c} = Xc(rows, :) - mean(Xc(rows, :), 1);       % centred: the SD does not change
                 M{c} = m(T.epoch(rows));
+                C.X{c} = nan(ref.n(c), numel(use)); C.X{c}(unique(loc), :) = X{c};
+                C.M{c} = nan(ref.n(c), 1); C.M{c}(unique(loc)) = M{c};
             end
             if isempty(v), v = unique([M{:}]); end   % one limit per kept set (keep m <= v(j))
             v = v(:)';

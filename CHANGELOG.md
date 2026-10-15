@@ -5,6 +5,74 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- One pipeline for a group of recordings (`pipecompare.Group.run`, `pipecompare.Group.writeScript`):
+  every recording is compared as `pop_pipecompare` does; a pipeline counts when it passes on
+  every recording, ranked by the root mean square of its gain-corrected SME over the recordings,
+  with each recording's trial bootstrap combined the same way. Method: docs/METHODS.md, section 14.
+- Weighted pipelines: adopting one (or running its saved script) stores the weighted average of
+  each condition in `EEG.etc.pipecompare.weightedERP`
+  (`pipecompare.eval.Measure.weightedAverages`), and the result names the same pipeline with
+  equal weights for averaging in EEGLAB or ERPLAB.
+- Every epoch rejection compares the trials kept with all trials at the measured electrodes in the
+  window; the result warns when the trials kept have clearly less of the component (z below -3),
+  as when a low limit rejects trials for their large P3. Method: docs/METHODS.md, section 9c.
+- Simulation test: a P3 that varies from trial to trial in size and latency is measured without
+  bias by every passing pipeline, weighted ones included.
+- The selection check now also holds out the choices made inside each pipeline: a rejection limit,
+  an ICLabel threshold or components chosen from the data are chosen again on the half of the
+  trials used to choose (nested cross-fitting), so their advantage by chance no longer flatters
+  the reported noise or favours pipelines with more such choices. `crossfit.nested` counts the
+  pipelines this applied to. Method: docs/METHODS.md, section 3.
+- ICA components chosen by their effect on the noise no longer include components that carry
+  clear time-locked activity into the measured window (|t| > 3 and a shift above half the SME),
+  except those ICLabel calls Eye: real brain activity ICLabel did not recognise is kept. Method:
+  docs/METHODS.md, section 9g.
+- The signal check with the recording's own waveform falls back to the bump when an eye channel
+  has the same shape over the window and is more than twice as large (a blink locked to the
+  stimulus). Method: docs/METHODS.md, section 4.
+- Signal check with the recording's own waveform (`'signalTemplate', 'data'`, on in the simple
+  mode, *Options… > Signal check with own waveform* in the advanced panel): the known signal takes
+  the shape of the data's own average at each component's ROI over its window (faded to zero
+  over half the window's width on each side), when the split-half reliability is at least 0.8
+  and the window holds one deflection of one sign; otherwise the bump. The result says which was
+  used. Method: docs/METHODS.md, section 4.
+- ICA components chosen by their effect on the noise (`icremove` `threshold` = `'sme'`): instead
+  of an ICLabel probability threshold, components are added one at a time, each time the one whose
+  removal lowers the SME most (with the rejection that follows at its best limit and the signal
+  check), never one whose likeliest ICLabel class is Brain; among the sets on that path, the one
+  with the fewest components among those equivalent to the best is used. A simple-mode option
+  under ICA (*also choose the components by their effect on the noise*), off in *Standard*:
+  ticked, both ways are compared (twice the pipelines). `auto | sme` in the advanced panel.
+  Method: docs/METHODS.md, section 9g.
+- Epochs weighted by their noise (`weight_trials`): instead of only keeping or dropping epochs,
+  the average counts each epoch with weight 1 / its noise at the measured electrodes (the epoch
+  minus the mean of the others of its condition), the weights averaging 1 per condition and none
+  above 10 times the typical one. Scores are weighted means with the sandwich SME; the bootstrap
+  and the selection check take the weights. In *Standard* (ERP) every pipeline is compared with
+  and without the weights (24 pipelines instead of 12). The weights are stored in
+  `EEG.etc.pipecompare.trialWeights`; `pipecompare.eval.Measure.epochWeights(EEG)` gives one per
+  epoch for a weighted average. Method: docs/METHODS.md, section 9f.
+- How stable the recommendation is: in every bootstrap resample of the trials the choice is made
+  again, and the result says how often the recommended pipeline would be recommended (and which
+  other one, when that is below 70 %). In the ranking table as `chosenShare`. Method:
+  docs/METHODS.md, section 3.
+
+- Filter cutoffs fine-tuned from the data: after the comparison, the recommended pipeline's
+  high-pass and low-pass cutoffs are also tried on a finer grid between the compared values
+  (0.1, 0.15, … 1 Hz and 20, 22, … 40 Hz). With its decisions held fixed (components and epochs
+  removed), the SME of every pair is computed exactly from the measured electrodes alone, since
+  filtering and removing components are linear and commute (`pipecompare.eval.Cutoff`). When a
+  pair is better, that pipeline runs like every other one and joins the ranking. On in the
+  simple mode; *Options… > Fine-tune filter cutoffs* in the advanced panel; `'refineCutoffs',
+  true` in scripts. Method: docs/METHODS.md, section 9e.
+- Fix: the rejection limit and the ICLabel threshold chosen from the data (`'auto'`) were
+  often too lenient, so the SME got larger instead of smaller. The tool used the most lenient
+  option among all those the data could not tell apart from the best; with few trials that set is
+  wide and reaches limits that reject almost nothing. Now it uses the most lenient option among
+  those shown to be within 5 % of the best (the ranking's *equivalent* test,
+  `equivalenceMargin`), and otherwise the best one. In simulation (15 % large-artifact trials,
+  100 per condition) the SME at the limit chosen went from 0.54 to 0.33 (best possible 0.33);
+  clean data are unchanged.
 - `pcomp` opens the PipeCompare window (the same as `pipecompare.start`), like `estudio`
   for ERPLAB Studio. The README's download steps say how to install PipeCompare and save the path
   once, so that `pcomp` works in every MATLAB session without EEGLAB's window.

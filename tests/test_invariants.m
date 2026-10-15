@@ -54,7 +54,7 @@ end
 
 function testEveryCatalogStepHasANativeDialog(tc)
 % 0.6 test_capture_inventory/testStepPopFunctionCoversAllCanonicalSteps
-for t = setdiff(pipecompare.plan.Catalog.types(), {'native', 'channels'})
+for t = setdiff(pipecompare.plan.Catalog.types(), {'native', 'channels', 'weight_trials'})   % (weighting is PipeCompare's own)
     call = pipecompare.run.Native.menuCall(t{1});
     verifyTrue(tc, contains(call, 'pop_'), t{1});
 end

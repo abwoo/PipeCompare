@@ -21,7 +21,7 @@ classdef Catalog
         function names = types()
             names = {'resample','linenoise','highpass','lowpass','asr','badchannels','channels', ...
                 'restore','reref','ica','icremove','epoch','baseline', ...
-                'reject_threshold','reject_jointprob','reject_kurtosis','native'};
+                'reject_threshold','reject_jointprob','reject_kurtosis','weight_trials','native'};
         end
 
         function d = get(type)
@@ -77,9 +77,10 @@ classdef Catalog
                 case 'icremove'
                     d.label = 'Remove artifact ICs (ICLabel)'; d.dialog = 'pop_icflag';
                     d.params = [P('threshold', 0.9, {0.7, 0.8, 0.9}, false, ['minimum ICLabel probability of an artifact class; ''auto'' = ', ...
-                        'the highest threshold whose SME the data do not distinguish from the best threshold''s, found among ', ...
-                        'all thresholds from 0.5 (mean amplitude or band power; only epoching, baseline removal and the ', ...
-                        'amplitude rejection may follow before the rejection)']), ...
+                        'the highest threshold whose SME is shown within 5 percent of the best threshold''s, found among ', ...
+                        'all thresholds from 0.5; ''sme'' = the components chosen by their effect on the SME, one at a ', ...
+                        'time, never one whose likeliest ICLabel class is Brain (both: mean amplitude or band power; ', ...
+                        'only epoching, baseline removal and the amplitude rejection may follow before the rejection)']), ...
                         P('classes', {'Muscle','Eye','Heart','Line Noise','Channel Noise'}, {}, false, 'ICLabel classes treated as artifact')];
                 case 'epoch'
                     d.label = 'Extract epochs (from the analysis contract)'; d.dialog = 'pop_epoch';
@@ -88,7 +89,7 @@ classdef Catalog
                 case 'reject_threshold'
                     d.label = 'Reject epochs: amplitude threshold'; d.dialog = 'pop_eegthresh';
                     d.params = [P('uv', 100, {75, 100, 150}, false, ['threshold (uV): absolute, or peak-to-peak with method ', ...
-                        'peaktopeak; ''auto'' = the highest limit whose SME the data do not distinguish from the best ', ...
+                        'peaktopeak; ''auto'' = the highest limit whose SME is shown within 5 percent of the best ', ...
                         'limit''s, found among all limits (mean amplitude or band power)']), ...
                         P('exclude', {}, {}, false, 'channel labels ignored by the test (e.g. EOG channels)'), ...
                         P('method', 'absolute', {}, false, ['''absolute'' (any sample beyond +/-uV) or ''peaktopeak'' ', ...
@@ -103,6 +104,10 @@ classdef Catalog
                     d.label = 'Reject epochs: kurtosis'; d.dialog = 'pop_rejkurt';
                     d.params = [P('sd', 5, {3, 4, 5}, false, 'local and global limit (SD)'), P('exclude', {}, {}, false, 'channel labels ignored by the test (e.g. EOG channels)'), ...
                         interp];
+                case 'weight_trials'
+                    d.label = 'Weight epochs by their noise (none removed; ERP)';
+                    d.doc = ['the average counts each epoch with weight 1 / its noise at the measured electrodes ', ...
+                        '(pipecompare.run.Steps.weightTrials); scored as a weighted mean'];
                 case 'native'
                     d.label = 'Native EEGLAB command (fixed)';
                     d.params = P('command', '', {}, true, 'command returned by an EEGLAB dialog');
@@ -215,6 +220,10 @@ classdef Catalog
                         end
                         st = channelsChanged(st);
                     end
+                case 'weight_trials'
+                    if ~st.epoched, reason = 'weight_trials needs epoched data'; return; end
+                    if pipecompare.utils.fieldOr(st, 'weighted', false), reason = 'the epochs are already weighted'; return; end
+                    st.weighted = true;
                 case 'native'
                     % Infer the effect from the EEGLAB functions the
                     % statements call (a captured workflow has several).
@@ -328,9 +337,10 @@ switch type
         elseif pos('window'), reason = 'reject_threshold window must be a positive number (ms)'; end
     case {'reject_jointprob','reject_kurtosis'}, if pos('sd'), reason = sprintf('%s sd must be a positive number', type); end
     case 'icremove'
-        msg = 'icremove threshold must be a probability in (0, 1], or ''auto'' (chosen from the data)';
+        msg = ['icremove threshold must be a probability in (0, 1], ''auto'' (chosen from the data) or ''sme'' ', ...
+            '(components chosen by their effect on the SME)'];
         if isfield(p, 'threshold') && ischar(p.threshold)
-            if ~strcmp(p.threshold, 'auto'), reason = msg; end
+            if ~any(strcmp(p.threshold, {'auto', 'sme'})), reason = msg; end
         elseif pos('threshold') || p.threshold > 1, reason = msg; end
     case 'ica', if isfield(p, 'fitHighpass') && ~(isnumeric(p.fitHighpass) && isscalar(p.fitHighpass) && p.fitHighpass >= 0)
             reason = 'ica fitHighpass must be >= 0 (0 = fit on the data as is)'; end

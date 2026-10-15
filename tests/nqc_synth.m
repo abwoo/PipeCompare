@@ -4,11 +4,13 @@ function [EEG, truth] = nqc_synth(opts)
 %   peak at truth.p3Latency) is added to every target trial (smaller to
 %   standards). Noise: 1/f background, slow drift, 50 Hz line noise, blinks
 %   and, on a known subset of trials, large movement artifacts. Channel
-%   locations come from EEGLAB's sample 32-channel montage.
+%   locations come from EEGLAB's sample 32-channel montage. p3AmpSd and
+%   p3Jitter make the P3's size (relative SD) and latency (SD, s) differ
+%   from trial to trial (truth.p3Amp, truth.p3Shift per trial).
 if nargin < 1, opts = struct(); end
 d = struct('srate', 250, 'seconds', 400, 'nPerCond', 90, 'seed', 7, 'p3', 6, ...
     'noise', 8, 'drift', 25, 'line', 4, 'blinkRate', 0.25, 'artifactTrials', 0.15, ...
-    'p3Jitter', 0, 'noisyChannels', {{}}, 'noisyUv', 60, 'alphaUv', 0);
+    'p3Jitter', 0, 'p3AmpSd', 0, 'noisyChannels', {{}}, 'noisyUv', 60, 'alphaUv', 0);
 for f = fieldnames(d)', if ~isfield(opts, f{1}), opts.(f{1}) = d.(f{1}); end, end
 rng(opts.seed, 'twister');
 locfile = fullfile(fileparts(which('eeglab')), 'sample_data', 'eeglab_chan32.locs');
@@ -51,14 +53,17 @@ p3Topo = topo('PZ', 0.5);
 truth.p3Latency = 0.40; truth.p3Sigma = 0.07;
 tt = -round(0.2*fs):round(1.0*fs);
 wave = exp(-0.5 * ((tt/fs - truth.p3Latency) / truth.p3Sigma).^2);
-art = false(1, nTrials);
+art = false(1, nTrials); truth.p3Amp = zeros(1, nTrials); truth.p3Shift = zeros(1, nTrials);
 for k = 1:nTrials
     amp = opts.p3; if strcmp(types{k}, '31'), amp = opts.p3 / 3; end
+    if opts.p3AmpSd > 0, amp = amp * max(0, 1 + opts.p3AmpSd * randn); end   % the P3 differs from trial to trial
     if opts.p3Jitter > 0
-        wk = exp(-0.5 * ((tt/fs - truth.p3Latency - opts.p3Jitter * randn) / truth.p3Sigma).^2);
+        truth.p3Shift(k) = opts.p3Jitter * randn;
+        wk = exp(-0.5 * ((tt/fs - truth.p3Latency - truth.p3Shift(k)) / truth.p3Sigma).^2);
     else
         wk = wave;
     end
+    truth.p3Amp(k) = amp;
     data(:, lat(k) + tt) = data(:, lat(k) + tt) + p3Topo' * (amp * wk);
     if rand < opts.artifactTrials
         art(k) = true; % movement artifact: large, broad, all channels
@@ -84,6 +89,6 @@ EEG.event = struct('type', types, 'latency', num2cell(lat), 'duration', 0);
 EEG = eeg_checkset(EEG, 'eventconsistency');
 EEG = eeg_checkset(EEG, 'makeur');
 EEG.history = sprintf('EEG = pop_loadset(''nqc_synth.set''); %% synthetic');
-truth.artifactTrials = art; truth.types = types; truth.roi = {'Pz','CPz','POz','P3','P4'};
+truth.p3Topo = p3Topo; truth.artifactTrials = art; truth.types = types; truth.roi = {'Pz','CPz','POz','P3','P4'};
 truth.roi = truth.roi(ismember(upper(truth.roi), lab));
 end

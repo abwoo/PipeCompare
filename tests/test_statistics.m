@@ -170,6 +170,83 @@ verifyTrue(tc, all(R.table.notDistinguished));
 verifyEqual(tc, sum(R.table.equivalent), 1);                   % only the best itself
 end
 
+function testConfidenceSetEquivalentIsWithinTheMargin(tc)
+% The automatic thresholds choose among the options shown equivalent to
+% the best, not among all those not distinguished from it: the
+% equivalent ones are a subset, always hold the best, and none is more
+% than the margin worse at the point estimate. Options: the same scores
+% scaled (1% and 2% noisier, three times noisier), so the paired
+% bootstrap replicates are the same SME scaled.
+rs = RandStream('mt19937ar', 'Seed', 41); N = 40; B = 999;
+x = randn(rs, N, 1); W = pipecompare.eval.Rank.resampleWeights(rs, N, B, false);
+n = sum(W, 1); m1 = sum(x .* W, 1) ./ n;
+smeB = sqrt((sum(x .^ 2 .* W, 1) - n .* m1 .^ 2) ./ (n - 1) ./ n);
+s = [1 1.01 1.02 3]';
+pts = s * (std(x) / sqrt(N)); Bq = s * smeB;
+[keep, equiv] = pipecompare.eval.Rank.confidenceSet(pts, Bq, 1, 0.02, 0.05);
+verifyEqual(tc, keep(:)', [true true true false]);
+verifyEqual(tc, equiv(:)', [true true true false]);
+verifyTrue(tc, all(pts(equiv) <= 1.05 * pts(1)));
+[~, e0] = pipecompare.eval.Rank.confidenceSet(pts, Bq, 1, 0.02);   % no margin: the best only
+verifyEqual(tc, e0(:)', [true false false false]);
+end
+
+function testWeightedMeanAndItsSme(tc)
+% Equal weights give the plain mean and SD / sqrt(n). With trials of
+% unequal noise, inverse-variance weights give a mean with a much smaller
+% error, still centred on the true value, and the weighted SME (sandwich)
+% matches its spread over replications; the ranking's bootstrap takes the
+% weights (each trial drawn once: the weighted SME).
+rs = RandStream('mt19937ar', 'Seed', 51);
+opts = pipecompare.eval.Measure.defaults();
+o = struct('kind', 'scalar', 'polarity', 'positive', 'times', []);
+x = randn(rs, 30, 1);
+[e1, s1] = pipecompare.eval.Measure.estimate(o, x, opts, 0, ones(30, 1));
+verifyEqual(tc, [e1 s1], [mean(x) std(x) / sqrt(30)], 'RelTol', 1e-12);
+N = 30; sd = [ones(20, 1); 4 * ones(10, 1)]; w = 1 ./ sd .^ 2;
+R = 4000; ep = zeros(R, 1); ew = ep; sw = ep;
+for r = 1:R
+    y = 2 + sd .* randn(rs, N, 1);
+    ep(r) = mean(y);
+    [ew(r), sw(r)] = pipecompare.eval.Measure.estimate(o, y, opts, 0, w);
+end
+fprintf('error of the mean: equal weights %.3f, inverse-variance %.3f (SME %.3f)\n', std(ep), std(ew), mean(sw));
+verifyLessThan(tc, std(ew), 0.6 * std(ep));                     % 0.22 against 0.45 in theory
+verifyEqual(tc, mean(ew), 2, 'AbsTol', 0.02);
+verifyEqual(tc, mean(sw), std(ew), 'RelTol', 0.08);
+o.X = {y}; o.w = {w};
+verifyEqual(tc, pipecompare.eval.Measure.smeBoot(o, {ones(N, 1)}, opts, 0), sw(end), 'RelTol', 1e-10);
+% peak measures: equal weights give the unweighted peak and bSME
+p = struct('kind', 'peakAmplitude', 'polarity', 'positive', 'times', 1:20);
+Y = randn(rs, 25, 20) + [zeros(1, 9) 3 zeros(1, 10)];
+[a0, b0] = pipecompare.eval.Measure.estimate(p, Y, opts, 5);
+[a1, b1] = pipecompare.eval.Measure.estimate(p, Y, opts, 5, ones(25, 1));
+verifyEqual(tc, [a1 b1], [a0 b0], 'RelTol', 1e-10);
+end
+
+function testSelectionFrequencyOfTheRecommendation(tc)
+% A pipeline clearly better than the others is recommended in nearly
+% every resample of the trials. Among pipelines with the same true noise
+% the one recommended on these trials is recommended in only about half
+% of the resamples (simulated in Python: median 54%, 95th percentile 86%,
+% with 5 such pipelines and 60 trials).
+rs = RandStream('mt19937ar', 'Seed', 61); N = 60;
+o = pipecompare.eval.Rank.defaults(); o.nBoot = 499; o.nSplits = 0;
+x = randn(rs, N, 1);
+R = pipecompare.eval.Rank.run([nqc_cand(x) nqc_cand(3 * x) nqc_cand(3.2 * x)], nqc_ref(N), o);
+verifyEqual(tc, R.byStratum.recommended, 1);
+verifyGreaterThan(tc, R.byStratum.stability, 0.95);
+verifyEqual(tc, sum(R.table.chosenShare), 1, 'AbsTol', 1e-12);
+f = zeros(1, 20);
+for k = 1:20
+    R = pipecompare.eval.Rank.run(arrayfun(@(j) nqc_cand(randn(rs, N, 1)), 1:5), nqc_ref(N), o);
+    f(k) = R.byStratum.stability;
+    verifyEqual(tc, R.table.chosenShare(R.byStratum.recommended), f(k));
+end
+fprintf('5 equally good pipelines: the recommended one is recommended again in %.0f%% of resamples (mean)\n', 100 * mean(f));
+verifyLessThan(tc, mean(f), 0.75);
+end
+
 function testCrossfitRemovesTheOptimismOfTheBest(tc)
 % 24 pipelines with the same true noise: the best-looking one's SME
 % underestimates the true SME (selection), the cross-fitted value of the
@@ -193,6 +270,44 @@ verifyLessThan(tc, mean(ap), 0.95 * truth);                     % the selection 
 verifyEqual(tc, mean(ho), truth, 'RelTol', 0.05);               % trials not used to choose it do not
 verifyGreaterThan(tc, mean(ho ./ ap - 1), 0.05);
 verifyLessThan(tc, abs(mean(one)), 0.04);
+end
+
+function testCrossfitHoldsOutTheLimitChosenFromTheData(tc)
+% One pipeline whose rejection limit was chosen from the data (uv 'auto')
+% on rejection statistics unrelated to the scores: the limit's advantage
+% is pure chance. Without its stored scores the selection check holds the
+% kept trials fixed and finds no overstatement; with them (nested) it
+% chooses the limit again on each half and finds the chance advantage
+% (simulated in Python: about 3% against 0%).
+rs = RandStream('mt19937ar', 'Seed', 41);
+N = 60; sims = 30; ref = nqc_ref(N);
+o = pipecompare.eval.Rank.defaults(); o.nBoot = 200; o.nSplits = 10;
+ovN = zeros(1, sims); ovP = zeros(1, sims);
+for k = 1:sims
+    x = randn(rs, N, 1); M = rand(rs, N, 1);
+    v = unique(M)'; obj = inf(size(v));
+    for j = 1:numel(v)
+        kp = M <= v(j);
+        if sum(kp) >= 30, obj(j) = std(x(kp)) / sqrt(sum(kp)); end
+    end
+    u = v(find(obj <= (1 + o.equivalenceMargin) * min(obj), 1, 'last'));   % the most lenient within the margin
+    xc = x; xc(M > u) = NaN;
+    plain = nqc_cand(xc); plain.steps = {};
+    nested = plain;
+    C = struct('X', {{x - mean(x)}}, 'M', {{M}}, 'use', 1, 'v', [], 'gained', false);
+    nested.steps = {struct('type', 'reject_threshold', 'cutoffRefined', false, ...
+        'curves', struct('options', {{C}}, 'ok', true, 'chosen', 1))};
+    cP = pipecompare.eval.Rank.crossfit(plain, ref, o, 'composite', plain.m.objectives.agg);
+    cN = pipecompare.eval.Rank.crossfit(nested, ref, o, 'composite', nested.m.objectives.agg);
+    verifyEqual(tc, [cP.nested cN.nested], [0 1]);
+    ovP(k) = cP.overstatement; ovN(k) = cN.overstatement;
+end
+fprintf('limit chosen from the data: overstatement %.3f nested, %.3f with the kept trials fixed\n', mean(ovN), mean(ovP));
+verifyGreaterThan(tc, mean(ovN) - mean(ovP), 0.015);
+verifyLessThan(tc, abs(mean(ovP)), 0.02);
+% a stored choice that does not reproduce the candidate's scores is not used
+bad = nested; bad.steps{1}.curves.options{1}.X{1} = randn(rs, N, 1);
+verifyEqual(tc, pipecompare.eval.Rank.crossfit(bad, ref, o, 'composite', 1).nested, 0);
 end
 
 function testCrossfitNeedsEnoughTrialsAndCanBeOff(tc)

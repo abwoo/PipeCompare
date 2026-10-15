@@ -86,7 +86,7 @@ verifyEqual(tc, numel(findall(groot, 'Type', 'figure')), nFig);   % no progress 
 verifyClass(tc, w.Results, 'pipecompare.gui.SimpleResults');
 verifyEqual(tc, w.Nav.Value, 4);                                % the Results page
 verifyEqual(tc, char(w.Nav.Enable), 'on');
-verifyEqual(tc, numel(w.Result.cands), 12);
+verifyEqual(tc, w.Result.report.nLeaves, 12);
 verifyTrue(tc, startsWith(strjoin(w.Results.Headline.Value, ' '), sprintf('Use pipeline %d', w.Result.ranking.recommended)));
 verifyEmpty(tc, w.RunBox.Children);                             % the progress is gone
 evalc('w.plotPipeline()');                                      % the recommended pipeline's ERP
