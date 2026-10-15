@@ -223,7 +223,8 @@ classdef Steps
             doHp = hp > 0 && hp > applied;
             doLp = lp > 0 && lp < EEG.srate / 2;
             copy = doHp || doLp;
-            src = bandCopy(EEG, doHp, hp, doLp, lp); on = '';
+            lpOnly = bandCopy(EEG, false, hp, doLp, lp);     % (the filters commute: low-pass first)
+            src = bandCopy(lpOnly, doHp, hp, false, lp); on = '';
             if doHp, on = sprintf(' on a %g Hz high-passed', hp); end
             if doLp
                 on = [pipecompare.utils.ternary(doHp, [on ','], ' on a') sprintf(' %g Hz low-passed', lp)];
@@ -243,12 +244,14 @@ classdef Steps
             noBlink = src; share = 0;
             if any(~strcmp(measures, 'resid'))
                 if copy && EEG.trials == 1
-                    % left out of the data as they are, then filtered like
-                    % the copy: filtering first would spread each blink's
+                    % left out of the low-passed data, then high-passed like
+                    % the copy: high-passing first would spread each blink's
                     % slow part beyond the stretch left out (eegfiltnew
-                    % filters the stretches between boundaries on their own)
-                    [noBlink, share, eyes] = pipecompare.run.Steps.withoutBlinks(src, EEG);
-                    if share > 0, noBlink = bandCopy(noBlink, doHp, hp, doLp, lp); else, noBlink = src; end
+                    % filters the stretches between boundaries on their
+                    % own), while low-passing after would leave what it
+                    % removes (line noise) at the edges of every stretch
+                    [noBlink, share, eyes] = pipecompare.run.Steps.withoutBlinks(src, lpOnly);
+                    if share > 0, noBlink = bandCopy(noBlink, doHp, hp, false, lp); else, noBlink = src; end
                 else
                     [noBlink, share, eyes] = pipecompare.run.Steps.withoutBlinks(src);
                 end
