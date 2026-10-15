@@ -1316,6 +1316,45 @@ verifyFalse(tc, ismember(9, c.rejIdx));
 verifyGreaterThan(tc, c.epochsInterpolated, 0);
 end
 
+function testVariableP3DoesNotMisleadTheChoice(tc)
+% Simulation: the P3 differs from trial to trial in size (SD 50%) and in
+% latency (SD 50 ms), real activity that the SME counts as noise. Every
+% pipeline that passes still measures each condition's P3 without bias:
+% its estimate, divided by its signal gain, is within 3 standard errors
+% of the P3 actually in the data (the mean, over all trials, of each
+% trial's P3 at the measured electrodes in the window). Weighting the
+% epochs included: their weights do not count the trials with a large
+% P3 less. The recommended pipeline is one of them.
+[EEG, truth] = nqc_synth(struct('seconds', 300, 'nPerCond', 60, 'p3AmpSd', 0.5, 'p3Jitter', 0.05));
+nqc_setBase(EEG);
+c = pipecompare.eval.Contract('conditions', {'target', {'11'}; 'standard', {'31'}}, ...
+    'epoch', [-0.2 1.0], 'baseline', [-0.2 0], 'components', {'P3', [0.30 0.50], truth.roi});
+p = pipecompare.plan.Plan();
+p = p.add('highpass', 'cutoff', 0.1); p = p.add('lowpass', 'cutoff', {20, 40});
+p = p.add('epoch'); p = p.add('baseline');
+p = p.add('reject_threshold', 'uv', 'auto');
+p = p.addChoice('weight', {'weight_trials'}, 'none');
+r = pipecompare.PipeCompare.optimize(p, c);
+% the P3 in the data, per trial: its mean over the ROI and the window
+fs = EEG.srate; tt = (-round(0.2 * fs):round(1.0 * fs)) / fs;
+win = tt >= 0.30 - 1e-9 & tt <= 0.50 + 1e-9;
+roi = ismember(upper({EEG.chanlocs.labels}), upper(truth.roi));
+g = arrayfun(@(k) mean(exp(-0.5 * ((tt(win) - truth.p3Latency - truth.p3Shift(k)) / truth.p3Sigma) .^ 2)), 1:numel(truth.p3Amp));
+p3 = mean(truth.p3Topo(roi)) * truth.p3Amp .* g;
+want = [mean(p3(strcmp(truth.types, '11'))) mean(p3(strcmp(truth.types, '31')))];
+T = r.ranking.table;
+feas = find(strcmp(T.status, 'feasible'))';
+verifyNotEmpty(tc, feas);
+verifyTrue(tc, ismember(r.ranking.recommended, feas));
+for k = feas
+    o = r.cands(k).m.objectives(1); gk = r.cands(k).signal.gain(1);
+    err = abs(o.estimate / gk - want) ./ (o.sme / gk);
+    fprintf('variable P3, pipeline %d (%s): estimate %s uV, P3 in the data %s uV, %s standard errors off\n', ...
+        k, r.labels{k}, mat2str(o.estimate / gk, 3), mat2str(want, 3), mat2str(err, 2));
+    verifyLessThan(tc, err, 3, r.labels{k});
+end
+end
+
 function testRejectingEpochsForTheirLargeComponentIsReported(tc)
 % A limit low enough to reject epochs for their large P3 at the measured
 % electrodes keeps epochs with less P3 than all of them: the rejection
