@@ -771,6 +771,27 @@ classdef Presets
                 pipecompare.utils.ternary(numel(top) > 1, 'them', 'it'), pipecompare.utils.ternary(numel(top) > 1, 'them', 'it'));
         end
 
+        function t = templateText(result)
+            % Which shape the known signal of the signal check had, when
+            % this recording's own waveform was asked for (signalTemplate
+            % 'data', pipecompare.eval.Injection); '' otherwise.
+            t = '';
+            info = pipecompare.utils.fieldOr(result, 'signalTemplate', []);
+            if isempty(info), return; end
+            names = {result.contract.components.name};
+            u = {}; v = {};
+            for j = 1:numel(names)
+                if info.used(j), u{end+1} = sprintf('%s (split-half reliability %.2f)', names{j}, info.reliability(j)); %#ok<AGROW>
+                else, v{end+1} = sprintf('%s (its average: %s)', names{j}, info.why{j}); end %#ok<AGROW>
+            end
+            if ~isempty(u)
+                t = sprintf('The signal check used this recording''s own average waveform as the known signal for %s.', strjoin(u, ', '));
+            end
+            if ~isempty(v)
+                t = strtrim(sprintf('%s It used the standard bump for %s.', t, strjoin(v, ', ')));
+            end
+        end
+
         function t = priorFilterText(result)
             % A warning when the filters the data had before PipeCompare
             % (result.priorFilters, pipecompare.eval.Injection.priorFilters)

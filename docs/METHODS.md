@@ -255,6 +255,24 @@ CORE components):
   tested equal those at the realistic widths: a 1 Hz high-pass fails for N400, P3 and LRP, and
   nothing at 0.5 Hz or below, and no low-pass of 20 Hz or above, fails.
 
+**The recording's own waveform** (`signalTemplate` = `data`, the simple mode's default). The time
+course of component *j* is instead *ḡ*(t)·τ(t), where *ḡ* is the recording's average at its ROI
+before any pipeline (each condition's epochs averaged, baseline removed, conditions weighted
+equally, smoothed by a Gaussian of σ = 5 ms) and τ is 1 in the window and falls to 0 as a raised
+cosine over *h* = max(window, 50 ms)/2 on each side, scaled to peak 1 in the window. It is used
+when (i) its split-half reliability over the stretch is at least 0.8: *r* = ⟨*a*_odd, *a*_even⟩ /
+(‖*a*_odd‖ ‖*a*_even‖) for the tapered averages of the odd and even epochs (uncentred, since the
+stretch starts and ends at zero), stepped up to all epochs, 2*r*/(1 + *r*) (Spearman-Brown); and
+(ii) the window holds one deflection of one sign (|mean| ≥ half the largest absolute value),
+which keeps the gain's denominator away from zero. Otherwise, and for contralateral-minus-ipsilateral
+components and band power, the Gaussian above. Any shape is a valid test signal: the copy is
+noise-free and every operation is linear given the decisions, so the check measures exactly how
+the pipeline transfers that shape. The data's shape only makes the test closer to the real
+component (its width and asymmetry, which decide what a high-pass removes); reliability keeps
+estimation noise, which a low-pass would remove and so be blamed for, out of it. In a simulation
+(6 µV P3 of σ = 70 ms in pink noise of SD 8 µV; standards 2 µV) the criterion passed in 58 % of
+datasets with 20 epochs per condition, 80 % with 30 and 100 % with 90, and in 0–2.5 % without any P3.
+
 Over the
 scalp it is a Gaussian in the angle θ between a channel's unit position vector and the ROI
 centroid, w(θ) = exp(−θ²/(2·0.5²)), normalized to mean 1 over the ROI. Channels without coordinates

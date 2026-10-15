@@ -14,6 +14,20 @@ classdef Injection
     %   contralateral minus ipsilateral gets a field centred on its first
     %   electrode and is checked on the difference of its two electrodes.
     %
+    %   opts.signalTemplate = 'data' (the simple mode's default): the time
+    %   course of each component's signal is instead this recording's own
+    %   average waveform at its ROI (all scored epochs, each condition
+    %   weighted equally, baseline removed, smoothed with a 5 ms Gaussian),
+    %   over the window and tapered to zero over half the window's width
+    %   (at least 25 ms) on each side, scaled to peak 1 in the window, when
+    %   it is reliable: its split-half reliability over that stretch (the
+    %   cosine of odd against even epochs, Spearman-Brown) at least
+    %   MinReliability, and
+    %   one sign in the window (|mean| at least half its largest value).
+    %   Otherwise, and for contralateral minus ipsilateral components and
+    %   band power, the bump above. truth.template says which was used and
+    %   why (docs/METHODS.md, section 4).
+    %
     %   compare() also returns the gain of each measure (recovered /
     %   expected window mean, or peak; 1 for a latency), by which Rank
     %   divides the SME (docs/METHODS.md, section 2).
@@ -42,10 +56,15 @@ classdef Injection
     %   copy by noteReference), so channels removed afterwards do not
     %   change the expected values of the channels that remain.
 
+    properties (Constant)
+        MinReliability = 0.8   % 'data' template: lowest split-half reliability used
+    end
+
     methods (Static)
         function [S, truth] = prepare(root, contract, ref, opts)
             if nargin < 4, opts = struct(); end
             if ~isfield(opts, 'injectUv'), opts.injectUv = 5; end
+            if ~isfield(opts, 'signalTemplate'), opts.signalTemplate = 'bump'; end
             labels = {root.chanlocs.labels};
             A = opts.injectUv;
             S = root;
@@ -85,7 +104,13 @@ classdef Injection
             end
             W = Wfull(1:nch, :);
             tt = (round(contract.epoch(1) * fs):round(contract.epoch(2) * fs)) / fs;
-            g = template(tt, contract);                       % nComp x samples
+            shape = [];
+            if strcmp(opts.signalTemplate, 'data')
+                [g, info] = dataTemplate(root, contract, tt);
+                shape = struct('t', tt, 'g', g, 'info', info);
+            else
+                g = template(tt, contract);                   % nComp x samples
+            end
             sig = A * (W * g);                                % nch x samples
             onsets = []; urs = [];
             if root.trials == 1
@@ -112,7 +137,7 @@ classdef Injection
             % onsets/urevents let compare() build the expected average when
             % epochs overlap (neighbouring events inside one epoch window)
             truth = struct('kind', 'erp', 'weights', Wfull, 'labels', {labels}, 'A', A, ...
-                'onsets', onsets, 'urevents', urs);
+                'onsets', onsets, 'urevents', urs, 'shape', shape);
         end
 
         function r = priorFilters(root, contract, state, opts)
@@ -344,7 +369,7 @@ function g = expectedTimeCourse(S, times, contract, truth)
 % each epoch, so overlapping epochs (events closer than the epoch length)
 % are expected, not read as distortion. Falls back to the single template
 % when the epochs cannot be mapped to injected events.
-g = template(times, contract);
+g = template(times, contract, truth);
 if ~isfield(truth, 'onsets') || isempty(truth.onsets) || ~isfield(S, 'epoch') || isempty(S.epoch), return; end
 codes = contract.allEvents();
 span = [times(1) times(end)];
@@ -359,7 +384,7 @@ for ep = 1:numel(S.epoch)
     for o = near
         rel = times + L - truth.onsets(o);              % time relative to that onset
         inWin = rel >= contract.epoch(1) - 1e-9 & rel <= contract.epoch(2) + 1e-9;   % injected span
-        G = G + template(rel, contract) .* inWin;
+        G = G + template(rel, contract, truth) .* inWin;
     end
     n = n + 1;
 end
@@ -407,7 +432,14 @@ ok = @(v) isnumeric(v) && isscalar(v) && isfinite(v);
 tf = arrayfun(@(c) isfield(c, 'X') && ok(c.X) && ok(c.Y) && ok(c.Z), chanlocs);
 end
 
-function g = template(t, contract)
+function g = template(t, contract, truth)
+% the time course of each component's known signal at times t (s): the
+% stored one (the recording's own, 'data'), else the bump
+if nargin > 2 && isfield(truth, 'shape') && ~isempty(truth.shape)
+    sh = truth.shape; g = zeros(size(sh.g, 1), numel(t));
+    for j = 1:size(sh.g, 1), g(j, :) = interp1(sh.t, sh.g(j, :), t(:)', 'linear', 0); end
+    return;
+end
 g = zeros(numel(contract.components), numel(t));
 for j = 1:numel(contract.components)
     win = contract.components(j).window;
@@ -418,6 +450,63 @@ for j = 1:numel(contract.components)
     % N170 unchanged (docs/METHODS.md, section 4).
     sd = max(diff(win), 0.050) / 2.355;
     g(j, :) = exp(-0.5 * ((t - mean(win)) / sd) .^ 2);
+end
+end
+
+function [g, info] = dataTemplate(root, contract, tt)
+% The recording's own average waveform at each component's ROI, sampled
+% at tt (s), where it is reliable; the bump elsewhere. info per component:
+% used, reliability (split-half, Spearman-Brown), why (when not used).
+g = template(tt, contract);
+nJ = numel(contract.components);
+info = struct('used', false(1, nJ), 'reliability', nan(1, nJ), 'why', {repmat({''}, 1, nJ)});
+labs = lower({root.chanlocs.labels});
+for j = 1:nJ
+    comp = contract.components(j);
+    if contract.isLateral(j), info.why{j} = 'contralateral minus ipsilateral'; continue; end
+    idx = find(ismember(labs, lower(comp.roi)));
+    E = root; E.icaact = []; E.icaweights = []; E.icasphere = []; E.icawinv = []; E.icachansind = [];
+    [~, E] = evalc('pop_select(E, ''channel'', idx)');
+    if E.trials == 1, [~, E] = evalc('pop_epoch(E, contract.allEvents(), contract.epoch, ''epochinfo'', ''yes'')'); end
+    T = pipecompare.eval.Measure.trials(E, contract, true);
+    times = E.xmin + (0:E.pnts-1) / E.srate;
+    X = reshape(mean(double(E.data), 1), E.pnts, E.trials);       % the ROI's mean, samples x epochs
+    bl = times >= contract.baseline(1) - 1e-9 & times <= contract.baseline(2) + 1e-9;
+    if any(bl), X = X - mean(X(bl, :), 1); end
+    % each condition weighted equally: the full average and its two halves
+    a = zeros(E.pnts, 3); n = 0;
+    for c = unique(T.cond(:))'
+        ep = T.epoch(T.cond == c);
+        if numel(ep) < 4, continue; end
+        a = a + [mean(X(:, ep), 2) mean(X(:, ep(1:2:end)), 2) mean(X(:, ep(2:2:end)), 2)];
+        n = n + 1;
+    end
+    if n == 0, info.why{j} = 'too few epochs'; continue; end
+    sd = 0.005 * E.srate; k = exp(-0.5 * ((-ceil(3 * sd):ceil(3 * sd)) / sd) .^ 2); k = k(:) / sum(k);
+    a = conv2(a / n, k, 'same');
+    % the component's own stretch: the window, tapered to zero over half
+    % its width (at least 25 ms) on each side
+    h = max(diff(comp.window), 0.050) / 2;
+    tap = @(t) (t >= comp.window(1) & t <= comp.window(2)) + ...
+        (t < comp.window(1) & t > comp.window(1) - h) .* (0.5 + 0.5 * cos(pi * (comp.window(1) - t) / h)) + ...
+        (t > comp.window(2) & t < comp.window(2) + h) .* (0.5 + 0.5 * cos(pi * (t - comp.window(2)) / h));
+    a = a .* tap(times(:));
+    % how alike the two halves are (uncentred: the tapered stretch starts
+    % and ends at zero, so a deflection of one sign counts), stepped up to
+    % all epochs (Spearman-Brown)
+    r = (a(:, 2)' * a(:, 3)) / max(norm(a(:, 2)) * norm(a(:, 3)), eps);
+    info.reliability(j) = max(0, 2 * r / (1 + r));
+    x = interp1(times, a(:, 1), tt, 'linear', 0);
+    w = tt >= comp.window(1) - 1e-9 & tt <= comp.window(2) + 1e-9;
+    if ~(info.reliability(j) >= pipecompare.eval.Injection.MinReliability)
+        info.why{j} = sprintf('not reliable enough (split-half reliability %.2f, needs %.2f)', ...
+            info.reliability(j), pipecompare.eval.Injection.MinReliability);
+    elseif ~any(w) || abs(mean(x(w))) < 0.5 * max(abs(x(w)))
+        info.why{j} = 'no clear deflection of one sign in the window';
+    else
+        g(j, :) = x / max(abs(x(w)));
+        info.used(j) = true;
+    end
 end
 end
 

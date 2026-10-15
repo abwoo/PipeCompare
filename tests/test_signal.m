@@ -50,6 +50,44 @@ for w = {[0.3 0.6], [0.11 0.15]}
 end
 end
 
+function testOwnWaveformAsKnownSignal(tc)
+% signalTemplate 'data': with a clear P3 the known signal takes the shape
+% of the recording's own average at Pz (close to the true P3, zero away
+% from the window's stretch); the unprocessed copy measures without error
+% and a 2 Hz high-pass still distorts it. Without a P3 the average is not
+% reliable and the bump is used.
+[EEG, tr] = nqc_synth(struct('seconds', 400, 'nPerCond', 90, 'artifactTrials', 0, 'blinkRate', 0));
+c = tc.TestData.c;
+[S, truth] = pipecompare.eval.Injection.prepare(EEG, c, pipecompare.eval.Measure.reference(EEG, c), ...
+    struct('signalTemplate', 'data'));
+info = truth.shape.info;
+verifyTrue(tc, info.used(1), info.why{1});
+verifyGreaterThanOrEqual(tc, info.reliability(1), pipecompare.eval.Injection.MinReliability);
+g = truth.shape.g(1, :); t = truth.shape.t;
+p3 = exp(-0.5 * ((t - tr.p3Latency) / tr.p3Sigma) .^ 2);
+in = t >= 0.25 & t <= 0.55;
+a = g(in) - mean(g(in)); b = p3(in) - mean(p3(in));
+verifyGreaterThan(tc, (a * b') / (norm(a) * norm(b)), 0.9);
+verifyEqual(tc, g(t < 0.2 | t > 0.6), zeros(1, sum(t < 0.2 | t > 0.6)), 'AbsTol', 1e-12);
+verifyEqual(tc, max(g(t >= 0.3 & t <= 0.5)), 1, 'AbsTol', 1e-12);
+r = pipecompare.eval.Injection.compare(S, c, truth, {});
+verifyLessThan(tc, r.amplitudeError, 0.01);
+verifyGreaterThan(tc, r.waveformCorr, 0.99);
+verifyEqual(tc, r.gain, 1, 'AbsTol', 0.01);
+hp = inst('highpass', 'cutoff', 2);
+S2 = pipecompare.run.Steps.replayDecision(hp, S, struct(), ctx(tc));
+r2 = pipecompare.eval.Injection.compare(S2, c, truth, {hp});
+verifyGreaterThan(tc, r2.amplitudeError, 0.2);
+% no P3: the bump
+E0 = nqc_synth(struct('seconds', 400, 'nPerCond', 90, 'p3', 0, 'artifactTrials', 0, 'blinkRate', 0));
+[~, t0] = pipecompare.eval.Injection.prepare(E0, c, pipecompare.eval.Measure.reference(E0, c), ...
+    struct('signalTemplate', 'data'));
+verifyFalse(tc, t0.shape.info.used(1));
+verifyTrue(tc, contains(t0.shape.info.why{1}, 'reliab') || contains(t0.shape.info.why{1}, 'one sign'), t0.shape.info.why{1});
+bump = exp(-0.5 * ((t0.shape.t - 0.4) / (0.2 / 2.355)) .^ 2);
+verifyEqual(tc, t0.shape.g, bump, 'AbsTol', 1e-12);
+end
+
 function testReReferencingIsNotDistortion(tc)
 [S, truth] = pipecompare.eval.Injection.prepare(tc.TestData.EEG, tc.TestData.c, tc.TestData.ref);
 in = inst('reref', 'mode', 'average', 'channels', {});

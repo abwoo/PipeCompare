@@ -34,6 +34,11 @@ classdef Executor
     %                   grid with its decisions held fixed
     %                   (pipecompare.eval.Cutoff), and the pipeline with the
     %                   best ones is run and ranked with the others
+    %     signalTemplate 'bump' (default) | 'data' (the simple mode's
+    %                   default): the time course of the known signal of the
+    %                   signal check, a bump centred in each window or this
+    %                   recording's own average waveform at the ROI where it
+    %                   is reliable (pipecompare.eval.Injection)
     %     progress      function stop = f(n), called with the number of
     %                   candidates just evaluated (0 = only asking); when it
     %                   returns true, no further step runs and the
@@ -47,7 +52,9 @@ classdef Executor
         function result = run(plan, contract, opts)
             if nargin < 3, opts = struct(); end
             opts = pipecompare.utils.withDefaults(opts, struct('dryRun', false, 'injectUv', 5, 'filterCheck', true, ...
-                'refineCutoffs', false, 'dataUnit', 'uV', 'checkpoint', '', 'parallel', false, 'verbose', 'normal', 'progress', []));
+                'refineCutoffs', false, 'signalTemplate', 'bump', 'dataUnit', 'uV', 'checkpoint', '', 'parallel', false, 'verbose', 'normal', 'progress', []));
+            assert(any(strcmp(opts.signalTemplate, {'bump', 'data'})), 'PipeCompare:Options', ...
+                'signalTemplate must be ''bump'' or ''data''.');
             [EEG, live] = pipecompare.live.Session.current();
             assert(~isempty(EEG), 'PipeCompare:NoDataset', 'No dataset is loaded in EEGLAB.');
             if ~live.stored
@@ -120,6 +127,19 @@ classdef Executor
             [S, env.truth] = pipecompare.eval.Injection.prepare(root, contract, ref, opts);
             pipecompare.utils.log(['Signal check: a known %g uV signal is carried through every candidate with the ', ...
                 'same decisions (matched-decision injection).'], opts.injectUv);
+            result.signalTemplate = [];
+            if isfield(env.truth, 'shape') && ~isempty(env.truth.shape)
+                result.signalTemplate = env.truth.shape.info;
+                for j = 1:numel(contract.components)
+                    if result.signalTemplate.used(j)
+                        pipecompare.utils.log('Signal check, %s: the shape of this recording''s own average (split-half reliability %.2f).', ...
+                            contract.components(j).name, result.signalTemplate.reliability(j));
+                    else
+                        pipecompare.utils.log('Signal check, %s: the standard bump (this recording''s average: %s).', ...
+                            contract.components(j).name, result.signalTemplate.why{j});
+                    end
+                end
+            end
             % depth-first execution holds the data and the signal copy once per
             % level of the current branch (the price of sharing prefixes)
             % (a level after a resample step holds data smaller by fs_new/fs)

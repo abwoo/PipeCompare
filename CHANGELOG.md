@@ -5,6 +5,12 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- Signal check with the recording's own waveform (`'signalTemplate', 'data'`, on in the simple
+  mode, *Options… > Signal check with own waveform* in the advanced panel): the known signal takes
+  the shape of the data's own average at each component's ROI over its window (faded to zero
+  over half the window's width on each side), when the split-half reliability is at least 0.8
+  and the window holds one deflection of one sign; otherwise the bump. The result says which was
+  used. Method: docs/METHODS.md, section 4.
 - ICA components chosen by their effect on the noise (`icremove` `threshold` = `'sme'`): instead
   of an ICLabel probability threshold, components are added one at a time, each time the one whose
   removal lowers the SME most (with the rejection that follows at its best limit and the signal

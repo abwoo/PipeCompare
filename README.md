@@ -261,6 +261,9 @@ Along the way PipeCompare also takes care of the following, so you do not have t
 - **ICA components chosen by their effect on the noise.** Optionally, the components to remove are
   chosen by how much removing each lowers the SME (never one ICLabel takes for brain activity),
   compared with ICLabel's threshold.
+- **Signal check with your recording's own waveform.** In the simple mode, the known signal takes
+  the shape of your data's own average waveform at each measured site, where that average is
+  reliable, instead of a standard bump.
 - **Epochs weighted by their noise.** Instead of only keeping or dropping epochs, the average can
   count each epoch by how clean it is (inverse-variance weights), compared with equal weights.
 - **How stable the recommendation is.** The result says how often the same pipeline would be
@@ -962,6 +965,33 @@ erp = sum(EEG.data .* reshape(w, 1, 1, []), 3) / sum(w);     % channels x time p
 pipeline use them. In the advanced panel the step is *weight_trials*; in a plan,
 `p.addChoice('weight', {'weight_trials'}, 'none')` compares it with equal weights.
 
+### Signal check with your recording's own waveform
+
+The signal check carries a known signal through every pipeline (see
+[How a pipeline is chosen](#how-a-pipeline-is-chosen)). By default its shape is a smooth bump in
+each measurement window. Your real P3 may be broader, narrower or asymmetric, and a filter treats
+those shapes differently. In the simple mode (and with *Options… > Signal check with own waveform*
+in the advanced panel, `'signalTemplate', 'data'` in scripts) the shape is taken from your own
+recording, before any pipeline runs:
+
+1. The epochs of each condition are averaged at the measured electrodes, the baseline removed, and
+   the conditions averaged with equal weight. The average is smoothed lightly (a 5 ms Gaussian,
+   which keeps everything below about 25 Hz).
+2. Only the component's own stretch is kept: the measurement window, faded to zero over half the
+   window's width (at least 25 ms) on each side. What lies outside belongs to other components.
+3. It is used only when it is **reliable**: the averages of the odd and of the even epochs must
+   look alike over that stretch (split-half reliability, stepped up to all epochs with the
+   Spearman-Brown formula, at least 0.8), and it must be one deflection of one sign in the window.
+   A noisy average would make the check test noise instead of your component.
+4. It is scaled to a peak of 5 µV in the window and checked exactly as the bump would be.
+
+When the average is not reliable enough (in a simulation with a 6 µV P3 in 8 µV noise: about half
+the time with 20 epochs per condition, nearly never with 90), the bump is used for that component,
+and the result says which shape was used and why. Contralateral-minus-ipsilateral components (N2pc,
+LRP) and band power always use the standard signal. The shape comes from the data before any
+pipeline, unfiltered apart from the smoothing, so a slow drift that the averaging did not cancel can
+remain in it. A saved script (`apply`) checks with the bump.
+
 ### ICA on clean data
 
 ICA finds the independent sources in the data. Stretches of the recording that are far noisier
@@ -1230,8 +1260,10 @@ descriptive and not used in the ranking. The full derivations are in
 - **The analysis contract is fixed by you.** Event types, epoch and baseline windows, regions of
   interest and measurement windows define what is measured, and are never searched.
 - **The signal check is necessary, not sufficient.** The known signal has an assumed shape: a
-  smooth bump as wide at half maximum as your measurement window (at least 50 ms), with a
-  topography centred on the region of interest. Real components may be affected differently.
+  smooth bump as wide at half maximum as your measurement window (at least 50 ms), or in the simple
+  mode your recording's own average over the window when it is reliable (see
+  [Signal check with your recording's own waveform](#signal-check-with-your-recordings-own-waveform)),
+  with a topography centred on the region of interest. Real components may be affected differently.
 - **Some steps are re-run on the signal copy.** EEGLAB commands added as steps that make their
   own data-driven decisions, other than mark-and-remove workflows, are re-run on the copy carrying
   the known signal rather than replayed; this includes ASR added as an EEGLAB command. The built-in

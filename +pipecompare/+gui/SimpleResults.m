@@ -109,6 +109,8 @@ classdef SimpleResults < handle
             if ~isempty(rej), t = sprintf('%s %s', t, rej); end
             prior = pipecompare.simple.Presets.priorFilterText(obj.Result);
             if ~isempty(prior), t = sprintf('%s %s', t, prior); end
+            tpl = pipecompare.simple.Presets.templateText(obj.Result);
+            if ~isempty(tpl), t = sprintf('%s %s', t, tpl); end
         end
 
         function showSteps(obj)
