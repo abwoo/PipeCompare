@@ -421,7 +421,13 @@ classdef Executor
                         % the threshold the search chose on these same data
                         in.params.threshold = result.cands(idx).steps{k}.thresholdChosen;
                     end
-                    [EEG, coms] = runStep(in, EEG, ctx, result.options.verbose);
+                    cx = ctx;
+                    if strcmp(in.type, 'icremove') && isequal(in.params.threshold, 'sme') && isfield(result, 'cands') && ...
+                            numel(result.cands) >= idx && numel(result.cands(idx).steps) >= k
+                        % the components the search chose on these same data
+                        cx.chosenComps = result.cands(idx).steps{k}.comps;
+                    end
+                    [EEG, coms] = runStep(in, EEG, cx, result.options.verbose);
                 end
                 for q = 1:numel(coms)
                     fprintf('    %s\n', coms{q});

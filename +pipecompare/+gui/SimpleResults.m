@@ -283,7 +283,9 @@ switch [type '.' param]
     case 'highpass.cutoff', t = sprintf('high-pass %s Hz', x);
     case 'lowpass.cutoff', t = sprintf('low-pass %s Hz', x);
     case 'icremove.threshold'
-        if strcmp(x, 'auto'), t = 'ICLabel threshold chosen from the data'; else, t = sprintf('ICLabel %s', x); end
+        if strcmp(x, 'auto'), t = 'ICLabel threshold chosen from the data';
+        elseif strcmp(x, 'sme'), t = 'ICA components chosen by their effect on the noise';
+        else, t = sprintf('ICLabel %s', x); end
     case 'reject_threshold.uv'
         if strcmp(x, 'auto'), t = 'rejection limit chosen from the data'; else, t = sprintf('reject above %s uV', x); end
     case {'reject_threshold.interpolate', 'reject_jointprob.interpolate', 'reject_kurtosis.interpolate'}

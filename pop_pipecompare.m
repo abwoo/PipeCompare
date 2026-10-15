@@ -27,7 +27,9 @@ function [EEG, com, result] = pop_pipecompare(EEG, varargin)
 %   'recipe'   'standard' (default) | 'filters': which steps are compared
 %              (standard: all the steps below; filters: the two filters)
 %   'steps'    instead of 'recipe', any of 'badchannels', 'ica',
-%              'highpass', 'lowpass', 'reject' (epoch rejection; the
+%              'icsme' (with 'ica': the components to remove also chosen
+%              by their effect on the noise, compared with ICLabel's
+%              automatic threshold), 'highpass', 'lowpass', 'reject' (epoch rejection; the
 %              limit is chosen from the data in each pipeline),
 %              'peaktopeak' (with 'reject': the limit is measured
 %              peak-to-peak in moving 200 ms windows, as in ERP CORE),

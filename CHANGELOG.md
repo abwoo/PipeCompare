@@ -5,6 +5,14 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- ICA components chosen by their effect on the noise (`icremove` `threshold` = `'sme'`): instead
+  of an ICLabel probability threshold, components are added one at a time, each time the one whose
+  removal lowers the SME most (with the rejection that follows at its best limit and the signal
+  check), never one whose likeliest ICLabel class is Brain; among the sets on that path, the one
+  with the fewest components among those equivalent to the best is used. A simple-mode option
+  under ICA (*also choose the components by their effect on the noise*), off in *Standard*:
+  ticked, both ways are compared (twice the pipelines). `auto | sme` in the advanced panel.
+  Method: docs/METHODS.md, section 9g.
 - Epochs weighted by their noise (`weight_trials`): instead of only keeping or dropping epochs,
   the average counts each epoch with weight 1 / its noise at the measured electrodes (the epoch
   minus the mean of the others of its condition), the weights averaging 1 per condition and none

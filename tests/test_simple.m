@@ -429,9 +429,15 @@ d.EventList.Value = {'11', '31'}; d.MeasureDrop.Value = 'P3'; d.measureChanged()
 names = pipecompare.simple.Presets.stepNames();
 box = @(s) d.StepBoxes(strcmp(names, s));
 verifyEqual(tc, d.update(), 4 * 3 * 2);                         % Standard (ICLabel threshold and rejection limit chosen from the data; weighted or not)
+verifyFalse(tc, box('icsme').Value);                            % off in Standard
+d.tick(find(strcmp(names, 'icsme')), true);
+verifyEqual(tc, d.update(), 2 * 4 * 3 * 2);                     % components also chosen by their effect on the noise
+verifyTrue(tc, ismember('icsme', d.options().steps));
+d.tick(find(strcmp(names, 'icsme')), false);
 d.tick(find(strcmp(names, 'ica')), false);
 verifyEqual(tc, d.update(), 4 * 3 * 2);                         % without ICA
 verifyFalse(tc, box('ica').Value);
+verifyEqual(tc, char(box('icsme').Enable), 'off');              % only with ICA
 o = d.options();
 verifyEqual(tc, o.steps, {'badchannels', 'highpass', 'lowpass', 'reject', 'weight'});
 d.tick(find(strcmp(names, 'weight')), false);

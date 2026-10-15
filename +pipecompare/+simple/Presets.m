@@ -126,13 +126,17 @@ classdef Presets
             % PeakToPeakUv are compared
             % weight: the average weights the epochs by their noise
             % (weight_trials), compared with equal weights (ERP only)
-            names = {'badchannels', 'ica', 'highpass', 'lowpass', 'reject', 'peaktopeak', 'epochinterp', 'weight'};
+            % icsme is an option of ICA: the components are also chosen by
+            % their effect on the SME (icremove threshold 'sme'), compared
+            % with the ICLabel threshold chosen from the data
+            names = {'badchannels', 'ica', 'icsme', 'highpass', 'lowpass', 'reject', 'peaktopeak', 'epochinterp', 'weight'};
         end
 
         function t = stepLabel(name)
             switch name
                 case 'badchannels', t = 'Bad channels: detect and interpolate';
                 case 'ica', t = 'ICA: remove artifact components (the best ICLabel threshold found from the data)';
+                case 'icsme', t = '  also choose the components by their effect on the noise (compared)';
                 case 'highpass', t = 'High-pass filter (cutoffs compared)';
                 case 'lowpass', t = 'Low-pass filter (cutoffs compared)';
                 case 'reject', t = 'Reject epochs over an amplitude limit (the best limit found from the data)';
@@ -178,8 +182,9 @@ classdef Presets
             % For each step (pipecompare.simple.Presets.stepNames), why it
             % cannot be compared on these data ('' when it can), and what
             % to know about it (e.g. a filter the data already have).
-            why = struct('badchannels', '', 'ica', '', 'highpass', '', 'lowpass', '', 'reject', '', 'peaktopeak', '', 'epochinterp', '', 'weight', '');
+            why = struct('badchannels', '', 'ica', '', 'icsme', '', 'highpass', '', 'lowpass', '', 'reject', '', 'peaktopeak', '', 'epochinterp', '', 'weight', '');
             info = why;
+            info.icsme = 'removes the components that lower the noise most, never ones ICLabel takes for brain activity';
             info.weight = 'no epoch removed: the noisier an epoch, the less it counts in the average';
             info.peaktopeak = sprintf('not fooled by slow drifts (with repair: limits %s uV compared)', ...
                 strjoin(cellfun(@num2str, pipecompare.simple.Presets.PeakToPeakUv, 'UniformOutput', false), ', '));
@@ -198,6 +203,7 @@ classdef Presets
             elseif state.ica.present && isempty(why.ica)
                 info.ica = 'the ICA in the data is fitted again';
             end
+            why.icsme = why.ica;
             if any(ismember(steps, {'badchannels', 'interpolate'})) && isempty(why.badchannels)
                 info.badchannels = 'already done to these data; detected again';
             end
@@ -490,12 +496,18 @@ classdef Presets
                         end
                     case 'icremove'
                         th = p.threshold; how = '';
-                        if ischar(th)
-                            th = pipecompare.utils.fieldOr(f, 'thresholdChosen', NaN);
-                            how = ', threshold chosen from these data: the highest one that measures as precisely as the best';
+                        if strcmp(th, 'sme')
+                            t = sprintf(['ICA components chosen by their effect on the noise: %s of %s removed (one at a ', ...
+                                'time, the one that lowers the noise most; never one ICLabel takes for brain activity)'], ...
+                                numText(f.icsRemoved), numText(f.icsTotal));
+                        else
+                            if ischar(th)
+                                th = pipecompare.utils.fieldOr(f, 'thresholdChosen', NaN);
+                                how = ', threshold chosen from these data: the highest one that measures as precisely as the best';
+                            end
+                            t = sprintf('ICLabel: %s of %s components removed (%s with probability %g or more%s)', ...
+                                numText(f.icsRemoved), numText(f.icsTotal), strjoin(cellstr(p.classes), ', '), th, how);
                         end
-                        t = sprintf('ICLabel: %s of %s components removed (%s with probability %g or more%s)', ...
-                            numText(f.icsRemoved), numText(f.icsTotal), strjoin(cellstr(p.classes), ', '), th, how);
                         b = pipecompare.utils.fieldOr(f, 'icsBrain', NaN); o = pipecompare.utils.fieldOr(f, 'icsOther', NaN);
                         if isfinite(b) && isfinite(o)
                             t = sprintf('%s; %d look like brain activity, %d were labelled Other', t, b, o);
@@ -879,11 +891,20 @@ classdef Presets
                 % 'auto', pipecompare.eval.IcThreshold) when it can be: per
                 % trial scores, and the epoch rejection that follows (if any)
                 % removes epochs; otherwise the catalog's thresholds are compared
+                % with icsme, the components chosen by their effect on the SME
+                % (threshold 'sme') are compared with it
                 if pipecompare.eval.Threshold.applies(contract) && ~(has('reject') && has('epochinterp') && state.nLocated > 0)
-                    plan = plan.add('icremove', 'threshold', 'auto');
+                    if has('icsme'), plan = plan.add('icremove', 'threshold', {'auto', 'sme'});
+                    else, plan = plan.add('icremove', 'threshold', 'auto'); end
                 else
                     plan = plan.add('icremove');
+                    if has('icsme')
+                        notes{end+1} = ['choosing the components by their effect on the noise needs mean amplitudes or ', ...
+                            'band power, and epochs that are not repaired: left out'];
+                    end
                 end
+            elseif has('icsme')
+                notes{end+1} = 'choosing the components by their effect on the noise needs ICA';
             end
             if continuous, plan = plan.add('epoch'); end
             if ~isempty(contract.baseline), plan = plan.add('baseline'); end

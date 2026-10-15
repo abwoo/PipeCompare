@@ -576,6 +576,44 @@ of log power would favour the epochs with less power). The rejection limit chose
 (9c) is chosen for equal weights. Filter cutoffs can be fine-tuned (9e) with the weights held
 fixed, since the weights use the measured electrodes only.
 
+## 9g. ICA components chosen by their effect on the SME (forward selection)
+
+`icremove` with `threshold` = `sme` chooses the set R of components to remove by the objective
+instead of by ICLabel probability [`pipecompare.eval.IcThreshold.chooseBySme`].
+
+**The problem.** With *J*(R) = min over *u* of *J*(R, *u*) as in section 9d (the objective at the best
+limit of the rejection that follows, scores divided by the signal gain, infeasible when the
+signal check fails or too few trials are kept), choose R ⊆ C, where C is the set of components
+whose likeliest ICLabel class is not Brain (a component ICLabel takes for brain activity is never
+a candidate). ICLabel is used only to protect, not to decide.
+
+**Path.** The 2^|C| subsets cannot all be scored, so R is built by forward selection: R₀ = ∅, and
+R_{j+1} = R_j ∪ {*k*} with *k* ∈ C \ R_j minimising *J*(R_j ∪ {*k*}). Each evaluation is exact in the
+sense of section 9d: with P = A W X the back-projection of all components (`pop_subcomp`'s
+rebuild; X itself for R = ∅), removing R gives P − A_R S_R with S = W X the activations, so
+adding *k* subtracts the rank-one term A_{:,k} S_{k,:} from the current data; epoching and baseline
+removal commute with it, and the known-signal copy is updated the same way. The inner problem
+over *u* is solved exactly (section 9c). The path stops after 30 components (`MaxRemoved`), when no
+candidate gives a feasible set, or when *J*(R_j) > (1 + 2*m*) min_{i≤j} *J*(R_i) with *m* the
+equivalence margin (5 %): the path has passed its minimum by more than the margin covers. Forward
+selection is greedy, so the best set on the path need not be the best subset; what it guarantees
+is that every set on the path is scored exactly, that each step takes the component that lowers
+the objective most given those already removed (unlike a threshold, which orders components by
+probability), and that the threshold's own sets are not needed: both are compared in the ranking.
+
+**Choice.** As in section 9d: the sets on the path are compared with the same paired bootstrap and
+simultaneous max statistic, and among those shown equivalent to the best the one removing the
+fewest components is used. The components are flagged in `EEG.reject.gcompreject` (the command
+is recorded in `EEG.history`) and removed by `pop_subcomp`. Cost: at most |C| · min(|C|, 30)
+evaluations of the inner problem, against at most *K* + 1 for the threshold.
+
+**Scope.** As section 9d (per-trial scores; only epoching, baseline removal and an amplitude
+rejection that removes epochs between the removal and the rejection; the same steps after it in
+every pipeline below it). The objective is that of the measures chosen, so the set chosen lowers
+their noise; a component that matters only for other measures or electrodes may stay. When
+adopting a pipeline the components the search chose are reused; `apply` chooses again on the data
+it is given.
+
 ## 10. Montage check (before a run)
 
 Scalp potentials vary smoothly over the head, so after an average reference a channel resembles its

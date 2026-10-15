@@ -175,6 +175,12 @@ channels over the limit is still rejected. With repair, the limit is not chosen 
 (100, 150 and 200 µV peak-to-peak) and the ICLabel thresholds 0.7, 0.8 and 0.9 are compared, which
 makes nine times as many pipelines. See
 [Repairing epochs with a few bad channels](#repairing-epochs-with-a-few-bad-channels).
+An option of ICA can also be ticked, not part of *Standard*:
+**choosing the components by their effect on the noise**. Every pipeline is then also run with
+the components to remove chosen not by what ICLabel says they look like, but by how much removing
+each one lowers the SME, one at a time; ICLabel is only used to protect the components it takes
+for brain activity. Both ways are compared, which doubles the number of pipelines. See
+[ICA components chosen by their effect on the noise](#ica-components-chosen-by-their-effect-on-the-noise).
 
 That makes 4 × 3 × 2 = 24 pipelines for an ERP, each with its own best ICLabel threshold and rejection limit. The *Filters only* recipe compares only
 steps 5 and 6. For band power, the data are cut into 2 s segments instead of epochs, and only the
@@ -252,6 +258,9 @@ Along the way PipeCompare also takes care of the following, so you do not have t
 - **Filter cutoffs fine-tuned from the data.** Between the compared cutoffs, a finer grid is
   scored exactly from the measured electrodes alone, with the recommended pipeline's decisions held
   fixed; a better pair runs as one more pipeline.
+- **ICA components chosen by their effect on the noise.** Optionally, the components to remove are
+  chosen by how much removing each lowers the SME (never one ICLabel takes for brain activity),
+  compared with ICLabel's threshold.
 - **Epochs weighted by their noise.** Instead of only keeping or dropping epochs, the average can
   count each epoch by how clean it is (inverse-variance weights), compared with equal weights.
 - **How stable the recommendation is.** The result says how often the same pipeline would be
@@ -846,6 +855,41 @@ own signal check is the one the ranking uses. In the advanced panel and in scrip
 after it. When the search adopts a pipeline, the threshold it chose is reused; a saved script keeps
 `auto`, so on another recording the threshold is found from that recording's data.
 
+### ICA components chosen by their effect on the noise
+
+ICLabel decides from what a component looks like (its scalp map, spectrum and time course). On
+some recordings it recognises little (for example when most components are labelled *Other*),
+and then no threshold removes the eye or muscle activity that is still in the data. With this
+option ticked (*also choose the components by their effect on the noise*), every pipeline is
+also run with the components chosen by what removing them does to the measure:
+
+1. The components that may be removed are all those whose likeliest ICLabel class is not
+   *Brain*: a component ICLabel takes for brain activity is never removed.
+2. Starting from removing nothing, the component whose removal gives the lowest SME is added to
+   the set, then the next one together with it, and so on (forward selection). Each set is scored
+   exactly as in [ICLabel threshold chosen from the data](#iclabel-threshold-chosen-from-the-data):
+   the components are taken out of the epoched data directly (removal is linear), the rejection
+   limit that follows is found at its best, the SME is divided by the signal gain, and a set that
+   fails the signal check (for example because it removes the measured signal) or keeps too few
+   trials does not count. This gives a path of sets, each one component larger, ordered by what
+   the components do to the measure.
+3. The path stops after 30 components, when no larger set passes, or when the SME has risen more
+   than 10 % above the best on the path.
+4. Among the sets on the path, those whose SME is shown to be within 5 % of the best one's are
+   equally good, and the one removing the **fewest** components is used, as for the threshold.
+5. The components are flagged (`EEG.reject.gcompreject`, recorded in `EEG.history`) and removed
+   with EEGLAB's `pop_subcomp`.
+
+Both ways, the ICLabel threshold and this one, are compared in the ranking. The steps of each
+pipeline in the results say *ICA components chosen by their effect on the noise* with how many
+were removed. It needs a score per trial (mean amplitude or band power) and epochs that are
+removed, not repaired; it takes longer than the threshold (one score per component and step).
+It chooses what lowers the noise of this measure in this recording, so a component that only
+matters for another measure may stay. In the advanced panel and in scripts, set the `icremove`
+parameter `threshold` to `sme` (or compare `auto | sme`); as with `auto`, every pipeline below it
+must have the same steps after it. When the search adopts a pipeline, the components it chose are
+reused; a saved script keeps `sme`, so on another recording they are chosen from its own data.
+
 ### Filter cutoffs fine-tuned from the data
 
 Comparing 4 high-pass and 3 low-pass cutoffs leaves the best value between two of them untried
@@ -1153,9 +1197,11 @@ and constraints and ranking options in `help pipecompare.eval.Rank`.
    it as `chosenShare`; the result reports it for the recommended pipeline. A low share means the
    data do not single that pipeline out.
 
-The ICLabel threshold and the epoch-rejection limit of the *Standard* recipe are chosen inside
-each pipeline, before this ranking, with the same SME, constraints and bootstrap (see
-[ICLabel threshold chosen from the data](#iclabel-threshold-chosen-from-the-data) and
+The ICLabel threshold and the epoch-rejection limit of the *Standard* recipe (and, with that option,
+the ICA components chosen by their effect on the noise) are chosen inside each pipeline, before
+this ranking, with the same SME, constraints and bootstrap (see
+[ICLabel threshold chosen from the data](#iclabel-threshold-chosen-from-the-data),
+[ICA components chosen by their effect on the noise](#ica-components-chosen-by-their-effect-on-the-noise) and
 [Rejection limit chosen from the data](#rejection-limit-chosen-from-the-data)).
 
 Pipelines that differ in something that changes the measured quantity, such as the reference, are

@@ -1004,6 +1004,86 @@ x.contract = pipecompare.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}},
 verifyError(tc, @() pipecompare.eval.IcThreshold.choose(EEG, q, x), 'PipeCompare:IcThreshold');
 end
 
+function testIcComponentsChosenBySme(tc)
+% threshold 'sme': components are added one at a time, each time the one
+% whose removal gives the lowest objective; each set on the path is scored
+% exactly as EEGLAB's own processing gives (pop_subcomp, epoching,
+% baseline, the best limit, the gain from the signal copy); a component
+% that may not be removed (ICLabel takes it for brain activity) never is;
+% the one chosen removes no more components than the best and is
+% equivalent to it; in the step, exactly those components are removed.
+EEG = nqc_synth(struct('seconds', 150, 'nPerCond', 30));
+c = nqc_c();
+n = EEG.nbchan; rng(4);
+EEG.icaweights = eye(n) + 0.3 * randn(n); EEG.icasphere = eye(n); EEG.icachansind = 1:n;
+EEG.icawinv = []; EEG.icaact = []; EEG = eeg_checkset(EEG);
+ref = pipecompare.eval.Measure.reference(EEG, c);
+[S, truth] = pipecompare.eval.Injection.prepare(EEG, c, ref);
+ins = @(type, params) struct('type', type, 'params', params, 'key', type, 'slot', type, 'label', type);
+after = {ins('epoch', struct()), ins('baseline', struct()), ins('reject_threshold', struct('uv', 'auto', 'exclude', {{}}))};
+x = struct('contract', c, 'highpass', 0, 'ref', ref, 'rank', struct(), 'after', {after}, ...
+    'signal', struct('S', S, 'truth', truth));
+brain = [find(strcmpi({EEG.chanlocs.labels}, 'Pz')) 7 8];   % may not be removed
+cand = setdiff(1:n, brain);
+[comps, info] = pipecompare.eval.IcThreshold.chooseBySme(EEG, cand, x);
+verifyFalse(tc, any(ismember(info.order, brain)), mat2str(info.order));
+verifyEqual(tc, numel(unique(info.order)), numel(info.order));
+verifyEqual(tc, info.sets, numel(info.order) + 1);
+verifyGreaterThan(tc, info.sets, 2);
+need = max(10, ceil(0.5 * ref.n));
+for k = 1:info.sets
+    R = info.order(1:k-1);
+    E = EEG; Sk = S;
+    if ~isempty(R), E = pop_subcomp(E, R, 0); Sk = pop_subcomp(Sk, R, 0); end
+    [~, E] = evalc('nqc_epoched(E)'); [~, Sk] = evalc('nqc_epoched(Sk)');
+    r = pipecompare.eval.Injection.compare(Sk, c, truth, {});
+    m = reshape(max(max(abs(double(E.data)), [], 1), [], 2), 1, []);
+    T = pipecompare.eval.Measure.trials(E, c); mt = m(T.epoch);
+    best = Inf;
+    for v = unique(mt(:)')
+        s2 = zeros(1, 2);
+        for cc = 1:2
+            y = T.data{1}(T.cond == cc & mt(:) <= v) / r.gain;
+            if numel(y) < need(cc), s2(cc) = Inf; else, s2(cc) = var(y) / numel(y); end
+        end
+        best = min(best, sqrt(mean(s2)));
+    end
+    if isempty(pipecompare.eval.Rank.signalReasons(r, struct())) && isfinite(best)
+        verifyEqual(tc, info.objectives(k), best, 'RelTol', 1e-4, sprintf('set %d', k));
+    else
+        verifyTrue(tc, isnan(info.objectives(k)), sprintf('set %d: %s', k, info.why{k}));
+    end
+end
+f = info.objectives;
+verifyLessThan(tc, min(f), f(1));                                % removing components helps here
+verifyEqual(tc, info.objectiveBest, min(f));
+verifyEqual(tc, comps, sort(info.order(1:info.removedChosen)));
+verifyLessThanOrEqual(tc, info.removedChosen, info.removedBest);
+verifyLessThanOrEqual(tc, info.objectiveChosen, 1.05 * info.objectiveBest);   % equivalent to the best
+% the first component added is the best single one to remove
+for k = cand(1:5)
+    [~, ik] = pipecompare.eval.IcThreshold.chooseBySme(EEG, k, x);
+    if ik.sets > 1, verifyLessThanOrEqual(tc, f(2), ik.objectives(2), sprintf('component %d', k)); end
+end
+% in the step: exactly those components removed, none ICLabel takes for brain activity
+if exist('pop_iclabel', 'file') == 2
+    cls = repmat(single([0.1 0 0.9 0 0 0 0]), n, 1); cls(brain, :) = repmat(single([0.9 0 0.1 0 0 0 0]), numel(brain), 1);
+    x.iclabel = struct('classification', struct('ICLabel', struct('classes', {{'Brain','Muscle','Eye','Heart', ...
+        'Line Noise','Channel Noise','Other'}}, 'classifications', cls, 'version', 'default')), ...
+        'com', 'EEG = pop_iclabel(EEG, ''default'');');
+    [E2, coms, si] = pipecompare.run.Steps.icRemove(EEG, struct('classes', {{'Eye'}}, 'threshold', 'sme'), x);
+    verifyEqual(tc, si.comps, comps);
+    verifyEqual(tc, si.icsConsidered, numel(cand));
+    verifyTrue(tc, any(contains(coms, 'gcompreject')), strjoin(coms, newline));
+    E3 = EEG; if ~isempty(comps), E3 = pop_subcomp(EEG, comps, 0); end
+    verifyEqual(tc, double(E2.data), double(E3.data), 'AbsTol', 1e-3);
+end
+% peak measures have no score per trial: a clear error
+x.contract = pipecompare.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], ...
+    'baseline', [-0.2 0], 'components', {'P3', [0.3 0.5], {'Pz'}, {'peakAmplitude', 'positive'}});
+verifyError(tc, @() pipecompare.eval.IcThreshold.chooseBySme(EEG, cand, x), 'PipeCompare:IcThreshold');
+end
+
 function testFineTunedCutoffsAreExactWithTheDecisionsFixed(tc)
 % With a pipeline's decisions held fixed (components and epochs removed),
 % the objective of other cutoffs computed on the measured electrodes alone
@@ -1147,6 +1227,33 @@ steps = [cellfun(@(x) x.type, path, 'UniformOutput', false)' cellfun(@(x) x.para
 verifyTrue(tc, contains(E3.history, 'pop_icflag'));
 m3 = pipecompare.eval.Measure.candidate(E3, c, r.ref);
 verifyEqual(tc, m3.composite, r.cands(1).m.composite, 'RelTol', 1e-6);
+end
+
+function testIcComponentsChosenBySmeEndToEnd(tc)
+% In a search with ICA: the components are chosen by their effect on the
+% SME and listed in the steps; adopt rebuilds the same pipeline (same
+% SME) with the components the search chose.
+assumeTrue(tc, exist('pop_iclabel', 'file') == 2, 'ICLabel not installed');
+[EEG, truth] = nqc_synth(struct('seconds', 150, 'nPerCond', 30));
+nqc_setBase(EEG);
+c = pipecompare.eval.Contract('conditions', {'target', {'11'}; 'standard', {'31'}}, ...
+    'epoch', [-0.2 1.0], 'baseline', [-0.2 0], 'components', {'P3', [0.30 0.50], truth.roi});
+p = pipecompare.plan.Plan();
+p = p.add('highpass', 'cutoff', 0.1); p = p.add('ica', 'fitHighpass', 1);
+p = p.add('icremove', 'threshold', 'sme'); p = p.add('epoch'); p = p.add('baseline');
+p = p.add('reject_threshold', 'uv', 'auto');
+r = pipecompare.PipeCompare.optimize(p, c);
+verifyEqual(tc, r.cands(1).status, 'ok', r.cands(1).message);
+st = r.cands(1).steps{3};
+verifyEqual(tc, st.type, 'icremove');
+verifyTrue(tc, isfinite(st.icsConsidered));
+L = pipecompare.simple.Presets.stepsText(r, 1);
+verifyTrue(tc, any(contains(L, 'effect on the noise')), strjoin(L, newline));
+pipecompare.PipeCompare.adopt(r, 1, true);
+adopted = evalin('base', 'EEG');
+m = pipecompare.eval.Measure.candidate(adopted, c, r.ref);
+verifyEqual(tc, m.composite, r.cands(1).m.composite, 'RelTol', 1e-9);
+verifyTrue(tc, contains(adopted.history, 'gcompreject'));
 end
 
 function testPeakToPeakRejection(tc)

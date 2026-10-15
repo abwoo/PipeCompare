@@ -398,20 +398,40 @@ classdef Steps
             classes = cellstr(p.classes);
             assert(all(ismember(classes, cats)) && ~ismember('Brain', classes), 'PipeCompare:ICLabel', ...
                 'classes must be ICLabel artifact classes: %s', strjoin(cats(2:end), ', '));
-            if ischar(p.threshold)
-                % 'auto': the threshold chosen from these data
-                % (pipecompare.eval.IcThreshold), then applied as a fixed one
+            if strcmp(p.threshold, 'sme')
+                % the components chosen by their effect on the SME
+                % (pipecompare.eval.IcThreshold.chooseBySme), never one whose
+                % likeliest ICLabel class is Brain
                 L = EEG.etc.ic_classification.ICLabel;
-                P = L.classifications(:, ismember(cellstr(L.classes), classes));
-                P(P >= 1) = 0;   % pop_icflag flags t < p < 1
-                q = max(P, [], 2);
-                [p.threshold, info.icThreshold] = pipecompare.eval.IcThreshold.choose(EEG, q, ctx);
-                info.thresholdChosen = p.threshold;
-                info.icsConsidered = info.icThreshold.sets - 1;   % components over IcThreshold.MinProbability
+                [~, top] = max(L.classifications, [], 2);
+                cand = find(~strcmp(cellstr(L.classes(top)), 'Brain'))';
+                if isfield(ctx, 'chosenComps')
+                    comps = ctx.chosenComps;   % re-running a pipeline: the components the search chose
+                else
+                    [comps, info.icSme] = pipecompare.eval.IcThreshold.chooseBySme(EEG, cand, ctx);
+                end
+                nIc = size(EEG.icaweights, 1);
+                EEG.reject.gcompreject = false(1, nIc); EEG.reject.gcompreject(comps) = true;
+                c2 = sprintf(['EEG.reject.gcompreject = false(1, %d); EEG.reject.gcompreject(%s) = true; ', ...
+                    '%% PipeCompare: components chosen by their effect on the SME (none whose likeliest ICLabel class is Brain)'], ...
+                    nIc, mat2str(comps));
+                info.icsConsidered = numel(cand);
+            else
+                if ischar(p.threshold)
+                    % 'auto': the threshold chosen from these data
+                    % (pipecompare.eval.IcThreshold), then applied as a fixed one
+                    L = EEG.etc.ic_classification.ICLabel;
+                    P = L.classifications(:, ismember(cellstr(L.classes), classes));
+                    P(P >= 1) = 0;   % pop_icflag flags t < p < 1
+                    q = max(P, [], 2);
+                    [p.threshold, info.icThreshold] = pipecompare.eval.IcThreshold.choose(EEG, q, ctx);
+                    info.thresholdChosen = p.threshold;
+                    info.icsConsidered = info.icThreshold.sets - 1;   % components over IcThreshold.MinProbability
+                end
+                T = nan(7, 2);
+                T(ismember(cats, classes), :) = repmat([p.threshold 1], sum(ismember(cats, classes)), 1);
+                [EEG, c2] = pop_icflag(EEG, T);
             end
-            T = nan(7, 2);
-            T(ismember(cats, classes), :) = repmat([p.threshold 1], sum(ismember(cats, classes)), 1);
-            [EEG, c2] = pop_icflag(EEG, T);
             comps = find(EEG.reject.gcompreject(:)');
             info.icsTotal = size(EEG.icaweights, 1);
             info.icsRemoved = numel(comps);
