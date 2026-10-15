@@ -141,7 +141,10 @@ pipeline, so that the comparison is about the settings that matter.
    The resulting decomposition is applied to all of the data. All pipelines share this one
    decomposition, which saves the largest part of the computing time.
 5. **High-pass filter**, *compared*: 0.1, 0.3, 0.5 and 1 Hz.
-6. **Low-pass filter**, *compared*: 20, 30 and 40 Hz.
+6. **Low-pass filter**, *compared*: 20, 30 and 40 Hz. After the comparison, the cutoffs of the
+   recommended pipeline are also tried on a finer grid between these values (0.1, 0.15, … 1 Hz and
+   20, 22, … 40 Hz), and when a pair is better, that pipeline is run as well and ranked with the
+   others (see [Filter cutoffs fine-tuned from the data](#filter-cutoffs-fine-tuned-from-the-data)).
 7. **Artifact components are removed with ICLabel**, *threshold chosen from the data*: a
    component is removed when ICLabel gives it a probability above a threshold of being eye,
    muscle, heart, line noise or channel noise, and the threshold is found in each pipeline from its
@@ -242,6 +245,9 @@ Along the way PipeCompare also takes care of the following, so you do not have t
 - **Exact best rejection limit and ICLabel threshold.** Within each pipeline, the epoch-rejection
   limit and the ICLabel threshold are chosen from the data together, among all values that give
   different results, not from a short list.
+- **Filter cutoffs fine-tuned from the data.** Between the compared cutoffs, a finer grid is
+  scored exactly from the measured electrodes alone, with the recommended pipeline's decisions held
+  fixed; a better pair runs as one more pipeline.
 - **Statistically controlled ranking.** A paired bootstrap with simultaneous intervals identifies
   the pipelines that cannot be distinguished from the best, controlling the error rate across all
   candidates.
@@ -827,6 +833,37 @@ own signal check is the one the ranking uses. In the advanced panel and in scrip
 `icremove` parameter `threshold` to `auto`; every pipeline below it must then have the same steps
 after it. When the search adopts a pipeline, the threshold it chose is reused; a saved script keeps
 `auto`, so on another recording the threshold is found from that recording's data.
+
+### Filter cutoffs fine-tuned from the data
+
+Comparing 4 high-pass and 3 low-pass cutoffs leaves the best value between two of them untried
+(for example 0.2 Hz between 0.1 and 0.3 Hz). Filtering the whole recording again for many more
+cutoffs would take long, so PipeCompare uses a shortcut that gives the same numbers:
+
+1. It takes the recommended pipeline and keeps what it decided on these data fixed: the
+   components it removed and the epochs it rejected.
+2. With those fixed, everything from the filters to the scores is adding and multiplying the data
+   by fixed numbers. Filtering acts on each channel alone, and removing components is the same
+   mixture of channels at every moment, so the order of the two does not matter. The scores
+   therefore need only the electrodes you measure: the components are removed, the other channels
+   are left out, and only the measured electrodes are filtered, epoched and scored, which gives
+   exactly the numbers the whole data would give there.
+3. Every pair of cutoffs on a finer grid between the lowest and highest compared ones is scored
+   this way (with the default steps 0.1, 0.15, … 1 Hz and 20, 22, … 40 Hz: 209 pairs). The signal
+   gain comes from the pipeline's own signal check, corrected by what the filters alone do to the
+   known signal, and cutoffs whose filters alone distort the signal are left out. At the
+   pipeline's own cutoffs the result must equal the pipeline's SME, as a check; otherwise nothing
+   is fine-tuned.
+4. When another pair is better, the pipeline with those cutoffs is run like every other one (its
+   components and epochs are decided again on its own data, with the full signal check) and added
+   to the results; its filters say *fine-tuned from these data*. The ranking then decides whether
+   it is better.
+
+The Command Window shows the pair found and the SME before and after. It is done for mean
+amplitudes of an ERP on continuous data when only filters, IC removal, epoching, baseline removal
+and an amplitude rejection (without repairing epochs) follow the first filter; it is on in the
+simple mode. In the advanced panel tick *Options… > Fine-tune filter cutoffs*; in scripts pass
+`'refineCutoffs', true` to `pipecompare.PipeCompare.optimize`.
 
 ### ICA on clean data
 

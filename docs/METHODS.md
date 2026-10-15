@@ -490,6 +490,47 @@ the one the ranking uses. Peak measures have no per-trial score, and repaired ep
 removal; both keep fixed thresholds. When adopting a pipeline, the threshold the search chose is
 reused; `apply` (saved scripts) chooses again on the data it is given, with its own signal copy.
 
+## 9e. Filter cutoffs fine-tuned from the data (decisions held fixed)
+
+**Decomposition.** A pipeline does two kinds of things to the data: it takes *decisions* from the
+data (bad channels, the ICA decomposition, the components removed, the epochs rejected) and it
+applies *linear operations* (interpolation, re-referencing, filtering, IC removal, epoching,
+baseline removal, the window mean). Once the decisions are fixed, the score of every trial is a
+fixed linear functional of the raw data. Let *D* be the data just before the first filter
+(channels × samples), *P*_R = I − A_R W_R the IC-removal matrix of the removed set *R*, *h* the
+impulse response of the filters (the same for every channel) and *k*ᵢ the epoching, baseline
+and window weights of trial *i* at the measured electrodes *w*. Then the score is
+*x*ᵢ(*h*) = *w*ᵀ *P*_R (*D* ∗ *h*) *k*ᵢ = (*w*ᵀ *P*_R *D*) ∗ *h* · *k*ᵢ, because the temporal filter and the
+spatial matrix commute. So only the measured electrodes of *P*_R *D* need to be filtered to
+obtain every trial's score for any cutoff: a few channels instead of the whole montage.
+
+**Gain.** The known signal is a time course times a scalp field, *s*(*c*, *t*) = *a*(*c*) *g*(*t*), so
+its score factorises into a spatial part, unchanged by the cutoffs, and the window mean of *g* ∗ *h*.
+The gain of other cutoffs *h*′ is therefore *G*(*h*′) = *G*(*h*) · *G*_F(*h*′) / *G*_F(*h*), where *G*(*h*) is
+the pipeline's gain from its full signal check and *G*_F the gain of the filters alone (section 1's
+filter check, which also excludes cutoffs whose filters alone distort the known signal).
+
+**Search.** For the recommended pipeline, the cutoffs of each compared filter are tried on a grid
+between the lowest and the highest value compared, in steps of 1, 2 or 5 times a power of ten
+(at most about 20 values per filter, the compared ones included; e.g. 0.1, 0.15, …, 1 Hz and 20,
+22, …, 40 Hz, 209 pairs). With the pipeline's components *R* and rejected epochs held fixed, the
+objective of the ranking (gain-corrected SME) is computed exactly for every pair. As a check of
+the assumptions, the objective at the pipeline's own cutoffs must reproduce the pipeline's
+(relative tolerance 10⁻³); otherwise nothing is fine-tuned. The epochs are located once in the
+continuous data (the epoching of a dataset that holds each sample's index), so each pair costs a
+filtering of the measured electrodes and an index operation.
+
+**Verification.** The pair with the lowest objective is a prediction under fixed decisions. When it
+differs from the pipeline's own cutoffs, the pipeline with those cutoffs is run like every other
+one, from the starting data (its ICA reused), its components and epochs decided again on its own
+data, with its own full signal check, and it joins the ranking. Its result is therefore exact in
+the same sense as every other pipeline's, and the ranking decides whether it is better.
+
+**Scope.** Mean amplitudes of an ERP on continuous data; after the first filter only filters, IC
+removal, epoching, baseline removal and an amplitude rejection that removes epochs (no repair);
+no IC removal or resampling before the filters. It is on in the simple mode, an option in the
+advanced panel (*Options… > Fine-tune filter cutoffs*) and `'refineCutoffs', true` in scripts.
+
 ## 10. Montage check (before a run)
 
 Scalp potentials vary smoothly over the head, so after an average reference a channel resembles its

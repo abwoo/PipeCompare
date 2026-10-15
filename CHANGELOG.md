@@ -5,6 +5,14 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- Filter cutoffs fine-tuned from the data: after the comparison, the recommended pipeline's
+  high-pass and low-pass cutoffs are also tried on a finer grid between the compared values
+  (0.1, 0.15, … 1 Hz and 20, 22, … 40 Hz). With its decisions held fixed (components and epochs
+  removed), the SME of every pair is computed exactly from the measured electrodes alone, since
+  filtering and removing components are linear and commute (`pipecompare.eval.Cutoff`). When a
+  pair is better, that pipeline runs like every other one and joins the ranking. On in the
+  simple mode; *Options… > Fine-tune filter cutoffs* in the advanced panel; `'refineCutoffs',
+  true` in scripts. Method: docs/METHODS.md, section 9e.
 - Fix: the rejection limit and the ICLabel threshold chosen from the data (`'auto'`) were
   often too lenient, so the SME got larger instead of smaller. The tool used the most lenient
   option among all those the data could not tell apart from the best; with few trials that set is

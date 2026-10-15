@@ -256,6 +256,13 @@ classdef Rank
             equiv(ib) = true;
         end
 
+        function v = pointObjective(m, ref, opts, g)
+            % The ranking's objective of one candidate's measures m with
+            % the signal gains g (one per measure): what Rank.run ranks by.
+            opts = pipecompare.utils.withDefaults(opts, pipecompare.eval.Rank.defaults());
+            v = primaryPoint(m, resolveObjective(opts.objective, ref), ref, g);
+        end
+
         function name = objectiveName(obj, ref)
             % 'composite' or the one measure the objective option names
             name = resolveObjective(obj, ref);

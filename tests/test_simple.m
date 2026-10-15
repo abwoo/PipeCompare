@@ -672,7 +672,8 @@ verifyTrue(tc, contains(logText, 'candidate 12'));              % every pipeline
 verifyFalse(tc, contains(logText, 'pipelines compared'));       % not the summary after it
 verifyEqual(tc, char(get(0, 'Diary')), 'off');                  % the diary is off again
 verifyEqual(tc, out, EEG);                                      % the dataset is not modified
-verifyEqual(tc, numel(r.cands), 12);
+verifyEqual(tc, r.report.nLeaves, 12);
+verifyTrue(tc, any(numel(r.cands) == [12 13]));                 % fine-tuned cutoffs: one more
 verifyEqual(tc, com, ['EEG = pop_pipecompare(EEG, ''measure'',''P3'',''events'',{''11'',''31''},''recipe'',''filters'',', ...
     '''show'',''off'');']);                                      % 'show','off' is repeated too
 evalin('base', 'clear pipecompare_result');
@@ -689,7 +690,7 @@ verifyTrue(tc, startsWith(com, 'EEG = pop_pipecompare(EEG, ''measure'',''custom'
 verifyTrue(tc, contains(com, '''channels'',{''Pz''},''events'',{''11'',''31''}'));
 [~, com, rs] = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'11', '31'}, 'steps', {'lowpass', 'highpass'}, 'show', 'off');
 verifyTrue(tc, contains(com, '''recipe'',''filters'''));         % the steps of a recipe: written as the recipe
-verifyEqual(tc, numel(rs.cands), 12);
+verifyEqual(tc, rs.report.nLeaves, 12);
 [~, com] = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'11', '31'}, 'steps', {'lowpass'}, 'show', 'off');
 verifyTrue(tc, contains(com, '''steps'',{''lowpass''}'));
 [~, com, rc] = pop_pipecompare(EEG, 'measure', 'P3', 'channels', {'Pz', 'Cz'}, 'events', {'11', '31'}, ...
@@ -751,7 +752,7 @@ verifyTrue(tc, startsWith(w.Table.Data{1, 6}, 'high-pass '));
 verifyEqual(tc, size(w.Table.Data, 1), 5);
 verifyEqual(tc, w.Table.Data{1, 1}, sprintf('%d*', r.ranking.recommended));   % always shown, first
 w.AllBox.Value = true; w.showRows();
-verifyEqual(tc, size(w.Table.Data), [12 7]);                   % every pipeline, with why it was excluded
+verifyEqual(tc, size(w.Table.Data), [numel(r.cands) 7]);       % every pipeline, with why it was excluded
 i = find(strcmp(w.Table.Data(:, 2), 'passed') & ~endsWith(w.Table.Data(:, 1), '*'), 1);
 w.Table.Selection = [i 1]; k = str2double(w.Table.Data{i, 1});
 w.adopt();

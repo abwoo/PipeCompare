@@ -1004,6 +1004,71 @@ x.contract = pipecompare.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}},
 verifyError(tc, @() pipecompare.eval.IcThreshold.choose(EEG, q, x), 'PipeCompare:IcThreshold');
 end
 
+function testFineTunedCutoffsAreExactWithTheDecisionsFixed(tc)
+% With a pipeline's decisions held fixed (components and epochs removed),
+% the objective of other cutoffs computed on the measured electrodes alone
+% equals filtering every channel with EEGLAB and removing the same
+% components and epochs; at the pipeline's own cutoffs it is the
+% pipeline's objective. In the search, better cutoffs run as one more
+% pipeline, marked as fine-tuned.
+assumeTrue(tc, exist('pop_iclabel', 'file') == 2, 'ICLabel not installed');
+EEG = nqc_synth(struct('seconds', 150, 'nPerCond', 30));
+nqc_setBase(EEG);
+c = nqc_c();
+p = pipecompare.plan.Plan();
+p = p.add('reref', 'mode', 'average'); p = p.add('ica', 'fitHighpass', 1);
+p = p.add('highpass', 'cutoff', {0.1, 0.5}); p = p.add('lowpass', 'cutoff', {20, 40});
+p = p.add('icremove', 'threshold', 0.8);
+p = p.add('epoch'); p = p.add('baseline'); p = p.add('reject_threshold', 'uv', 100);
+r = pipecompare.PipeCompare.optimize(p, c, struct('refineCutoffs', true));
+verifyEqual(tc, r.report.nLeaves, 4);
+k = r.ranking.recommended;
+verifyNotEmpty(tc, k);
+cand = r.cands(k); path = r.leaves(k).path;
+types = cellfun(@(i) i.type, path, 'UniformOutput', false);
+dec = struct('comps', cand.steps{strcmp(types, 'icremove')}.comps, 'rejIdx', cand.steps{strcmp(types, 'reject_threshold')}.rejIdx);
+% the data before the first filter: the reference, then the search's ICA
+ctx = struct('contract', c);
+[~, D] = evalc('pipecompare.run.Steps.run(path{1}, r.root, ctx)'); D = withIca(D, cand.ica{1});
+[S, truth] = pipecompare.eval.Injection.prepare(r.root, c, r.ref);
+f = find(ismember(types, {'highpass', 'lowpass'}));
+env = struct('contract', c, 'ref', r.ref, 'rank', r.options, 'S', S, 'truth', truth, 'grid', {{[0.1 0.3 0.5], [20 30 40]}});
+[~, info] = pipecompare.eval.Cutoff.search(D, path(f(1):end), dec, struct('m', cand.m, 'gain', cand.signal.gain), env);
+verifyEqual(tc, info.pairs, 9);
+verifyEqual(tc, info.reproduced, info.objectiveBase, 'RelTol', 1e-4);
+% 0.3 Hz and 30 Hz: every channel filtered by EEGLAB, the same decisions,
+% the gain from the known-signal copy processed the same way
+pathX = path;
+pathX{f(1)} = pipecompare.plan.Plan.reparam(path{f(1)}, 'cutoff', 0.3);
+pathX{f(2)} = pipecompare.plan.Plan.reparam(path{f(2)}, 'cutoff', 30);
+E = D;
+[~, Sx] = evalc('pipecompare.run.Steps.replayDecision(path{1}, S, struct(), ctx)'); Sx = withIca(Sx, cand.ica{1});
+for q = [f(:)' find(strcmp(types, 'icremove')) find(strcmp(types, 'epoch')) find(strcmp(types, 'baseline'))]
+    in = pathX{q};
+    if strcmp(in.type, 'icremove')
+        if ~isempty(dec.comps), E = pop_subcomp(E, dec.comps, 0); Sx = pop_subcomp(Sx, dec.comps, 0); end
+        continue;
+    end
+    [~, E] = evalc('pipecompare.run.Steps.run(in, E, ctx)');
+    [~, Sx] = evalc('pipecompare.run.Steps.run(in, Sx, ctx)');
+end
+if ~isempty(dec.rejIdx), E = pop_rejepoch(E, dec.rejIdx, 0); Sx = pop_rejepoch(Sx, dec.rejIdx, 0); end
+m = pipecompare.eval.Measure.candidate(E, c, r.ref);
+g = pipecompare.eval.Injection.compare(Sx, c, truth, pathX).gain;
+j = find(all(abs(info.grid - [0.3 30]) < 1e-9, 2));
+verifyEqual(tc, info.objectives(j), pipecompare.eval.Rank.pointObjective(m, r.ref, r.options, g), 'RelTol', 2e-3);
+% in the search: one more pipeline when other cutoffs are better
+verifyTrue(tc, any(numel(r.cands) == [4 5]));
+if numel(r.cands) == 5
+    verifyTrue(tc, any(cellfun(@(x) x.cutoffRefined, r.cands(5).steps)));
+    verifyTrue(tc, any(contains(pipecompare.simple.Presets.stepsText(r, 5), 'fine-tuned from these data')));
+    verifyTrue(tc, strcmp(r.cands(5).status, 'ok'));
+end
+% the grid: round steps between the compared cutoffs, those included
+verifyEqual(tc, pipecompare.eval.Cutoff.grid([0.1 0.3 0.5 1]), 0.1:0.05:1, 'AbsTol', 1e-12);
+verifyEqual(tc, pipecompare.eval.Cutoff.grid([20 30 40]), 20:2:40, 'AbsTol', 1e-12);
+end
+
 function testIclabelThresholdFromTheDataEndToEnd(tc)
 % In a search with ICA: the threshold is chosen and listed in the steps;
 % adopt rebuilds the same pipeline (same SME), and the saved script's
@@ -1102,6 +1167,13 @@ verifyGreaterThan(tc, f.epochsInterpolated, 0);
 verifyLessThan(tc, r.cands(k).rejectedEpochs, r.cands(3 - k).rejectedEpochs);
 L = pipecompare.simple.Presets.stepsText(r, k);
 verifyTrue(tc, any(contains(L, 'kept by interpolating up to 3 channel(s)')), strjoin(L, newline));
+end
+
+function E = withIca(E, d)
+% the decomposition d (as the search stores it) on dataset E
+E.icaweights = d.icaweights; E.icasphere = d.icasphere; E.icachansind = d.icachansind;
+E.icawinv = []; E.icaact = [];
+E = eeg_checkset(E);
 end
 
 function c = nqc_c()

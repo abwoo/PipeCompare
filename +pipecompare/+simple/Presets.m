@@ -447,8 +447,9 @@ classdef Presets
             for q = 1:numel(c.steps)
                 f = c.steps{q}; p = f.params;
                 switch f.type
-                    case 'highpass', t = sprintf('High-pass filter %g Hz', p.cutoff);
-                    case 'lowpass', t = sprintf('Low-pass filter %g Hz', p.cutoff);
+                    case {'highpass', 'lowpass'}
+                        t = sprintf('%s filter %g Hz', pipecompare.utils.ternary(strcmp(f.type, 'highpass'), 'High-pass', 'Low-pass'), p.cutoff);
+                        if pipecompare.utils.fieldOr(f, 'cutoffRefined', false), t = [t ' (fine-tuned from these data)']; end
                     case 'badchannels'
                         how = strrep(strrep(strrep(p.measure, 'kurt', 'kurtosis'), 'prob', 'joint probability'), '+', ' or ');
                         t = sprintf('Bad channels (%s over %g SD', how, p.threshold);

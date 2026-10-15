@@ -36,7 +36,7 @@ classdef Panel < handle
         LimitFields = struct()
         ObjectiveField
         Options = struct('dataUnit', 'auto', 'checkpoint', '', ...
-            'parallel', false)
+            'parallel', false, 'refineCutoffs', false)
         ResultTable; StatusLabel; DetailArea
         MenuStepButton            % Add EEGLAB menu step... (needs EEGLAB's main window)
     end
@@ -818,7 +818,7 @@ classdef Panel < handle
         function optionsDialog(obj)
             o = obj.Options;
             d = uifigure('Name', 'PipeCompare search options', 'Position', [240 240 520 300], 'WindowStyle', 'modal');
-            gl = uigridlayout(d, [4 3]); gl.ColumnWidth = {170, '1x', 110}; gl.RowHeight = repmat({26}, 1, 4);
+            gl = uigridlayout(d, [5 3]); gl.ColumnWidth = {170, '1x', 110}; gl.RowHeight = repmat({26}, 1, 5);
             uilabel(gl, 'Text', 'Data unit of the dataset');
             du = uidropdown(gl, 'Items', {'auto', 'uV', 'V'}, 'Value', o.dataUnit, 'Tooltip', ...
                 'auto: from the amplitude scale of the dataset; V: scaled to uV on PipeCompare''s copy (ICA weights too)');
@@ -829,6 +829,11 @@ classdef Panel < handle
             uilabel(gl, 'Text', 'Parallel (Parallel Computing Toolbox)');
             pa = uicheckbox(gl, 'Text', '', 'Value', o.parallel);
             uilabel(gl, 'Text', '');
+            uilabel(gl, 'Text', 'Fine-tune filter cutoffs');
+            rc = uicheckbox(gl, 'Text', '', 'Value', pipecompare.utils.fieldOr(o, 'refineCutoffs', false), 'Tooltip', ...
+                ['When filter cutoffs are compared: the recommended pipeline''s are also tried on a finer grid ', ...
+                 'between them, its decisions held fixed, and the best ones run as one more pipeline (as in the simple mode)']);
+            uilabel(gl, 'Text', '');
             uilabel(gl, 'Text', '');
             uibutton(gl, 'Text', 'Cancel', 'ButtonPushedFcn', @(~, ~) delete(d));
             uibutton(gl, 'Text', 'OK', 'ButtonPushedFcn', @(~, ~) apply());
@@ -837,7 +842,7 @@ classdef Panel < handle
                 if ischar(p), o.checkpoint = p; ck.Text = p; end
             end
             function apply()
-                o.dataUnit = du.Value; o.parallel = pa.Value;
+                o.dataUnit = du.Value; o.parallel = pa.Value; o.refineCutoffs = rc.Value;
                 obj.setOptions(o); delete(d);
             end
         end
