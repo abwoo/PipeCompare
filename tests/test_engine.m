@@ -1724,6 +1724,41 @@ verifyEqual(tc, A.icasphere, B.icasphere, 'AbsTol', 1e-8);
 verifyEqual(tc, double(A.icawinv), double(B.icawinv), 'AbsTol', 1e-6);
 end
 
+function testIcaStartedDifferentlyChecksTheRecommendation(tc)
+% Another seed: runica sees the samples in another order, so the
+% decomposition differs, and the same seed gives the same one. In the
+% search, the pipelines deciding the recommendation run again with each
+% seed and the result says whether the recommendation stays.
+EEG = nqc_synth(struct('seconds', 60, 'nPerCond', 10, 'artifactTrials', 0));
+in = struct('type', 'ica', 'params', struct('extended', 1, 'fitHighpass', 0, 'fitClean', 0), ...
+    'key', 'ica', 'slot', 'ica', 'label', 'ica');
+[~, A] = evalc('pipecompare.run.Steps.run(in, EEG, struct())');
+[~, B, coms] = evalc('pipecompare.run.Steps.run(in, EEG, struct(''icaSeed'', 1))');
+[~, C] = evalc('pipecompare.run.Steps.run(in, EEG, struct(''icaSeed'', 1))');
+verifyGreaterThan(tc, max(abs(A.icaweights(:) - B.icaweights(:))), 1e-6);
+verifyEqual(tc, B.icaweights, C.icaweights);
+verifyTrue(tc, contains(strjoin(coms, ' '), 'random order (seed 1)'));
+assumeTrue(tc, exist('pop_iclabel', 'file') == 2, 'ICLabel not installed');
+EEG = nqc_synth(struct('seconds', 150, 'nPerCond', 30));
+nqc_setBase(EEG);
+p = pipecompare.plan.Plan();
+p = p.add('reref', 'mode', 'average'); p = p.add('ica', 'fitHighpass', 1);
+p = p.add('highpass', 'cutoff', {0.1, 0.5}); p = p.add('lowpass', 'cutoff', 30);
+p = p.add('icremove', 'threshold', 0.8);
+p = p.add('epoch'); p = p.add('baseline'); p = p.add('reject_threshold', 'uv', 100);
+r = pipecompare.PipeCompare.optimize(p, nqc_c(), struct('icaSeeds', 1));
+q = r.icaSeeds;
+verifyNotEmpty(tc, q);
+verifyEqual(tc, q.seeds, 1);
+verifyEqual(tc, size(q.objective), [numel(q.ids) 2]);
+verifyEqual(tc, q.recommended(1), r.ranking.recommended);
+verifyTrue(tc, all(isfinite(q.objective(:))));
+verifyEqual(tc, q.same, q.recommended(2) == q.recommended(1));
+verifyTrue(tc, contains(pipecompare.simple.Presets.precisionText(r), 'With ICA started in'));
+r0 = pipecompare.PipeCompare.optimize(p, nqc_c());
+verifyEmpty(tc, r0.icaSeeds);
+end
+
 function testAsrMemoryFitsManyChannels(tc)
 % clean_rawdata before 2.8 (EEGLAB 2022) stops with "Not enough memory"
 % when MaxMem cannot hold ASR's lookahead buffer: it is raised with the

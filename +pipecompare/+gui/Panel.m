@@ -36,7 +36,7 @@ classdef Panel < handle
         LimitFields = struct()
         ObjectiveField
         Options = struct('dataUnit', 'auto', 'checkpoint', '', ...
-            'parallel', false, 'refineCutoffs', false, 'signalTemplate', 'bump')
+            'parallel', false, 'refineCutoffs', false, 'icaSeeds', 0, 'signalTemplate', 'bump')
         ResultTable; StatusLabel; DetailArea
         MenuStepButton            % Add EEGLAB menu step... (needs EEGLAB's main window)
     end
@@ -822,8 +822,8 @@ classdef Panel < handle
 
         function optionsDialog(obj)
             o = obj.Options;
-            d = uifigure('Name', 'PipeCompare search options', 'Position', [240 240 520 330], 'WindowStyle', 'modal');
-            gl = uigridlayout(d, [6 3]); gl.ColumnWidth = {170, '1x', 110}; gl.RowHeight = repmat({26}, 1, 6);
+            d = uifigure('Name', 'PipeCompare search options', 'Position', [240 240 520 366], 'WindowStyle', 'modal');
+            gl = uigridlayout(d, [7 3]); gl.ColumnWidth = {170, '1x', 110}; gl.RowHeight = repmat({26}, 1, 7);
             uilabel(gl, 'Text', 'Data unit of the dataset');
             du = uidropdown(gl, 'Items', {'auto', 'uV', 'V'}, 'Value', o.dataUnit, 'Tooltip', ...
                 'auto: from the amplitude scale of the dataset; V: scaled to uV on PipeCompare''s copy (ICA weights too)');
@@ -839,6 +839,11 @@ classdef Panel < handle
                 ['When filter cutoffs are compared: the recommended pipeline''s are also tried on a finer grid ', ...
                  'between them, its decisions held fixed, and the best ones run as one more pipeline (as in the simple mode)']);
             uilabel(gl, 'Text', '');
+            uilabel(gl, 'Text', 'Check ICA''s random start');
+            is = uicheckbox(gl, 'Text', '', 'Value', pipecompare.utils.fieldOr(o, 'icaSeeds', 0) > 0, 'Tooltip', ...
+                ['The pipelines that decide the recommendation, when they have ICA, run again with ICA started in ', ...
+                 '2 other ways, to see whether the recommendation stays the same (as in the simple mode)']);
+            uilabel(gl, 'Text', '');
             uilabel(gl, 'Text', 'Signal check with own waveform');
             st = uicheckbox(gl, 'Text', '', 'Value', strcmp(pipecompare.utils.fieldOr(o, 'signalTemplate', 'bump'), 'data'), 'Tooltip', ...
                 ['The known signal of the signal check takes the shape of this recording''s own average waveform at ', ...
@@ -853,6 +858,7 @@ classdef Panel < handle
             end
             function apply()
                 o.dataUnit = du.Value; o.parallel = pa.Value; o.refineCutoffs = rc.Value;
+                o.icaSeeds = 2 * is.Value;
                 o.signalTemplate = pipecompare.utils.ternary(st.Value, 'data', 'bump');
                 obj.setOptions(o); delete(d);
             end

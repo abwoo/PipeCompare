@@ -606,7 +606,11 @@ the trials used to choose, so their luck is left out of that number too; the sen
 says how often the same pipeline would be recommended with the trials drawn again at random, for
 example *this pipeline is recommended 85% of the time: a stable choice* (70 % or more), or *45% of
 the time, No. 7 30% of the time: the data do not single out one pipeline clearly*; then the
-pipelines it names are about equally good on these data and either can be used. When the settings compared make no difference on
+pipelines it names are about equally good on these data and either can be used. When the
+pipelines that decide the recommendation have ICA, they are run again with ICA started in 2 other
+ways, and the result says *ICA's randomness does not change the choice*, or that another pipeline
+would be recommended and *this recommendation depends on ICA's randomness* (see step 8 of
+[How a pipeline is chosen](#how-a-pipeline-is-chosen)). When the settings compared make no difference on
 these data, the result says so. When no pipeline passes because most lost too many epochs to
 rejection, it names the channels most often over the rejection limit (likely bad channels to
 remove or interpolate before running again) and, for data that keep their recorded reference,
@@ -1343,6 +1347,19 @@ and constraints and ranking options in `help pipecompare.eval.Rank`.
    pipeline would be recommended (the bootstrap selection frequency; Efron, 2014). The table has
    it as `chosenShare`; the result reports it for the recommended pipeline. A low share means the
    data do not single that pipeline out.
+8. **ICA's random start.** ICA (runica) starts from a fixed random state, so the same data
+   always give the same components, but another start would give somewhat different ones, and
+   with them other components removed. The pipelines that decide the recommendation (the
+   recommended one, the best one, and the next one the rule of step 6 would pick, or the next
+   best when no other is in the set of step 3), those that have ICA, are run again twice, with
+   ICA seeing the samples in a different random order (seeds 1 and 2); every step after it
+   decides again on its own. With each seed the ranking is made again (those pipelines with
+   their new values, the others as they were) and the recommendation compared. The Command
+   Window shows how much their total error changed. On in the simple mode; in the advanced panel
+   tick *Options… > Check ICA's random start*; in scripts pass `'icaSeeds', 2` to
+   `pipecompare.PipeCompare.optimize`. The result is in `pipecompare_result.icaSeeds` (`ids`,
+   `objective` with the search's value first, `recommended`, `same`). It costs up to six more
+   pipeline runs.
 
 The ICLabel threshold and the epoch-rejection limit of the *Standard* recipe (and, with that option,
 the ICA components chosen by their effect on the noise) are chosen inside each pipeline, before

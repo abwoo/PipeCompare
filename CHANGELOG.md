@@ -5,6 +5,11 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- ICA's random start: the pipelines that decide the recommendation, when they have ICA, run again
+  with ICA started in other ways (the samples in another order), and the result says whether the
+  recommendation stays the same. On in the simple mode (2 seeds); *Options… > Check ICA's random
+  start* in the panel; `'icaSeeds', n` in scripts; result in `pipecompare_result.icaSeeds`.
+
 - Ground-truth benchmark (`benchmarks/pipecompare_benchmark.m`, workflow *benchmark*): simulated
   recordings with a known P3 and realistic artifacts, measured by the pipeline PipeCompare
   recommends and by a minimal and a common fixed pipeline; bias and RMSE against the true P3.

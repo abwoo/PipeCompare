@@ -415,7 +415,12 @@ classdef Steps
             applied = 0; if isfield(ctx, 'highpass'), applied = ctx.highpass; end
             fitHp = p.fitHighpass > 0 && p.fitHighpass > applied;
             clean = pipecompare.utils.fieldOr(p, 'fitClean', 1) > 0;
-            if fitHp || clean
+            % ctx.icaSeed > 0: runica sees the samples in another order
+            % (the check of how much the recommendation depends on where
+            % ICA starts; runica resets its own random state, so the order
+            % of the samples is what changes its path). Not adopted.
+            seed = pipecompare.utils.fieldOr(ctx, 'icaSeed', 0);
+            if fitHp || clean || seed > 0
                 % Fit on a copy: high-passed (stable decomposition) and/or
                 % without the stretches of extreme data (movement, bursts),
                 % which would otherwise claim components of their own; the
@@ -440,6 +445,12 @@ classdef Steps
                     end
                 end
                 if isempty(what), what = {'the data as they are (nothing extreme to leave out)'}; end
+                if seed > 0
+                    sz = size(tmp.data); x = reshape(tmp.data, sz(1), []);
+                    x = x(:, randperm(RandStream('mt19937ar', 'Seed', seed), size(x, 2)));
+                    tmp.data = reshape(x, sz); clear x
+                    what{end+1} = sprintf('its samples in a random order (seed %d)', seed);
+                end
                 tmp = runIca(tmp, opts);
                 EEG.icaweights = tmp.icaweights; EEG.icasphere = tmp.icasphere;
                 EEG.icachansind = tmp.icachansind; EEG.icawinv = []; EEG.icaact = [];

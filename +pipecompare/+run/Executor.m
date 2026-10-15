@@ -34,6 +34,10 @@ classdef Executor
     %                   grid with its decisions held fixed
     %                   (pipecompare.eval.Cutoff), and the pipeline with the
     %                   best ones is run and ranked with the others
+    %     icaSeeds      0 (default; 2 in the simple mode): how many times
+    %                   the pipelines that decide the recommendation are
+    %                   run again with ICA started differently (icaSeedCheck);
+    %                   result.icaSeeds says whether the recommendation stays
     %     signalTemplate 'bump' (default) | 'data' (the simple mode's
     %                   default): the time course of the known signal of the
     %                   signal check, a bump centred in each window or this
@@ -52,7 +56,9 @@ classdef Executor
         function result = run(plan, contract, opts)
             if nargin < 3, opts = struct(); end
             opts = pipecompare.utils.withDefaults(opts, struct('dryRun', false, 'injectUv', 5, 'filterCheck', true, ...
-                'refineCutoffs', false, 'signalTemplate', 'bump', 'dataUnit', 'uV', 'checkpoint', '', 'parallel', false, 'verbose', 'normal', 'progress', []));
+                'refineCutoffs', false, 'icaSeeds', 0, 'signalTemplate', 'bump', 'dataUnit', 'uV', 'checkpoint', '', 'parallel', false, 'verbose', 'normal', 'progress', []));
+            assert(isnumeric(opts.icaSeeds) && isscalar(opts.icaSeeds) && opts.icaSeeds >= 0 && opts.icaSeeds == round(opts.icaSeeds), ...
+                'PipeCompare:Options', 'icaSeeds must be a whole number >= 0.');
             assert(any(strcmp(opts.signalTemplate, {'bump', 'data'})), 'PipeCompare:Options', ...
                 'signalTemplate must be ''bump'' or ''data''.');
             [EEG, live] = pipecompare.live.Session.current();
@@ -221,6 +227,10 @@ classdef Executor
             if pipecompare.utils.fieldOr(opts, 'refineCutoffs', false) && isempty(notRun)
                 [result, allc, added] = refineCutoffs(result, env, root, S, ctx0, acc0, allc, R);
                 if added, R = pipecompare.eval.Rank.run(allc, ref, opts); end
+            end
+            result.icaSeeds = [];
+            if pipecompare.utils.fieldOr(opts, 'icaSeeds', 0) > 0 && isempty(notRun)
+                result.icaSeeds = icaSeedCheck(env, root, S, ctx0, acc0, allc, R, ref, opts);
             end
             result.cands = allc;
             result.ranking = R;
@@ -1017,6 +1027,83 @@ cand.notes{end+1} = sprintf(['filter cutoffs fine-tuned from these data, startin
 result.leaves(li) = leaf; result.labels{li} = key2;
 allc(li, 1) = cand;
 added = true;
+end
+
+function out = icaSeedCheck(env, root, S, ctx, acc, allc, R, ref, opts)
+% How much the recommendation depends on where ICA starts. runica starts
+% from a fixed random state, so another start is another order of the
+% samples it sees (Steps.ica, ctx.icaSeed). The pipelines that decide the
+% recommendation (the recommended one, the best one and the next in the
+% recommendation's order, or the next best when no other is in the set
+% not distinguished from the best), those with an ICA step, run again
+% with seeds 1..opts.icaSeeds, every step taking its own decisions; with
+% each seed the ranking is made again with them (the others as they
+% are, no cross-fitting) and the recommendation compared. out: [] when
+% not checked; else seeds, ids (re-run), objective (ids x 1+seeds, the
+% first column the search's), recommended (1+seeds), same (true when
+% every seed recommends the same pipeline).
+out = [];
+if ~isscalar(R.byStratum), return; end
+b = R.byStratum; T = R.table; k = b.recommended;
+rest = setdiff(b.set(:)', k, 'stable');
+if isempty(rest)
+    feas = find(strcmp(T.status, 'feasible'))'; feas(feas == k) = [];
+    [~, o] = sort(T.objective(feas)); rest = feas(o(1:min(1, end)));
+else
+    key = [-T.minRetention(rest), T.ampError(rest), T.objective(rest)];
+    [~, o] = sortrows(round(key, 10)); rest = rest(o(1));
+end
+ids = unique([k b.best rest], 'stable');
+hasIca = @(li) any(cellfun(@(i) strcmp(i.type, 'ica'), env.leaves(li).path));
+ids = ids(arrayfun(hasIca, ids));
+if isempty(ids), return; end
+n = opts.icaSeeds;
+pipecompare.utils.log(['ICA check: pipeline(s) %s run again with ICA started in %d other way(s), ', ...
+    'to see whether the recommendation depends on it.'], strjoin(arrayfun(@num2str, ids, 'UniformOutput', false), ', '), n);
+obj = [T.objective(ids) nan(numel(ids), n)]; rec = [k nan(1, n)];
+ro = opts; ro.nSplits = 0;
+for seed = 1:n
+    c2 = allc;
+    for j = 1:numel(ids)
+        li = ids(j); path = env.leaves(li).path; E = root; S2 = S; cx0 = ctx; a = acc;
+        try
+            for q = 1:numel(path)
+                in = path{q};
+                if tick(env, 0, in), return; end
+                cx = cx0;
+                if strcmp(in.type, 'ica'), cx.icaSeed = seed; end
+                if strcmp(in.type, 'icremove') && ischar(in.params.threshold)
+                    after = path(q+1:end);
+                    after = after(1:min([numel(after) find(cellfun(@(x) strcmp(x.type, 'reject_threshold'), after), 1)]));
+                    cx.after = after; cx.signal = struct('S', S2, 'truth', env.truth);
+                end
+                [E, coms, info] = runStep(in, E, cx, env.opts.verbose);
+                [S2, unmatched] = replayCopy(in, S2, info, cx0);
+                [cx0, a] = advance(in, cx0, a, info, coms, unmatched, 0);
+            end
+            c = evaluateLeaf(env, li, E, S2, a);
+        catch ME
+            pipecompare.utils.log('ICA check: pipeline %d failed with seed %d (%s); not checked.', li, seed, ME.message);
+            out = []; return;
+        end
+        c2(li) = c;
+    end
+    R2 = pipecompare.eval.Rank.run(c2, ref, ro);
+    obj(:, seed + 1) = R2.table.objective(ids);
+    if ~isempty(R2.recommended), rec(seed + 1) = R2.recommended; end
+end
+out = struct('seeds', 1:n, 'ids', ids(:)', 'objective', obj, 'recommended', rec, 'same', all(rec == k));
+ch = max(abs(obj(:, 2:end) ./ obj(:, 1) - 1), [], 2);
+if out.same
+    pipecompare.utils.log(['ICA check: with ICA started in %d other way(s), the same pipeline (%d) is recommended; ', ...
+        'the total error of the pipelines run again changes by at most %.0f%%.'], n, k, 100 * max(ch));
+else
+    alt = unique(rec(rec ~= k & isfinite(rec)));
+    alt = strjoin(arrayfun(@(x) sprintf('pipeline %d', x), alt, 'UniformOutput', false), ', ');
+    if isempty(alt), alt = 'no pipeline'; end
+    pipecompare.utils.log(['ICA check: with ICA started in another way, %s would be recommended instead of %d: ', ...
+        'this recommendation depends on where ICA starts.'], alt, k);
+end
 end
 
 function stop = tick(env, n, in)

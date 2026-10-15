@@ -575,7 +575,8 @@ classdef Presets
             % how much better the best looks than it is on trials not used
             % to choose it (Rank.crossfit), and how often it would be
             % recommended with other trials (selection frequency, Rank step
-            % 5b). '' when there is nothing to say.
+            % 5b), and whether ICA started differently changes it
+            % (result.icaSeeds). '' when there is nothing to say.
             t = '';
             R = result.ranking;
             if numel(R.byStratum) ~= 1 || pipecompare.eval.Rank.sameScores(R), return; end
@@ -616,6 +617,24 @@ classdef Presets
                     u = sprintf('%s, No. %d %.0f%% of the time: the data do not single out one pipeline clearly.', u, j, 100 * g);
                 else
                     u = [u ': the data do not single out one pipeline clearly.'];
+                end
+                t = strtrim(sprintf('%s %s', t, u));
+            end
+            % whether it would be the same with ICA started differently (Executor icaSeedCheck)
+            q = pipecompare.utils.fieldOr(result, 'icaSeeds', []);
+            if ~isempty(q)
+                if q.same
+                    u = sprintf(['With ICA started in %d other ways, the same pipeline is recommended: ', ...
+                        'ICA''s randomness does not change the choice.'], numel(q.seeds));
+                else
+                    alt = unique(q.recommended(q.recommended ~= k & isfinite(q.recommended)));
+                    u = 'With ICA started in another way, ';
+                    if isempty(alt)
+                        u = [u 'no pipeline is recommended'];
+                    else
+                        u = [u sprintf('No. %d is recommended instead', alt(1))];
+                    end
+                    u = [u ': this recommendation depends on ICA''s randomness.'];
                 end
                 t = strtrim(sprintf('%s %s', t, u));
             end

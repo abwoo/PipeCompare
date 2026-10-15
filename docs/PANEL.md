@@ -167,7 +167,7 @@ runs on its own copy.
 - **Run search / Options… / Resume…** A progress window shows the pipelines done, the step running
   now, the time so far and the time left; *Stop* (or closing it) stops after the current step and ranks the pipelines already finished.
   Every command and score is printed in the Command Window and the result is stored in
-  `pipecompare_result`. Options: data unit, checkpoint folder, parallel. Below the results the
+  `pipecompare_result`. Options: data unit, checkpoint folder, parallel, fine-tune filter cutoffs, check ICA's random start (the deciding pipelines with ICA run again with ICA started in 2 other ways), signal check with own waveform. Below the results the
   panel says what the dialog's result window says: that the settings make no difference, what to
   try when no pipeline passed, how large a difference the data can show, when ICA did nothing
   useful or had too little data, when one channel caused most rejected epochs, and when filters applied before PipeCompare already change the known signal beyond a

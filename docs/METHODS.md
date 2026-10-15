@@ -256,6 +256,20 @@ chosen one. In simulation (`test_statistics`) a candidate with a third of the ot
 chosen in more than 95 % of the draws, and among 5 candidates of equal true noise with 60 trials
 the one recommended on the sample was recommended in about half of them. [`pipecompare.eval.Rank`]
 
+**ICA's random start.** runica resets its own random state (`'rndreset','no'`), so a decomposition
+is reproducible but is one of many local optima; which one depends on the order in which runica
+draws the samples. Seed *s* > 0 gives runica the samples of the fitting copy in the order of a
+Mersenne-Twister permutation with seed *s* (the objective of infomax does not depend on the order,
+only its path does); the weights are applied to the data as before. The pipelines that decide the
+recommendation, *D* = {recommended, best, runner-up} (runner-up: the next by the recommendation
+rule within the kept set, or the next lowest objective when the kept set has one member), those
+with an ICA step, are run again from the starting data with seeds 1 … *S* (`icaSeeds`, 2 in the
+simple mode), every later step deciding again (components, thresholds, rejected epochs) with its
+own signal check. For each seed the ranking (steps 1–5, without cross-fitting) is made again with
+the candidates of *D* replaced, and the recommendation is compared with the search's
+(`icaSeeds.same`). This is a sensitivity check, not part of the ranking: the recommendation and
+the adopted pipeline remain the search's (seed 0). [`pipecompare.run.Executor`, icaSeedCheck]
+
 ## 4. Signal preservation: matched-decision injection
 
 A copy of the starting data that holds only a known signal is processed with the same operations
