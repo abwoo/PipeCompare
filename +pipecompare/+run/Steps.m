@@ -342,13 +342,40 @@ classdef Steps
             % instead. share: the share of the data left out; nothing is
             % left out (share 0) without an eye channel, or when that would
             % be over half the data.
+            %   A blink too weak to stand out in an eye channel's noise
+            %   is clear in the frontal channels, and one blink left in is
+            %   enough to make them heavy-tailed. So the blinks found in
+            %   the eye channels give the blink's scalp pattern a
+            %   (regression of every channel on the eye channel with most
+            %   of them), and the data weighted by C \ a, C their
+            %   covariance away from the blinks, give its time course: the
+            %   matched spatial filter, in which a noisy channel weighs
+            %   little, so a bad frontal channel's own noise or spikes are
+            %   not taken for blinks. Its samples beyond 5 robust SDs are
+            %   blinks too.
             if nargin > 1, S = D; else, S = T; end
             share = 0;
             eyes = pipecompare.eval.Injection.eyeChannels(T.chanlocs);
             if isempty(eyes), return; end
-            X = double(reshape(T.data(eyes, :, :), numel(eyes), []));
-            X = abs(X - median(X, 2));
-            hit = any(X > 5 * max(1.4826 * median(X, 2), eps), 1);
+            Y = reshape(T.data, T.nbchan, []);
+            H = beyondRobust(double(Y(eyes, :)), 5);
+            hit = any(H, 1);
+            w = round(0.2 * T.srate);
+            if any(hit)
+                [~, j] = max(sum(H, 2));
+                idx = find(hit); e = double(Y(eyes(j), idx)); a = zeros(T.nbchan, 1);
+                for b = 1:1e5:numel(idx)           % a block of samples at a time
+                    k = b:min(numel(idx), b + 1e5 - 1);
+                    a = a + double(Y(:, idx(k))) * e(k)';
+                end
+                a = a / (e * e');
+                away = ~hit;
+                if T.trials == 1, away = ~(conv(double(hit), ones(1, 2 * w + 1), 'same') > 0); end
+                C = blockCov(Y, away);
+                C = C + 1e-6 * max(trace(C), eps) / size(C, 1) * eye(size(C, 1));
+                f = C \ a;
+                hit = hit | beyondRobust(double(single(f') * Y) / (f' * a), 5);
+            end
             if T.trials > 1
                 drop = find(any(reshape(hit, T.pnts, T.trials), 1));
                 if isempty(drop) || numel(drop) > T.trials / 2, return; end
@@ -356,7 +383,6 @@ classdef Steps
                 [~, T] = evalc('pop_select(S, ''notrial'', drop)');
                 return;
             end
-            w = round(0.2 * T.srate);
             hit = conv(double(hit), ones(1, 2 * w + 1), 'same') > 0;
             if ~any(hit) || mean(hit) > 0.5, return; end
             d = diff([0 hit 0]);
@@ -1018,6 +1044,24 @@ if ~isempty(f) && contains(fileread(f), '[xi,yi] = meshgrid(xi,yi);')
         '(rotated scalp maps; eye components are mostly missed). Update ICLabel to 1.6 or later in ', ...
         'File > Manage EEGLAB extensions.']);
 end
+end
+
+function hit = beyondRobust(X, z)
+% the samples of each row of X beyond z robust SDs (median, MAD) of that row
+X = abs(X - median(X, 2));
+hit = X > z * max(1.4826 * median(X, 2), eps);
+end
+
+function C = blockCov(Y, keep)
+% the covariance of the columns of Y (channels x samples) where keep is
+% true, a block of samples at a time (no copy of the whole data)
+n = size(Y, 1); C = zeros(n); s = zeros(n, 1); m = 0;
+for b = 1:1e5:size(Y, 2)
+    k = b:min(size(Y, 2), b + 1e5 - 1);
+    X = double(Y(:, k(keep(k))));
+    C = C + X * X'; s = s + sum(X, 2); m = m + size(X, 2);
+end
+C = (C - s * s' / max(m, 1)) / max(m - 1, 1);
 end
 
 function T = bandCopy(T, doHp, hp, doLp, lp)

@@ -121,7 +121,11 @@ function [f, u, X, M, C] = scoreOf(EEG, Ep, Sp, b, chanSteps, rej, chans, ctx, r
 T = pipecompare.eval.ChannelChoice.interpMatrix(EEG, b);
 Ek = runSteps(mapped(Ep, T), chanSteps, ctx);
 Sk = [];
-if ~isempty(Sp), Sk = runSteps(mapped(Sp, T), chanSteps, ctx); end
+if ~isempty(Sp)
+    Sk = runSteps(mapped(Sp, T), chanSteps, ctx);
+    % the field the check expects is re-referenced as the copy was
+    for i = 1:numel(chanSteps), Sk = pipecompare.eval.Injection.noteReference(Sk, chanSteps{i}); end
+end
 [f, u, ~, X, M, C] = pipecompare.eval.IcThreshold.score(Ek, Sk, rej, chans, ctx.contract, ref, opts, sig);
 end
 

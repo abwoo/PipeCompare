@@ -387,7 +387,15 @@ a pipeline that resamples or epochs before its last filter. [`Injection.filterCh
   frontal). The measures therefore run on the copy without the samples where an eye channel
   (`Injection.eyeChannels`: EOG, else Fp1, Fp2, FPz) is beyond 5 robust SDs of its own (median
   and MAD), with 200 ms on either side (epoched data: without those epochs), unless that is over
-  half of the data. Spiky channels and line noise are found as before. `resid` leaves out such
+  half of the data. A weak blink can stay under that limit in the eye channels while the
+  frontal channels show it clearly, and one blink left in is enough to make them heavy-tailed
+  again (simulated: 20-30% of the blinks missed, FPz then marked bad). So the blinks found give
+  the blink's scalp pattern $a$ (every channel regressed on the eye channel with the most of
+  them), and the matched spatial filter $w = C^{-1}a$, $C$ the channels' covariance away from
+  the blinks, gives its time course $w^\top x(t) / w^\top a$; samples of it beyond 5 robust SDs are
+  blinks too (simulated: all blinks found). A noisy channel weighs little in $w$, so a bad
+  frontal channel's own noise or spikes are not taken for blinks (simulated: a spiky FPz is
+  still marked bad). Spiky channels and line noise are found as before. `resid` leaves out such
   samples itself. [`pipecompare.run.Steps.withoutBlinks`]
 - **Bad channels are found in the analysis band (`detectLowpass`).** The copy the bad channels are
   found on is also low-passed: at 40 Hz for ERPs (the highest low-pass compared; its stop band
