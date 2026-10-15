@@ -5,6 +5,21 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- ICA components chosen by their effect on the SME (`'sme'`): the sets are now the first one, two,
+  ... components in the order of how much each makes the score vary from trial to trial over how
+  much of the known signal it carries, instead of adding each time the one that lowers the SME
+  most. That greedy search fitted the chance of a few dozen trials (in simulation at 35 trials per
+  condition its SME looked 38 % better than it was, and the selection check did not see it); the
+  new order is also better in truth and needs far fewer evaluations. A component whose activity
+  follows an eye channel is no longer kept as time-locked brain activity when ICLabel calls it
+  *Other*, and the components removed together may not move a condition's mean clearly either.
+- Trials with a blink or eye movement are also found sample by sample in continuous data, so the
+  bias is not missed when most trials have a blink (n-back).
+- Blinks too weak to stand out in the eye channels are found through all channels (a matched
+  spatial filter) before kurtosis and probability, so frontal channels are not marked bad for
+  them. The filter-shape part of the bias uses whole bumps, not ones cut at the epoch's edges.
+- The benchmark runs by hand only and keeps its results after every recording.
+
 - Bad channels: a bad channel is left as it is when interpolating it would measurably raise the
   total error (computed through the reference, epochs, baseline and epoch rejection that follow),
   typically a measured electrode with noisy neighbours (badchannels `'repair', 'error'`; on in the
