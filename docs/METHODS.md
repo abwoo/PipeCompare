@@ -292,14 +292,17 @@ the one recommended on the sample was recommended in about half of them. [`pipec
 is reproducible but is one of many local optima; which one depends on the order in which runica
 draws the samples. Seed *s* > 0 gives runica the samples of the fitting copy in the order of a
 Mersenne-Twister permutation with seed *s* (the objective of infomax does not depend on the order,
-only its path does); the weights are applied to the data as before. The pipelines that decide the
-recommendation, *D* = {recommended, best, runner-up} (runner-up: the next by the recommendation
-rule within the kept set, or the next lowest objective when the kept set has one member), those
-with an ICA step, are run again from the starting data with seeds 1 … *S* (`icaSeeds`, 2 in the
-simple mode), every later step deciding again (components, thresholds, rejected epochs) with its
-own signal check. For each seed the ranking (steps 1–5, without cross-fitting) is made again with
-the candidates of *D* replaced, and the recommendation is compared with the search's
-(`icaSeeds.same`). This is a sensitivity check, not part of the ranking: the recommendation and
+only its path does); the weights are applied to the data as before. With each seed 1 … *S*
+(`icaSeeds`, 2 in the simple mode) every pipeline with an ICA step is run again from the starting
+data, every later step deciding again (components, thresholds, rejected epochs) with its own
+signal check. All of them run under the same seed, walking the tree as the search does, so
+pipelines sharing the steps before ICA share one decomposition per seed (*Standard*: one ICA per
+seed in all); a pipeline added by fine-tuning the cutoffs reuses the decomposition of a pipeline
+with the same steps before it. For each seed the ranking (steps 1–5, without cross-fitting) is
+made again with every pipeline under that seed, and the recommendation is compared with the
+search's (`icaSeeds.same`). Comparing pipelines that all saw the same decomposition is the
+comparison the search makes; re-running only a few of them against the others' seed-0 values
+mixed two decompositions in one ranking. This is a sensitivity check, not part of the ranking: the recommendation and
 the adopted pipeline remain the search's (seed 0). [`pipecompare.run.Executor`, icaSeedCheck]
 
 ## 4. Signal preservation: matched-decision injection

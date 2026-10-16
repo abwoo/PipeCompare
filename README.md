@@ -1387,17 +1387,16 @@ and constraints and ranking options in `help pipecompare.eval.Rank`.
    data do not single that pipeline out.
 8. **ICA's random start.** ICA (runica) starts from a fixed random state, so the same data
    always give the same components, but another start would give somewhat different ones, and
-   with them other components removed. The pipelines that decide the recommendation (the
-   recommended one, the best one, and the next one the rule of step 6 would pick, or the next
-   best when no other is in the set of step 3), those that have ICA, are run again twice, with
+   with them other components removed. Every pipeline that has ICA is run again twice, with
    ICA seeing the samples in a different random order (seeds 1 and 2); every step after it
-   decides again on its own. With each seed the ranking is made again (those pipelines with
-   their new values, the others as they were) and the recommendation compared. The Command
+   decides again on its own. All pipelines use the same new decomposition, so pipelines that
+   share the steps before ICA fit only one ICA per seed (*Standard*: two more ICAs in all).
+   With each seed the ranking is made again and the recommendation compared. The Command
    Window shows how much their total error changed. On in the simple mode; in the advanced panel
    tick *Options… > Check ICA's random start*; in scripts pass `'icaSeeds', 2` to
    `pipecompare.PipeCompare.optimize`. The result is in `pipecompare_result.icaSeeds` (`ids`,
-   `objective` with the search's value first, `recommended`, `same`). It costs up to six more
-   pipeline runs.
+   `objective` with the search's value first, `recommended`, `same`). It costs one more ICA per
+   seed for each different set of steps before ICA, plus the steps after it.
 
 The ICLabel threshold and the epoch-rejection limit of the *Standard* recipe (and, with that option,
 the ICA components chosen by their effect on the noise) are chosen inside each pipeline, before

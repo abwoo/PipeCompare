@@ -27,6 +27,15 @@ release has a git tag `vX.Y.Z`.
   total error on average and pulled the limits towards rejecting blink trials.
 - With and without weights (same trials kept), a difference in signal distortion below 0.5 % no
   longer decides the recommendation; the error does.
+- ICA's random start check: with each seed all pipelines with ICA run again under the same new
+  decomposition, one ICA per seed for pipelines sharing the steps before it (*Standard*: 2 ICAs
+  instead of up to 6). Before, three pipelines with a new ICA each were ranked against the others'
+  old values, two decompositions mixed in one ranking.
+- Faster, same results: filters on the signal-check copy run on its few field time courses (one
+  per measure) instead of every channel; a long high-pass (e.g. 0.1 Hz at 1000 Hz, 33,000 taps)
+  runs in the frequency domain also without the Signal Processing Toolbox (PipeCompare's own
+  `fftfilt`, in `fallback/`, used only while that filter runs; scripts it saves leave the option
+  out).
 - BioSemi's EXG1-8 and eye electrodes named LO1/2, IO1/2, SO1/2 count as non-EEG channels (LO/IO/SO
   also as eye channels).
 - Windows caught up with the new methods: *Advanced…* from the simple mode (and the PipeCompare
@@ -61,8 +70,7 @@ release has a git tag `vX.Y.Z`.
   blink cancels) and muscle activity (fast activity at the measured electrodes) in the window,
   not only blinks. The Command Window shows the share of trials with each.
 
-- ICA's random start: the pipelines that decide the recommendation, when they have ICA, run again
-  with ICA started in other ways (the samples in another order), and the result says whether the
+- ICA's random start: every pipeline with ICA runs again with ICA started in other ways (the samples in another order), and the result says whether the
   recommendation stays the same. On in the simple mode (2 seeds); *Options… > Check ICA's random
   start* in the panel; `'icaSeeds', n` in scripts; result in `pipecompare_result.icaSeeds`.
 
