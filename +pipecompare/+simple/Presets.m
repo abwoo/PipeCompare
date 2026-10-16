@@ -150,6 +150,15 @@ classdef Presets
             end
         end
 
+        function o = searchOptions()
+            % The search options of the simple mode, also the advanced
+            % panel's defaults: the compared filter cutoffs also on a finer
+            % grid, the deciding pipelines with ICA run again with ICA
+            % started in 2 other ways, and the signal check with this
+            % recording's own waveform where it is reliable.
+            o = struct('refineCutoffs', true, 'icaSeeds', 2, 'signalTemplate', 'data');
+        end
+
         function steps = recipeSteps(name)
             % The steps of a recipe, or the steps given (validated, in the
             % order they run).
@@ -185,7 +194,7 @@ classdef Presets
             % to know about it (e.g. a filter the data already have).
             why = struct('badchannels', '', 'ica', '', 'icsme', '', 'highpass', '', 'lowpass', '', 'reject', '', 'peaktopeak', '', 'epochinterp', '', 'weight', '');
             info = why;
-            info.icsme = 'removes the components that lower the noise most, never ones ICLabel takes for brain activity';
+            info.icsme = 'removes the components that add the most noise for the least signal, never ones ICLabel takes for brain activity or that follow the stimulus';
             info.weight = 'no epoch removed: the noisier an epoch, the less it counts in the average';
             info.peaktopeak = sprintf('not fooled by slow drifts (with repair: limits %s uV compared)', ...
                 strjoin(cellfun(@num2str, pipecompare.simple.Presets.PeakToPeakUv, 'UniformOutput', false), ', '));
@@ -508,8 +517,9 @@ classdef Presets
                     case 'icremove'
                         th = p.threshold; how = '';
                         if strcmp(th, 'sme')
-                            t = sprintf(['ICA components chosen by their effect on the noise: %s of %s removed (one at a ', ...
-                                'time, the one that lowers the noise most; never one ICLabel takes for brain activity)'], ...
+                            t = sprintf(['ICA components chosen by their effect on the noise: %s of %s removed (taken in the ', ...
+                                'order of how much noise each adds over how much signal it carries; never one ICLabel ', ...
+                                'takes for brain activity)'], ...
                                 numText(f.icsRemoved), numText(f.icsTotal));
                             kp = pipecompare.utils.fieldOr(f, 'icsProtected', NaN);
                             if isfinite(kp) && kp > 0
@@ -886,6 +896,16 @@ classdef Presets
                     'are artifacts, nothing needs to change.'], c.id, s.component, s.condition, s.kept, ...
                     result.ref.units{1}, s.nKept, s.all, result.ref.units{1}, s.n);
                 return;
+            end
+        end
+
+        function t = nextText(result, k)
+            % What to do with pipeline k once it is the current dataset.
+            t = 'average it (or compute the band power) and measure';
+            if any(cellfun(@(in) strcmp(in.type, 'weight_trials'), result.leaves(k).path))
+                t = ['its epochs are weighted by their noise: the weighted average of each condition, the ERP ', ...
+                    'it was scored on, is in EEG.etc.pipecompare.weightedERP (EEGLAB''s and ERPLAB''s own ', ...
+                    'averages count every epoch equally); measure that'];
             end
         end
 

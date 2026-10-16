@@ -203,9 +203,10 @@ makes nine times as many pipelines. See
 [Repairing epochs with a few bad channels](#repairing-epochs-with-a-few-bad-channels).
 An option of ICA can also be ticked, not part of *Standard*:
 **choosing the components by their effect on the noise**. Every pipeline is then also run with
-the components to remove chosen not by what ICLabel says they look like, but by how much removing
-each one lowers the SME, one at a time; ICLabel is only used to protect the components it takes
-for brain activity. Both ways are compared, which doubles the number of pipelines. See
+the components to remove chosen not by what ICLabel says they look like, but by how much noise
+each one adds compared with how much of the signal it carries; ICLabel is only used to protect the
+components it takes for brain activity, and components that follow the stimulus are kept unless
+they follow an eye channel. Both ways are compared, which doubles the number of pipelines. See
 [ICA components chosen by their effect on the noise](#ica-components-chosen-by-their-effect-on-the-noise).
 
 That makes 4 × 3 × 2 = 24 pipelines for an ERP, each with its own best ICLabel threshold and rejection limit. The *Filters only* recipe compares only

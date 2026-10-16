@@ -82,6 +82,8 @@ classdef Progress < handle
             obj.NDone = obj.NDone + n;
             if nargin > 2
                 try, obj.Step = pipecompare.gui.Progress.stepText(in); catch, obj.Step = ''; end   % never stops a search
+            elseif n > 0
+                obj.Step = '';   % a pipeline finished: its last step is over
             end
             if n > 0 && ~obj.CancelRequested
                 % the time after the first pipeline: it alone runs the shared
@@ -104,7 +106,7 @@ classdef Progress < handle
                 if obj.NDone == 0
                     done = sprintf('Running %d pipelines; %s.', obj.NTotal, obj.First);
                 elseif obj.NDone >= obj.NTotal
-                    done = 'All pipelines done; ranking them...';
+                    done = 'All pipelines done; ranking them and checking the recommendation...';
                 elseif obj.NDone < 3
                     done = sprintf('%d of %d pipelines done; estimating the time left...', obj.NDone, obj.NTotal);
                 else
@@ -112,7 +114,7 @@ classdef Progress < handle
                         pipecompare.gui.Progress.timeText(toc(obj.T1) / (obj.NDone - 1) * (obj.NTotal - obj.NDone)));
                 end
                 msg = {done};
-                if ~isempty(obj.Step) && obj.NDone < obj.NTotal, msg{end+1} = ['Now: ' obj.Step]; end
+                if ~isempty(obj.Step), msg{end+1} = ['Now: ' obj.Step]; end   % also the checks after the pipelines
                 msg{end+1} = sprintf('Time so far: %s. Stop keeps the finished pipelines.', ...
                     pipecompare.gui.Progress.clockText(toc(obj.T0)));
                 obj.Message.Text = msg;

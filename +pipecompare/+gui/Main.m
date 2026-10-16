@@ -527,13 +527,13 @@ classdef Main < handle
             end
         end
 
-        function adopted(obj, k)
+        function adopted(obj, k, result)
             % Use this pipeline (here or in the Advanced tab) made it the
             % current dataset: what next, on the Export page
             obj.refreshData();
             obj.ExportNote.Text = sprintf(['Pipeline %d is now the current dataset. Its preprocessing is complete: ', ...
-                'average it (or compute the band power) and measure. Filtering, re-referencing or rejecting epochs ', ...
-                'again would change what was compared.'], k);
+                '%s. Filtering, re-referencing or rejecting epochs again would change what was compared.'], k, ...
+                pipecompare.simple.Presets.nextText(result, k));
             obj.showPage(5);
         end
 

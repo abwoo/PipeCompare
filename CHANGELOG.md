@@ -5,6 +5,14 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- Windows caught up with the new methods: *Advanced…* from the simple mode (and the PipeCompare
+  window's Advanced tab) keeps the simple mode's search options (fine-tuned cutoffs, ICA's random
+  start, own waveform); after using a weighted pipeline, every window says its averages are in
+  `EEG.etc.pipecompare.weightedERP`; the result sentence speaks of the error (noise + bias) the
+  ranking uses; the panel's notes include the checks of the recommendation (as good as the best,
+  held-out trials, chosen again, ICA's random start); the progress window names what runs after
+  the last pipeline; a fine-tuned pipeline is marked in the results; texts on choosing ICA
+  components by the noise describe the ordered path.
 - ICA components chosen by their effect on the SME (`'sme'`): the sets are now the first one, two,
   ... components in the order of how much each makes the score vary from trial to trial over how
   much of the known signal it carries, instead of adding each time the one that lowers the SME

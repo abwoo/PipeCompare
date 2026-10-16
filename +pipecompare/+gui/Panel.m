@@ -211,7 +211,8 @@ classdef Panel < handle
                 'composite = all measures together (same unit); or the one measure to optimize');
             uibutton(ag, 'Text', 'Preview count', 'ButtonPushedFcn', @(~, ~) obj.run(true));
             uibutton(ag, 'Text', 'Run search', 'FontWeight', 'bold', 'ButtonPushedFcn', @(~, ~) obj.run(false));
-            uibutton(ag, 'Text', 'Options...', 'Tooltip', 'Data unit, checkpoint folder, parallel', ...
+            uibutton(ag, 'Text', 'Options...', 'Tooltip', ['Data unit, checkpoint folder, parallel; fine-tune filter cutoffs, ', ...
+                'check ICA''s random start, signal check with own waveform'], ...
                 'ButtonPushedFcn', @(~, ~) obj.optionsDialog());
             obj.StatusLabel = uilabel(ag, 'Text', '', 'FontColor', [0 0 0.5], 'WordWrap', 'on');
             obj.StatusLabel.Layout.Row = [1 2]; obj.StatusLabel.Layout.Column = 6;
@@ -1531,11 +1532,11 @@ classdef Panel < handle
             end
             % what comes next, as in the dialog's result window
             obj.StatusLabel.Text = sprintf('Candidate %d adopted as the current EEGLAB dataset.', k);
-            if ~isempty(obj.Host), obj.Host.adopted(k); return; end   % the window says what next
+            if ~isempty(obj.Host), obj.Host.adopted(k, obj.Result); return; end   % the window says what next
             uialert(obj.Fig, sprintf(['Candidate %d is now the current EEGLAB dataset. It is not saved yet: use ', ...
-                'File > Save current dataset as. These are the data that were compared: average them (or compute the ', ...
-                'band power) and measure. Filtering, re-referencing or rejecting epochs again would change what was ', ...
-                'compared.'], k), 'Done', 'Icon', 'success');
+                'File > Save current dataset as. These are the data that were compared: %s. Filtering, ', ...
+                're-referencing or rejecting epochs again would change what was compared.'], k, ...
+                pipecompare.simple.Presets.nextText(obj.Result, k)), 'Done', 'Icon', 'success');
         end
 
         function printScript(obj)
@@ -1611,10 +1612,12 @@ function lines = resultNotes(r)
 % and filters applied before PipeCompare that already change the signal.
 lines = {};
 if pipecompare.eval.Rank.sameScores(r.ranking)
-    lines{end+1} = 'All pipelines that passed have the same noise: the settings compared make no difference on these data.';
+    lines{end+1} = 'All pipelines that passed have the same error (noise + bias): the settings compared make no difference on these data.';
 end
 hint = pipecompare.simple.Presets.nextStep(r, 'add a reref step, mode average, after the bad channels');
 if ~isempty(hint), lines{end+1} = hint; end
+pr = pipecompare.simple.Presets.precisionText(r);   % equivalence, held-out check, stability, ICA's random start
+if ~isempty(pr), lines{end+1} = pr; end
 detect = pipecompare.simple.Presets.detectableText(r);
 if ~isempty(detect), lines{end+1} = detect; end
 ica = pipecompare.simple.Presets.icaText(r);

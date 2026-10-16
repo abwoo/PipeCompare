@@ -39,16 +39,19 @@ Two choices (what to measure; for ERP, the event types); the steps are preselect
    standard difference wave does). Band power: delta 1–4, theta 4–8, alpha 8–13, beta 13–30
    Hz over all EEG channels, in 2 s segments.
 3. **Compare**: a list of steps in the order they run, each with a tick box: bad channels
-   (detect and interpolate), the reference (item 4), ICA (ICLabel threshold compared), high-pass,
-   low-pass (cutoffs compared), epochs and baseline (always; segments for band power), epoch
-   rejection (amplitude limit compared) and, under it, *measure the limit peak-to-peak in 200 ms
+   (detect and interpolate), the reference (item 4), ICA (ICLabel threshold chosen from the data)
+   and, under it, *also choose the components by their effect on the noise* (`'icsme'`: both ways
+   compared, twice the pipelines), high-pass, low-pass (cutoffs compared), epochs and baseline
+   (always; segments for band power), epoch rejection (amplitude limit chosen from the data) and,
+   under it, *measure the limit peak-to-peak in 200 ms
    windows* (`'peaktopeak'`: ERP CORE's moving-window test, limits 100, 150, 200 µV compared
    instead) and *instead, repair epochs with up to 3
    channels over the limit* (`'epochinterp'`: such an epoch keeps those channels, interpolated
    within the epoch; it uses the rejection's limit, so it can only be ticked with it, and adds no
-   pipelines; with the average reference the data are averaged again after it). Any of them can be
-   ticked; the order is fixed (to change it, use the panel). *Standard* (preselected) ticks every
-   step but the repair, *Filters only* the two filters (`'recipe'` in `pop_pipecompare`; other sets
+   pipelines; with the average reference the data are averaged again after it), and *weight epochs
+   by their noise* (`'weight'`: every pipeline also compared with the noisier epochs counting less
+   in the average). Any of them can be ticked; the order is fixed (to change it, use the panel). *Standard* (preselected) ticks bad channels, ICA,
+   the two filters, epoch rejection and the weighting, *Filters only* the two filters (`'recipe'` in `pop_pipecompare`; other sets
    with `'steps'`, e.g. `{'highpass', 'lowpass', 'reject'}`). With fewer than two pipelines, as with only the filters
    on epoched data, *Run* stays off. Each compared step searches the catalog's default lists.
    Steps the data cannot take are greyed out with the reason next to them (filters on epoched
@@ -89,7 +92,7 @@ every finished pipeline as the search runs, then a summary; the same log is kept
 *Advanced…* opens the panel below with these choices filled in. When the choices cannot be filled in (e.g. a component's electrode is missing), it says
 why and the dialog stays open. The result window says in one
 sentence which pipeline to use and why, naming pipelines by the settings compared (e.g. high-pass
-0.5 Hz, low-pass 30 Hz), lists it (*) with the best others (checks, noise (SME), trials kept,
+0.5 Hz, low-pass 30 Hz), lists it (*) with the best others (checks, error (noise + bias), trials kept,
 signal change, settings) above one line with the steps every pipeline shares. When ICA did
 nothing useful (ICLabel recognised almost no component, or none was removed) or had too little
 data, and when one channel caused most of the recommended pipeline's rejected epochs, the
@@ -170,7 +173,11 @@ runs on its own copy.
   Every command and score is printed in the Command Window and the result is stored in
   `pipecompare_result`. Options: data unit, checkpoint folder, parallel, fine-tune filter cutoffs, check ICA's random start (the deciding pipelines with ICA run again with ICA started in 2 other ways), signal check with own waveform. Below the results the
   panel says what the dialog's result window says: that the settings make no difference, what to
-  try when no pipeline passed, how large a difference the data can show, when ICA did nothing
+  try when no pipeline passed, whether the recommendation is as good as the best one, holds on
+  trials not used to choose it, would be chosen again with other trials and with ICA started
+  differently, how much blinks and other artifacts move the measure (bias), when the rejection
+  removed epochs for their large real activity, where a weighted pipeline's averages are, which
+  waveform the signal check used, how large a difference the data can show, when ICA did nothing
   useful or had too little data, when one channel caused most rejected epochs, and when filters applied before PipeCompare already change the known signal beyond a
   pipeline's limit.
 - **Results.** Selecting a row shows its full pipeline, reason, measures and commands below the
