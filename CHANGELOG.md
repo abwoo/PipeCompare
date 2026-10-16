@@ -5,6 +5,18 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- Weighted epochs: an epoch's noise no longer includes the part that goes with its score. EEG
+  noise is slow, so an epoch whose score was far from the others' was counted less for it; the
+  weighted average's SME was then a third too low and weighting looked 30 % better than equal
+  weights while it was 5 % worse (simulation). Saved scripts pass the scores to
+  `weightTrials`.
+- Blink bias: what blinks add counts only beyond 2 of its standard errors (soft thresholding).
+  Taking only its variance off left, with most trials blinking and no real effect, a third more
+  total error on average and pulled the limits towards rejecting blink trials.
+- With and without weights (same trials kept), a difference in signal distortion below 0.5 % no
+  longer decides the recommendation; the error does.
+- BioSemi's EXG1-8 and eye electrodes named LO1/2, IO1/2, SO1/2 count as non-EEG channels (LO/IO/SO
+  also as eye channels).
 - Windows caught up with the new methods: *Advanced…* from the simple mode (and the PipeCompare
   window's Advanced tab) keeps the simple mode's search options (fine-tuned cutoffs, ICA's random
   start, own waveform); after using a weighted pipeline, every window says its averages are in

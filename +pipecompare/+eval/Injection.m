@@ -63,6 +63,7 @@ classdef Injection
         ShapeFactors = [0.5 1 2]   % shapeSpreads: bump widths, in windows, besides the template
         MinReliability = 0.8   % 'data' template: lowest split-half reliability used
         EyeSimilarity = 0.8    % 'data' template: an eye channel this alike (and twice as large) means a blink
+        EyeNames = '^[LIS]O[12]$'   % eye electrodes named by position (left/infra/supra-orbital), as in ERPLAB's examples
     end
 
     methods (Static)
@@ -225,10 +226,11 @@ classdef Injection
 
         function eyes = eyeChannels(chanlocs)
             % The eye channels: EOG by type, or non-EEG channels named
-            % EOG/EYE; else the frontal poles (Fp1, Fp2, FPz). Indices.
+            % EOG/EYE (or LO1/2, IO1/2, SO1/2); else the frontal poles
+            % (Fp1, Fp2, FPz). Indices.
             labs = lower({chanlocs.labels});
             eyes = find(pipecompare.simple.Presets.isNonEeg(chanlocs) & ...
-                ~cellfun(@isempty, regexpi({chanlocs.labels}, 'EOG|EYE', 'once')));
+                ~cellfun(@isempty, regexpi({chanlocs.labels}, ['EOG|EYE|' pipecompare.eval.Injection.EyeNames], 'once')));
             if isfield(chanlocs, 'type')
                 ty = arrayfun(@(c) upper(strtrim(char(string(c.type)))), chanlocs(:)', 'UniformOutput', false);
                 eyes = union(eyes, find(ismember(ty, {'EOG', 'HEOG', 'VEOG'})));

@@ -680,8 +680,19 @@ advanced panel (*Options… > Fine-tune filter cutoffs*) and `'refineCutoffs', t
 
 **Weights.** For epoch *i* of a condition with *n* epochs, let *r*ᵢ = *x*ᵢ − (Σ_{j≠i} *x*ⱼ)/(*n* − 1) be the
 epoch minus the leave-one-out mean of the others, at the measured electrodes (all of them, over
-all samples of the epoch). Its noise is *v*ᵢ = mean(*r*ᵢ²); the leave-one-out mean keeps the epoch
-from lowering its own noise. With *v*ᵢ floored at a tenth of the condition's median, the weight is
+all samples of the epoch). The part of *r* that goes with the scores is taken out first: with
+*k*ⱼ the kernel of score *j* (the mean over its electrodes and window) and *u*ⱼ = (*r*ᵢ · *k*ⱼ)ᵢ the
+epochs' score residuals (an *n*-vector each, *U* = [*u*₁ …]), *r* ← (*I* − *U U*⁺) *r* in each condition,
+which is *r* − Σ*k* (*k*ᵀΣ*k*)⁻¹ *k*ᵀ*r* with Σ the residuals' covariance over the samples. EEG noise is
+slow, so without this an epoch whose score happens to lie far from the others' also has a large
+residual over the epoch and would be counted less *for its score*: the weights then depend on the
+scores, and the sandwich SME below, which takes the weights as given, came out a third too low
+(simulation, AR(1) noise φ = 0.95 at 250 Hz, every epoch with the same noise: reported/true 0.67;
+the weighted mean looked 30 % better than equal weights while it was 5 % worse). With the
+projection, what is left is uncorrelated with the scores (independent for Gaussian noise of any
+size per epoch) and still follows each epoch's noise level: reported/true 1.04, and with a third of
+the epochs 3 times noisier, 0.95 and an error 0.67 of equal weights. Its noise is *v*ᵢ = mean(*r*ᵢ²);
+the leave-one-out mean keeps the epoch from lowering its own noise. With *v*ᵢ floored at a tenth of the condition's median, the weight is
 *w*ᵢ = (1/*v*ᵢ) / mean(1/*v*). If the noise of each epoch is a common process scaled by a factor σᵢ
 (*e*ᵢ = σᵢ *u*ᵢ), its score has variance ∝ σᵢ² ∝ *v*ᵢ, and the weighted mean Σ *w*ᵢ *s*ᵢ / Σ *w*ᵢ with *w*ᵢ ∝ 1/σᵢ²
 has the smallest variance among weighted means (Gauss–Markov; for ERPs, weighted averaging goes
@@ -892,9 +903,15 @@ weight and *m*_B, *m*_N the weighted mean scores of the blink and other trials,
   ȳ = *m*_N + *p* (*m*_B − *m*_N),  *e* = *p* (*m*_B − *m*_N):
 
 what the blink trials add to the mean (a pipeline that removed the eye activity, by ICA or by
-rejecting those trials, has *e* ≈ 0). *e* is itself an estimate; its square is used with its
-variance taken off, *e*² − *p*² *s*² (1/*n*_B + 1/*n*_N), floored at 0 (*s*² the scores' variance), so a
-bias the data do not show counts about 0 (`test_statistics/testWhatBlinksAddToTheMean`). In the
+rejecting those trials, has *e* ≈ 0). *e* is itself an estimate, with standard error
+*se* = *p* *s* √(1/*n*_B + 1/*n*_N) (*s* the scores' SD); with most trials blinking it is often larger than
+the SME itself. Only the part beyond what chance makes counts: (|*e*| − 2 *se*)₊², soft thresholding
+(`test_statistics/testWhatBlinksAddToTheMean`). Taking only the variance off, *e*² − *se*², floored at
+0, counts a bias where there is none, since its positive part has a positive mean: in simulation
+with 35 trials, no real effect and 70 % blink trials it added a third to the total error on
+average (twice as much in one run in ten) and pulled the rejection limit towards rejecting blink
+trials; soft thresholding adds about 1 %. A real bias is underestimated by up to 2 *se*, the price
+of not acting on noise. In the
 bootstrap (section 3) *e* is recomputed in every resample. A difference of the blink trials'
 mean that is real brain activity (a larger P3 in the trials with a blink) is counted as bias too;
 using the blink's size only to select the trials, not as a regressor, keeps frontal brain activity

@@ -333,10 +333,12 @@ classdef Presets
         function tf = isNonEeg(chanlocs)
             % non-EEG channels (EOG, ECG, EMG, ...), by type or, when the
             % type is not set, by name (VEOG, HEOG, ECG1, EYEL; with the
-            % POL prefix of some EDF exports: POL EYEL); and ear/mastoid
-            % reference sites (isRefSite)
+            % POL prefix of some EDF exports: POL EYEL; BioSemi's external
+            % EXG1-8; the eye electrodes LO1/2, IO1/2, SO1/2 of ERPLAB's
+            % examples); and ear/mastoid reference sites (isRefSite)
             labels = {chanlocs.labels};
-            tf = ~cellfun(@isempty, regexpi(labels, '^(POL\s+)?([VH]?EOG|ECG|EKG|EMG|EYE)', 'once'));
+            tf = ~cellfun(@isempty, regexpi(labels, ['^(POL\s+)?([VH]?EOG|ECG|EKG|EMG|EYE)|^EXG\d+$|', ...
+                pipecompare.eval.Injection.EyeNames], 'once'));
             if isfield(chanlocs, 'type')
                 ty = arrayfun(@(c) upper(strtrim(char(string(c.type)))), chanlocs(:)', 'UniformOutput', false);
                 tf = tf | ismember(ty, {'EOG', 'HEOG', 'VEOG', 'ECG', 'EKG', 'EMG', 'MISC', 'TRIG', 'STIM'});

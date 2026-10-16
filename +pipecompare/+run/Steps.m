@@ -129,11 +129,14 @@ classdef Steps
                     assert(strcmp(c.analysis, 'erp'), 'PipeCompare:Weights', ...
                         'Weighting epochs by their noise is for ERPs (a weighted mean of band power would favour the epochs with less power).');
                     roi = c.allRoi(); groups = {c.conditions.events};
-                    [EEG, info] = pipecompare.run.Steps.weightTrials(EEG, roi, groups);
-                    coms = {sprintf(['EEG = pipecompare.run.Steps.weightTrials(EEG, %s, %s); %% PipeCompare: epochs ', ...
+                    scores = arrayfun(@(m) {cellstr(m.roi), m.window}, c.components, 'UniformOutput', false);
+                    [EEG, info] = pipecompare.run.Steps.weightTrials(EEG, roi, groups, scores);
+                    coms = {sprintf(['EEG = pipecompare.run.Steps.weightTrials(EEG, %s, %s, %s); %% PipeCompare: epochs ', ...
                         'weighted by their noise (EEG.etc.pipecompare.trialWeights; weighted average: ', ...
                         'pipecompare.eval.Measure.epochWeights)'], strCells(roi), ...
-                        ['{' strjoin(cellfun(@strCells, groups, 'UniformOutput', false), ', ') '}'])};
+                        ['{' strjoin(cellfun(@strCells, groups, 'UniformOutput', false), ', ') '}'], ...
+                        ['{' strjoin(cellfun(@(q) sprintf('{%s, [%.17g %.17g]}', strCells(q{1}), q{2}), scores, ...
+                        'UniformOutput', false), ', ') '}'])};
                 case 'native'
                     [EEG, coms, info] = pipecompare.run.Steps.native(EEG, p.command);
                 otherwise
@@ -742,13 +745,24 @@ classdef Steps
             info.rejected = numel(idx); info.rejIdx = idx; info.epochsBefore = n0;
         end
 
-        function [EEG, info] = weightTrials(EEG, roi, groups)
+        function [EEG, info] = weightTrials(EEG, roi, groups, scores)
             % Weights for averaging the epochs, from their noise at the
             % electrodes roi (labels); groups: the event types of each
             % condition. An epoch's noise is the mean square, over those
             % electrodes and all its samples, of the epoch minus the mean of
             % the other epochs of its condition (leave-one-out, so the epoch
-            % does not lower its own noise). Its weight is 1 / noise, scaled
+            % does not lower its own noise). scores (optional): the measured
+            % scores, a cell of {electrodes, window in s}, each the mean
+            % over its electrodes and window. The part of that residual
+            % that goes with the scores is left out of the noise first (in
+            % each condition, the residuals' projection on the epochs'
+            % score residuals): EEG noise is slow, so an epoch whose score
+            % happens to be far from the others' also has a large residual
+            % over the epoch, and weighting by it would count such epochs
+            % less for their score, which makes the weighted mean look more
+            % precise than it is (its SME a third too low in simulation).
+            % What is left is uncorrelated with the scores and still
+            % follows each epoch's noise level. Its weight is 1 / noise, scaled
             % to a mean of 1 per condition: with noise that differs between
             % epochs only in size, these weights give the weighted mean with
             % the smallest error (inverse-variance weighting). A noise below
@@ -772,12 +786,29 @@ classdef Steps
                 u(k) = double(e.urevent);
             end
             w = nan(1, EEG.trials); X = double(EEG.data(ch, :, :));
+            % each score as a kernel over those electrodes and the samples
+            if nargin < 4, scores = {}; end
+            times = EEG.xmin + (0:EEG.pnts - 1) / EEG.srate;
+            Kn = zeros(numel(ch) * EEG.pnts, 0);
+            for j = 1:numel(scores)
+                kc = ismember(lower({EEG.chanlocs(ch).labels}), lower(cellstr(scores{j}{1})))';
+                kt = times >= scores{j}{2}(1) - 1e-9 & times <= scores{j}{2}(2) + 1e-9;
+                if ~any(kc) || ~any(kt), continue; end
+                kk = double(kc) / sum(kc) * double(kt) / sum(kt);   % channels x samples
+                Kn(:, end+1) = kk(:); %#ok<AGROW>
+            end
             ratio = 1;
             for c = 1:numel(groups)
                 k = find(g == c); n = numel(k);
                 if n < 2, w(k) = 1; continue; end
                 Xc = X(:, :, k);
                 R = Xc - (sum(Xc, 3) - Xc) / (n - 1);
+                if ~isempty(Kn) && n > size(Kn, 2) + 1
+                    Rm = reshape(R, [], n)';   % epochs x (channels x samples)
+                    U = Rm * Kn;               % the score residuals
+                    Rm = Rm - U * (pinv(U) * Rm);
+                    R = reshape(Rm', size(R));
+                end
                 v = reshape(mean(mean(R .^ 2, 1), 2), 1, n);
                 v = max(v, median(v) / 10);
                 wc = 1 ./ v; wc = wc / mean(wc);

@@ -994,7 +994,9 @@ and drops none:
 
 1. For each epoch, its **noise** is measured at the electrodes you measure: the epoch minus the
    average of the *other* epochs of its condition (so an epoch cannot make itself look clean),
-   squared and averaged over those electrodes and all samples of the epoch.
+   squared and averaged over those electrodes and all samples of the epoch, leaving out the
+   part of it that goes with the measured score (otherwise an epoch would count less for having a
+   score far from the others', and the weighted average would look more precise than it is).
 2. Its **weight** is 1 / noise, scaled so that the weights of a condition average 1. If epochs
    differ only in how much noise they have, these weights give the average with the smallest
    possible error (inverse-variance weighting). Plain averaging and rejection are both special

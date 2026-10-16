@@ -34,8 +34,8 @@ classdef Rank
     %      root mean square error of the estimate; RMS over measures and
     %      conditions as above). b = (e + |mean| s) / g: e, what the trials
     %      with a blink add to the mean (Measure.eyeBias, from the eye
-    %      channels of the data as they were; its square with its variance
-    %      taken off, about 0 unless the data show it), and s, how much the
+    %      channels of the data as they were; counted only beyond 2 of
+    %      its standard errors, so 0 unless the data show it), and s, how much the
     %      pipeline's filters would change its gain if the signal had
     %      another shape (Injection.shapeSpreads: the largest change over
     %      a family of shapes, a minimax). The SME counts what varies from
@@ -80,7 +80,10 @@ classdef Rank
     %      so its advantage by chance is held out as well.
     %   5. Among candidates the data do not distinguish from the best, the
     %      recommendation is the least aggressive: highest minimum trial
-    %      retention, then smallest signal distortion, then best objective;
+    %      retention, then smallest signal distortion (to AmpStep: two
+    %      pipelines keeping the same trials, as with and without trial
+    %      weights, differ in it only by filter tails of neighbouring
+    %      epochs), then best objective;
     %      a biased one (bias above BiasShare of its noise) only when no
     %      unbiased one is among them, since keeping more trials is no
     %      reason to keep what they carry in.
@@ -104,6 +107,7 @@ classdef Rank
 
     properties (Constant)
         BiasShare = 0.5   % a bias above this share of the noise makes a pipeline "biased" (step 5)
+        AmpStep = 0.005   % signal distortions closer than this (0.5% of the amplitude) count as the same (step 5)
     end
 
     methods (Static)
@@ -189,10 +193,10 @@ classdef Rank
                 % least aggressive among those not distinguished from the
                 % best, a biased one only when no unbiased one is among them
                 biased = double(bias > pipecompare.eval.Rank.BiasShare * noise);
-                key = [biased(t), -minRet(t), ampErr(t), primary(t)];
+                key = [biased(t), -minRet(t), ampStep(ampErr(t)), primary(t)];
                 [~, o] = sortrows(round(key, 10));
                 cf = pipecompare.eval.Rank.crossfit(cands(feas), ref, opts, objName, pts(ib));
-                f = selectionFrequency(boot{1}, crit, minRet(feas), ampErr(feas), biased(feas));
+                f = selectionFrequency(boot{1}, crit, minRet(feas), ampStep(ampErr(feas)), biased(feas));
                 chosen(feas) = f;
                 byStratum(end+1) = struct('stratum', strata{s}, 'best', feas(ib), 'recommended', t(o(1)), 'set', t, ...
                     'crossfit', cf, 'stability', f(feas == t(o(1)))); %#ok<AGROW>
@@ -553,7 +557,7 @@ end
 function b = biasOf(o, g, spread, eyeSq)
 % The bias of measure o's gain-corrected mean in each condition (1 x
 % conditions), in its unit: what blinks add to it (Measure.eyeBias:
-% the square root of its squared bias, with its variance taken off; eyeSq
+% the part of it beyond 2 of its standard errors, squared; eyeSq
 % replaces it, e.g. a bootstrap resample's) plus what the filters would
 % change if the signal had another shape (|mean| x spread,
 % Injection.shapeSpreads), both divided by the gain g.
@@ -625,6 +629,11 @@ end
 z = maxK(isfinite(maxK));
 if isempty(z), cK = 0; else, cK = max(upperQuantile(z, alpha), 0); end
 hiEq = Dhat(:, ib) + cK; hiEq(ib) = 0; hiEq(~keep) = Inf;
+end
+
+function a = ampStep(a)
+% signal distortions to AmpStep (step 5)
+a = round(a / pipecompare.eval.Rank.AmpStep) * pipecompare.eval.Rank.AmpStep;
 end
 
 function f = selectionFrequency(Bq, c, ret, amp, biased)
