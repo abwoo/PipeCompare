@@ -1691,7 +1691,7 @@ function testEyeChannelsRegressedOut(tc)
 % fitted on the data with them; the eye channels stay as they are and the
 % signal-check copy gets the same coefficients. In the search (eogCheck)
 % the recommended pipeline also runs with the eye channels regressed out,
-% which here lowers its total error.
+% which here, measured where the blinks reach, lowers its total error.
 o = struct('seconds', 150, 'nPerCond', 30, 'artifactTrials', 0, 'lockedBlinkUv', 600);
 E1 = nqc_synth(setfield(o, 'lockedBlinks', 0.6)); E0 = nqc_synth(setfield(o, 'lockedBlinks', 0)); %#ok<SFLD>
 c = nqc_c();
@@ -1709,7 +1709,9 @@ S2 = pipecompare.run.Steps.replayDecision(in, S, struct('eog', info), struct('co
 verifyEqual(tc, double(S2.data(ti, :)), double(S.data(ti, :)) - info.B * double(S.data(ei, :)), 'AbsTol', 1e-4);
 [~, ~, com] = evalc('pipecompare.run.Steps.run(in, E1, struct(''contract'', c))');
 verifyTrue(tc, contains(com{1}, 'pipecompare.run.Steps.eogRegress(EEG'));
-% in the search
+% in the search, measured at Cz, which the blinks reach (Pz they hardly do)
+c = pipecompare.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], ...
+    'baseline', [-0.2 0], 'components', {'P3', [0.3 0.5], {'Cz'}});
 nqc_setBase(E1);
 p = pipecompare.plan.Plan();
 p = p.add('highpass', 'cutoff', {0.1, 0.5}); p = p.add('lowpass', 'cutoff', 30);
