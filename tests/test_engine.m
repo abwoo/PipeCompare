@@ -1685,6 +1685,48 @@ E.icawinv = []; E.icaact = [];
 E = eeg_checkset(E);
 end
 
+function testEyeChannelsRegressedOut(tc)
+% Steps.eogRegress: blinks locked to the P3 (only they differ between the
+% two recordings) are taken out of the scalp channels by the coefficients
+% fitted on the data with them; the eye channels stay as they are and the
+% signal-check copy gets the same coefficients. In the search (eogCheck)
+% the recommended pipeline also runs with the eye channels regressed out,
+% which here, measured where the blinks reach, lowers its total error.
+o = struct('seconds', 150, 'nPerCond', 30, 'artifactTrials', 0, 'lockedBlinkUv', 600);
+E1 = nqc_synth(setfield(o, 'lockedBlinks', 0.6)); E0 = nqc_synth(setfield(o, 'lockedBlinks', 0)); %#ok<SFLD>
+c = nqc_c();
+[R1, info] = pipecompare.run.Steps.eogRegress(E1, {}, {c.conditions.events}, c.epoch);
+verifyEqual(tc, sort(info.eyes), {'EOG1', 'EOG2'});
+labs = {E1.chanlocs.labels}; ei = ismember(labs, info.eyes); ti = ismember(labs, info.targets);
+verifyEqual(tc, R1.data(ei, :), E1.data(ei, :));                  % the eye channels as they are
+D = double(E1.data - E0.data);                                    % the locked blinks alone
+left = D(ti, :) - info.B * D(ei, :);
+fz = strcmp(labs(ti), 'Fz');
+verifyLessThan(tc, max(abs(left(fz, :))), 0.1 * max(abs(D(strcmp(labs, 'Fz'), :))));
+in = struct('type', 'eogregress', 'params', struct('channels', {{}}), 'key', 'eogregress', 'slot', 'eog', 'label', 'eog');
+S = E1; S.data = single(randn(size(E1.data)));
+S2 = pipecompare.run.Steps.replayDecision(in, S, struct('eog', info), struct('contract', c));
+verifyEqual(tc, double(S2.data(ti, :)), double(S.data(ti, :)) - info.B * double(S.data(ei, :)), 'AbsTol', 1e-4);
+[~, ~, com] = evalc('pipecompare.run.Steps.run(in, E1, struct(''contract'', c))');
+verifyTrue(tc, contains(com{1}, 'pipecompare.run.Steps.eogRegress(EEG'));
+% in the search, measured at Cz, which the blinks reach (Pz they hardly do)
+c = pipecompare.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], ...
+    'baseline', [-0.2 0], 'components', {'P3', [0.3 0.5], {'Cz'}});
+nqc_setBase(E1);
+p = pipecompare.plan.Plan();
+p = p.add('highpass', 'cutoff', {0.1, 0.5}); p = p.add('lowpass', 'cutoff', 30);
+p = p.add('epoch'); p = p.add('baseline');
+r = pipecompare.PipeCompare.optimize(p, c, struct('eogCheck', true));
+k = find(arrayfun(@(l) any(cellfun(@(i) strcmp(i.type, 'eogregress'), l.path)), r.leaves));
+verifyNumElements(tc, k, 1);
+verifyEqual(tc, r.cands(k).status, 'ok');
+base = sscanf(char(regexp(strjoin(r.cands(k).notes, ' '), 'pipeline (\d+) with the eye', 'tokens', 'once')), '%d');
+verifyLessThan(tc, r.ranking.table.objective(k), r.ranking.table.objective(base));
+verifyTrue(tc, any(contains(pipecompare.simple.Presets.stepsText(r, k), 'Eye channels EOG')));
+r0 = pipecompare.PipeCompare.optimize(p, c);
+verifyEqual(tc, numel(r0.cands), 2);                              % not by default
+end
+
 function c = nqc_c()
 c = pipecompare.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, 'epoch', [-0.2 1], ...
     'baseline', [-0.2 0], 'components', {'P3', [0.3 0.5], {'Pz','P3','P4'}});

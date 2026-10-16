@@ -124,6 +124,13 @@ classdef Steps
                     coms = {com};
                 case {'reject_threshold','reject_jointprob','reject_kurtosis'}
                     [EEG, coms, info] = pipecompare.run.Steps.rejectEpochs(EEG, inst.type, p, ctx);
+                case 'eogregress'
+                    c = ctx.contract; groups = {c.conditions.events};
+                    [EEG, info.eog] = pipecompare.run.Steps.eogRegress(EEG, p.channels, groups, c.epoch);
+                    coms = {sprintf(['EEG = pipecompare.run.Steps.eogRegress(EEG, %s, %s, %s); %% PipeCompare: the eye ', ...
+                        'channels %s regressed out of the EEG channels'], strCells(info.eog.eyes), ...
+                        ['{' strjoin(cellfun(@strCells, groups, 'UniformOutput', false), ', ') '}'], ...
+                        mat2str(c.epoch, 17), strjoin(info.eog.eyes, ', '))};
                 case 'weight_trials'
                     c = ctx.contract;
                     assert(strcmp(c.analysis, 'erp'), 'PipeCompare:Weights', ...
@@ -172,6 +179,11 @@ classdef Steps
                         EEG = pipecompare.run.Steps.interpolateEpochs(EEG, info.epochInterp.chans, info.epochInterp.epochs);
                     end
                     if ~isempty(info.rejIdx), EEG = pop_rejepoch(EEG, info.rejIdx, 0); end
+                case 'eogregress'
+                    % the coefficients estimated on the real data
+                    [~, ti] = ismember(info.eog.targets, {EEG.chanlocs.labels});
+                    [~, ei] = ismember(info.eog.eyes, {EEG.chanlocs.labels});
+                    EEG = applyEog(EEG, ti, ei, info.eog.B);
                 case 'weight_trials'
                     EEG.etc.pipecompare.trialWeights = info.trialWeights;
                 case 'native'
@@ -747,6 +759,78 @@ classdef Steps
             info.rejected = numel(idx); info.rejIdx = idx; info.epochsBefore = n0;
         end
 
+        function [EEG, info] = eogRegress(EEG, eyes, groups, epoch)
+            % The eye channels regressed out of the EEG channels (blinks and
+            % eye movements spread to the scalp in proportion to them):
+            % EEG.data(t, :) - B * EEG.data(e, :), B (targets x eyes) the
+            % least-squares fit of the EEG channels on the eye channels.
+            % The fit uses only the samples where an eye channel is beyond 4
+            % robust SD of its median (+-100 ms), where the eyes dominate,
+            % and the average of the epochs around each event type of
+            % groups (cells of event types; epoch [t0 t1] s) is taken out
+            % of both first, so that what is time-locked (the ERP, also seen
+            % at the eye channels) does not enter B. eyes: labels; {} = the
+            % dedicated eye channels (EOG by type or name, not Fp1/Fp2:
+            % pipecompare.eval.Injection.dedicatedEyes). Targets: every
+            % channel that is EEG (pipecompare.simple.Presets.isNonEeg).
+            % info: eyes, targets (labels), B, fitted (samples used), seconds.
+            labs = {EEG.chanlocs.labels};
+            if isempty(eyes), ei = pipecompare.eval.Injection.dedicatedEyes(EEG.chanlocs);
+            else, [~, ei] = ismember(lower(cellstr(eyes)), lower(labs)); ei = ei(ei > 0); end
+            assert(~isempty(ei), 'PipeCompare:Eog', ['Regressing the eye channels out needs an eye channel of its ', ...
+                'own (EOG, HEOG, VEOG, EYE...; type EOG): Fp1/Fp2 are EEG channels and would be removed with it.']);
+            ti = setdiff(find(~pipecompare.simple.Presets.isNonEeg(EEG.chanlocs)), ei);
+            n = EEG.pnts * EEG.trials;
+            D = reshape(EEG.data, EEG.nbchan, n);
+            % where each sample lies in the epochs around the events (its
+            % group and place in the epoch; 0 outside), for the average
+            if EEG.trials > 1
+                grp = ones(1, n); pos = repmat(1:EEG.pnts, 1, EEG.trials); nG = 1;
+                epochsOf = {reshape(1:n, EEG.pnts, EEG.trials)'};
+            else
+                grp = zeros(1, n); pos = zeros(1, n); nG = 0; epochsOf = {};
+                if ~isempty(groups) && ~isempty(EEG.event)
+                    w = round(epoch(1) * EEG.srate):round(epoch(2) * EEG.srate);
+                    types = cellfun(@(x) char(string(x)), {EEG.event.type}, 'UniformOutput', false);
+                    for g = 1:numel(groups)
+                        lat = round([EEG.event(ismember(types, cellstr(groups{g}))).latency]);
+                        lat = lat(lat + w(1) >= 1 & lat + w(end) <= n);
+                        if isempty(lat), continue; end
+                        nG = nG + 1; epochsOf{nG} = lat(:) + w;   %#ok<AGROW> % epochs x samples
+                        grp(epochsOf{nG}) = nG; pos(epochsOf{nG}) = repmat(1:numel(w), numel(lat), 1);
+                    end
+                end
+            end
+            % the time-locked average of every channel used, per group
+            avg = cell(1, nG); rows = [ti ei];
+            for g = 1:nG
+                ix = epochsOf{g};
+                avg{g} = mean(reshape(double(D(rows, ix')), numel(rows), size(ix, 2), size(ix, 1)), 3);
+            end
+            noErp = @(cols) double(D(rows, cols)) - erpAt(avg, grp(cols), pos(cols), numel(rows));
+            % the samples dominated by the eyes, on the eye channels without the ERP
+            E = zeros(numel(ei), n);
+            for q = 1:1e5:n
+                cols = q:min(n, q + 1e5 - 1); Z = noErp(cols); E(:, cols) = Z(numel(ti)+1:end, :);
+            end
+            z = abs(E - median(E, 2)) ./ (1.4826 * median(abs(E - median(E, 2)), 2) + eps);
+            half = round(0.1 * EEG.srate);
+            sel = conv(double(any(z > 4, 1)), ones(1, 2 * half + 1), 'same') > 0;
+            if sum(sel) < EEG.srate, sel = true(1, n); end   % less than 1 s of eye activity: all samples
+            clear E z
+            % B from the cross-products over those samples (blocks: memory)
+            idx = find(sel); m = numel(rows); C = zeros(m); s1 = zeros(m, 1);
+            for q = 1:1e5:numel(idx)
+                Z = noErp(idx(q:min(end, q + 1e5 - 1)));
+                C = C + Z * Z'; s1 = s1 + sum(Z, 2);
+            end
+            C = C / numel(idx) - (s1 / numel(idx)) * (s1 / numel(idx))';   % covariance
+            k = numel(ti);
+            B = C(1:k, k+1:end) * pinv(C(k+1:end, k+1:end));   % (two eye channels can be nearly the same)
+            EEG = applyEog(EEG, ti, ei, B);
+            info = struct('eyes', {labs(ei)}, 'targets', {labs(ti)}, 'B', B, 'fitted', numel(idx), 'seconds', numel(idx) / EEG.srate);
+        end
+
         function [EEG, info] = weightTrials(EEG, roi, groups, scores)
             % Weights for averaging the epochs, from their noise at the
             % electrodes roi (labels); groups: the event types of each
@@ -1096,6 +1180,23 @@ if numel(EEG.chanlocs) >= k, F.chanlocs = EEG.chanlocs(1:k); end
 F.icaweights = []; F.icasphere = []; F.icawinv = []; F.icaact = []; F.icachansind = [];
 F = pipecompare.run.Steps.run(inst, F, ctx);
 EEG.data = cast(reshape(U * double(reshape(F.data, k, [])), n, F.pnts, F.trials), 'like', EEG.data);
+end
+
+function A = erpAt(avg, grp, pos, m)
+% the averages of eogRegress at these samples (0 outside the epochs)
+A = zeros(m, numel(grp));
+for g = 1:numel(avg)
+    in = grp == g;
+    if any(in), A(:, in) = avg{g}(:, pos(in)); end
+end
+end
+
+function EEG = applyEog(EEG, ti, ei, B)
+% EEG.data(ti) minus B times EEG.data(ei), every sample and epoch
+n = EEG.pnts * EEG.trials;
+D = reshape(EEG.data, EEG.nbchan, n);
+D(ti, :) = cast(double(D(ti, :)) - B * double(D(ei, :)), 'like', D);
+EEG.data = reshape(D, EEG.nbchan, EEG.pnts, EEG.trials);
 end
 
 function com = plainCommand(com, fb)

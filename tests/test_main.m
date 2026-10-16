@@ -19,7 +19,7 @@ function testWindowShowsTheCurrentDataset(tc)
 EEG = tc.TestData.EEG;
 nqc_setBase(EEG);
 w = openWindow(tc);
-verifyEqual(tc, w.Nav.Items, {'1. Import', '2. Settings', '3. Run', '4. Results', '5. Export'});
+verifyEqual(tc, w.Nav.Items, {'1. Import', '2. Settings', '3. Run', '4. Results', '5. Export', '6. Group'});
 verifyTrue(tc, any(contains(w.DataText.Value, 'nqc_synth')));
 verifyTrue(tc, contains(w.LocText.Text, 'All 32 channels have positions'));
 verifyEqual(tc, size(w.ChanTable.Data), [32 4]);               % the channels, editable
@@ -107,6 +107,34 @@ evalc('w.saveDataset(fullfile(folder, ''clean.set''))');
 verifyTrue(tc, isfile(fullfile(folder, 'clean.set')));
 verifyEqual(tc, evalin('base', 'EEG.filename'), 'clean.set');
 nqc_setBase(EEG);
+end
+
+function testGroupPageComparesSeveralRecordings(tc)
+% 6. Group: two recordings (files) compared with the Simple tab's
+% choices; the group's pipeline and each recording's own are shown, and
+% either is saved as a script.
+EEG = tc.TestData.EEG;
+nqc_setBase(EEG);
+folder = tempname; mkdir(folder); tc.addTeardown(@() rmdir(folder, 's'));
+files = {fullfile(folder, 'a.set'), fullfile(folder, 'b.set')};
+E2 = nqc_synth(struct('seconds', 120, 'nPerCond', 30, 'seed', 8));
+evalc('pop_saveset(EEG, ''filename'', ''a.set'', ''filepath'', folder); pop_saveset(E2, ''filename'', ''b.set'', ''filepath'', folder);');
+w = openWindow(tc);
+d = w.Simple;
+d.EventList.Value = {'11', '31'}; d.MeasureDrop.Value = 'P3'; d.measureChanged(); d.usePreset('filters');
+w.showPage(6);
+w.addGroupFiles(files);
+w.GroupList.Value = files;
+evalc('w.runGroup()');
+verifyNotEmpty(tc, w.Group);
+verifyEqual(tc, size(w.GroupTable.Data, 1), 2);                 % one row per recording
+verifyTrue(tc, any(startsWith(w.GroupText.Value, 'For the whole group: pipeline')));
+verifyEqual(tc, char(w.Nav.Enable), 'on');
+f = [tempname '.m']; tc.addTeardown(@() deleteIf(f));
+w.saveGroupScript(0, f);
+verifyTrue(tc, contains(fileread(f), w.Group.labels{w.Group.recommended}));
+w.saveGroupScript(2, f);
+verifyTrue(tc, contains(fileread(f), w.Group.labels{w.Group.own.id(2)}));
 end
 
 function testAdvancedTabTakesTheSimpleChoices(tc)

@@ -34,6 +34,14 @@ classdef Executor
     %                   grid with its decisions held fixed
     %                   (pipecompare.eval.Cutoff), and the pipeline with the
     %                   best ones is run and ranked with the others
+    %     eogCheck      false (default; true in the simple mode): the
+    %                   recommended pipeline also runs with the eye channels
+    %                   regressed out (eogregress, before its components are
+    %                   removed or its epochs made) and joins the ranking:
+    %                   blinks ICA left in (e.g. no eye component found) are
+    %                   taken out when that lowers the total error. Only with
+    %                   an eye channel of its own (EOG) and when the pipeline
+    %                   does not already regress them out (eogCheck)
     %     icaSeeds      0 (default; 2 in the simple mode): how many times
     %                   the pipelines that decide the recommendation are
     %                   run again with ICA started differently (icaSeedCheck);
@@ -56,7 +64,7 @@ classdef Executor
         function result = run(plan, contract, opts)
             if nargin < 3, opts = struct(); end
             opts = pipecompare.utils.withDefaults(opts, struct('dryRun', false, 'injectUv', 5, 'filterCheck', true, ...
-                'refineCutoffs', false, 'icaSeeds', 0, 'signalTemplate', 'bump', 'dataUnit', 'uV', 'checkpoint', '', 'parallel', false, 'verbose', 'normal', 'progress', []));
+                'refineCutoffs', false, 'eogCheck', false, 'icaSeeds', 0, 'signalTemplate', 'bump', 'dataUnit', 'uV', 'checkpoint', '', 'parallel', false, 'verbose', 'normal', 'progress', []));
             assert(isnumeric(opts.icaSeeds) && isscalar(opts.icaSeeds) && opts.icaSeeds >= 0 && opts.icaSeeds == round(opts.icaSeeds), ...
                 'PipeCompare:Options', 'icaSeeds must be a whole number >= 0.');
             assert(any(strcmp(opts.signalTemplate, {'bump', 'data'})), 'PipeCompare:Options', ...
@@ -235,6 +243,11 @@ classdef Executor
             R = pipecompare.eval.Rank.run(allc, ref, opts, levelsOf(result.leaves));
             if pipecompare.utils.fieldOr(opts, 'refineCutoffs', false) && isempty(notRun)
                 [result, allc, added] = refineCutoffs(result, env, root, S, ctx0, acc0, allc, R);
+                if added, R = pipecompare.eval.Rank.run(allc, ref, opts, levelsOf(result.leaves)); end
+            end
+            if pipecompare.utils.fieldOr(opts, 'eogCheck', false) && isempty(notRun)
+                env.leaves = result.leaves;   % with a pipeline added by fine-tuning the cutoffs
+                [result, allc, added] = eogCheck(result, env, root, S, ctx0, acc0, allc, R);
                 if added, R = pipecompare.eval.Rank.run(allc, ref, opts, levelsOf(result.leaves)); end
             end
             result.icaSeeds = [];
@@ -823,16 +836,17 @@ function f = stepFacts(in, info)
 % the choice again on half of the trials (Rank.crossfit); for a rejection,
 % how far the mean score of the epochs kept is from that of all of them
 % (keptShift, Presets.keptShiftText); for bad channels chosen by the total
-% error, those left as they are (leftAsIs).
+% error, those left as they are (leftAsIs); for the eye channels regressed
+% out, the channels and coefficients (eog).
 f = struct('type', in.type, 'params', in.params, 'interpolated', {{}}, 'removed', {{}}, ...
     'icsRemoved', NaN, 'icsTotal', NaN, 'rejected', NaN, 'epochsBefore', NaN, 'epochsInterpolated', NaN, ...
     'icsBrain', NaN, 'icsOther', NaN, 'otherMedian', NaN, 'icaPoints', NaN, 'uvChosen', NaN, 'thresholdChosen', NaN, 'icsConsidered', NaN, 'icsProtected', NaN, ...
-    'comps', [], 'rejIdx', [], 'cutoffRefined', false, 'weightRatio', NaN, 'trialWeights', [], 'curves', [], 'keptShift', [], 'leftAsIs', {{}});
+    'comps', [], 'rejIdx', [], 'cutoffRefined', false, 'weightRatio', NaN, 'trialWeights', [], 'curves', [], 'keptShift', [], 'leftAsIs', {{}}, 'eog', []);
 for n = {'interpolated', 'removed', 'leftAsIs'}
     if isfield(info, n{1}), f.(n{1}) = cellstr(info.(n{1})); end
 end
 for n = {'icsRemoved', 'icsTotal', 'rejected', 'epochsBefore', 'epochsInterpolated', 'icsBrain', 'icsOther', 'otherMedian', 'icaPoints', 'uvChosen', 'thresholdChosen', 'icsConsidered', 'icsProtected', ...
-        'comps', 'rejIdx', 'cutoffRefined', 'weightRatio', 'trialWeights', 'curves', 'keptShift'}
+        'comps', 'rejIdx', 'cutoffRefined', 'weightRatio', 'trialWeights', 'curves', 'keptShift', 'eog'}
     if isfield(info, n{1}), f.(n{1}) = info.(n{1}); end
 end
 end
@@ -1098,6 +1112,75 @@ cand = evaluateLeaf(env, li, E, S, acc);
 cand.notes{end+1} = sprintf(['filter cutoffs fine-tuned from these data, starting from pipeline %d (%s Hz; ', ...
     'objective %.4g with its decisions, %.4g with the fine-tuned cutoffs)'], ib, mat2str(own), ...
     cinfo.objectiveBase, cinfo.objectiveBest);
+result.leaves(li) = leaf; result.labels{li} = key2;
+allc(li, 1) = cand;
+added = true;
+end
+
+function [result, allc, added] = eogCheck(result, env, root, S, ctx, acc, allc, R)
+% The recommended pipeline run again with the eye channels regressed out
+% (Steps.eogRegress) just before its first step that removes components,
+% makes epochs or rejects or weights them; its steps before that make the
+% same decisions as in the search (ICA reused, the channels the search
+% interpolated), the steps from there take their own. It joins the
+% ranking, so it is recommended when it lowers the total error (noise and
+% what blinks add).
+added = false;
+ib = R.recommended;
+if isempty(ib), return; end
+if isempty(pipecompare.eval.Injection.dedicatedEyes(root.chanlocs))
+    pipecompare.utils.log('Eye channels: none of their own (EOG), so regressing them out is not tried.');
+    return;
+end
+c = allc(ib); path = env.leaves(ib).path;
+types = cellfun(@(i) i.type, path, 'UniformOutput', false);
+if any(strcmp(types, 'eogregress')) || numel(c.steps) ~= numel(path), return; end
+q = find(ismember(types, {'icremove', 'epoch', 'reject_threshold', 'reject_jointprob', 'reject_kurtosis', 'weight_trials'}), 1);
+if isempty(q), q = numel(path) + 1; end
+d = pipecompare.plan.Catalog.get('eogregress');
+in0 = struct('slot', 'eog', 'type', 'eogregress', 'params', struct('channels', {{}}), 'key', 'eogregress', ...
+    'label', d.label, 'searched', {{}}, 'defining', '');
+path2 = [path(1:q-1) {in0} path(q:end)];
+key2 = strjoin(cellfun(@(i) i.key, path2, 'UniformOutput', false), ' > ');
+if any(strcmp(result.labels, key2)), return; end
+pipecompare.utils.log('Eye channels: pipeline %d runs again with them regressed out, to see whether that lowers the total error.', ib);
+li = numel(env.leaves) + 1;
+leaf = struct('path', {path2}, 'key', key2, 'order', env.leaves(ib).order, 'stratum', env.leaves(ib).stratum);
+env.leaves(li) = leaf;
+if isfield(env, 'spread') && numel(env.spread) >= ib, env.spread{li} = env.spread{ib}; end   % the same filters
+E = root; nIca = 0;
+try
+    for k = 1:numel(path2)
+        in = path2{k};
+        if tick(env, 0, in), return; end
+        t0 = tic;
+        if k < q && strcmp(in.type, 'ica') && nIca < numel(c.ica)
+            nIca = nIca + 1; dd = c.ica{nIca};
+            E.icaweights = dd.icaweights; E.icasphere = dd.icasphere;
+            E.icachansind = dd.icachansind; E.icawinv = []; E.icaact = [];
+            E = eeg_checkset(E);
+            coms = dd.coms; info = struct('ica', dd);
+        else
+            cx = ctx;
+            if k < q && isRepairChoice(in), cx.chosenChannels = c.steps{k}.interpolated; end   % as in the search
+            if k >= q, cx = pathContext(path2, k, cx, S, env.truth); end
+            pipecompare.utils.log('step %s', in.label);
+            [E, coms, info] = runStep(in, E, cx, env.opts.verbose);
+        end
+        if k < q && pipecompare.utils.fieldOr(c.steps{k}, 'cutoffRefined', false), info.cutoffRefined = true; end
+        for j = 1:numel(coms), E = eeg_hist(E, coms{j}); end
+        [S, unmatched] = replayCopy(in, S, info, ctx);
+        [ctx, acc] = advance(in, ctx, acc, info, coms, unmatched, toc(t0));
+    end
+catch ME
+    pipecompare.utils.log('Eye channels: pipeline %d with them regressed out failed (%s).', ib, ME.message);
+    return;
+end
+cand = evaluateLeaf(env, li, E, S, acc);
+cand.notes{end+1} = sprintf('pipeline %d with the eye channels regressed out (tried for the recommended pipeline)', ib);
+if strcmp(cand.status, 'ok') && strcmp(c.status, 'ok')
+    pipecompare.utils.log('Eye channels: pipeline %d with them regressed out is pipeline %d.', ib, li);
+end
 result.leaves(li) = leaf; result.labels{li} = key2;
 allc(li, 1) = cand;
 added = true;

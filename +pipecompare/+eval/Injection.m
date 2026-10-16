@@ -229,13 +229,20 @@ classdef Injection
             % EOG/EYE (or LO1/2, IO1/2, SO1/2); else the frontal poles
             % (Fp1, Fp2, FPz). Indices.
             labs = lower({chanlocs.labels});
+            eyes = pipecompare.eval.Injection.dedicatedEyes(chanlocs);
+            if isempty(eyes), eyes = find(ismember(labs, {'fp1', 'fp2', 'fpz'})); end
+            eyes = eyes(:)';
+        end
+
+        function eyes = dedicatedEyes(chanlocs)
+            % The eye channels of their own (not Fp1/Fp2): EOG by type, or
+            % non-EEG channels named EOG/EYE (or LO1/2, IO1/2, SO1/2). Indices.
             eyes = find(pipecompare.simple.Presets.isNonEeg(chanlocs) & ...
                 ~cellfun(@isempty, regexpi({chanlocs.labels}, ['EOG|EYE|' pipecompare.eval.Injection.EyeNames], 'once')));
             if isfield(chanlocs, 'type')
                 ty = arrayfun(@(c) upper(strtrim(char(string(c.type)))), chanlocs(:)', 'UniformOutput', false);
                 eyes = union(eyes, find(ismember(ty, {'EOG', 'HEOG', 'VEOG'})));
             end
-            if isempty(eyes), eyes = find(ismember(labs, {'fp1', 'fp2', 'fpz'})); end
             eyes = eyes(:)';
         end
 

@@ -21,7 +21,7 @@ classdef Catalog
         function names = types()
             names = {'resample','linenoise','highpass','lowpass','asr','badchannels','channels', ...
                 'restore','reref','ica','icremove','epoch','baseline', ...
-                'reject_threshold','reject_jointprob','reject_kurtosis','weight_trials','native'};
+                'eogregress','reject_threshold','reject_jointprob','reject_kurtosis','weight_trials','native'};
         end
 
         function d = get(type)
@@ -108,6 +108,13 @@ classdef Catalog
                     d.label = 'Reject epochs: kurtosis'; d.dialog = 'pop_rejkurt';
                     d.params = [P('sd', 5, {3, 4, 5}, false, 'local and global limit (SD)'), P('exclude', {}, {}, false, 'channel labels ignored by the test (e.g. EOG channels)'), ...
                         interp];
+                case 'eogregress'
+                    d.label = 'Regress the eye channels out (EOG regression)';
+                    d.params = P('channels', {}, {}, false, ['eye channel labels; {} = the eye channels of their own ', ...
+                        '(EOG by type or name; Fp1/Fp2 are not used)']);
+                    d.doc = ['each EEG channel minus its least-squares share of the eye channels, fitted on the ', ...
+                        'samples where the eyes move or blink, without the time-locked average ', ...
+                        '(pipecompare.run.Steps.eogRegress)'];
                 case 'weight_trials'
                     d.label = 'Weight epochs by their noise (none removed; ERP)';
                     d.doc = ['the average counts each epoch with weight 1 / its noise at the measured electrodes ', ...
@@ -224,6 +231,9 @@ classdef Catalog
                         end
                         st = channelsChanged(st);
                     end
+                case 'eogregress'
+                    if pipecompare.utils.fieldOr(st, 'eogDone', false), reason = 'the eye channels were already regressed out'; return; end
+                    st.eogDone = true;
                 case 'weight_trials'
                     if ~st.epoched, reason = 'weight_trials needs epoched data'; return; end
                     if pipecompare.utils.fieldOr(st, 'weighted', false), reason = 'the epochs are already weighted'; return; end

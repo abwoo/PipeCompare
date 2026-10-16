@@ -5,6 +5,15 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- Eye channels regressed out (EOG regression) when ICA cannot remove the blinks: after the
+  ranking, the recommended pipeline is run again with the dedicated eye channels regressed out of
+  the EEG (fitted on the samples dominated by the eyes, with the time-locked average taken out
+  first so the ERP stays), and it joins the ranking. On in the simple mode; *Options… > Try
+  regressing the eyes out* in the advanced panel; `'eogCheck', true` in scripts; step
+  `eogregress`. Simulation: blink error 2.37 → 0.92 µV.
+- Group: each recording's own pipeline by two-level empirical Bayes (`G.own`, `G.ownShrunk`,
+  `G.share`; `Group.writeScript(G, file, i)`), and a *6. Group* page in the PipeCompare window to
+  compare several recordings (datasets open or `.set` files) without the command line.
 - Which pipeline is recommended: each pipeline's error is first estimated together with the
   others that share its settings (factorial empirical Bayes: the effect of each step's setting
   from every pipeline with it, and what a combination adds beyond them shrunk by the

@@ -298,8 +298,13 @@ Along the way PipeCompare also takes care of the following, so you do not have t
   count each epoch by how clean it is (inverse-variance weights), compared with equal weights.
 - **How stable the recommendation is.** The result says how often the same pipeline would be
   recommended if the trials were drawn again.
-- **One pipeline for a group.** `pipecompare.Group.run` compares the pipelines on every
-  recording and recommends the one that is best for the group as a whole.
+- **One pipeline for a group, and each recording's own.** The *6. Group* page of the PipeCompare
+  window (or `pipecompare.Group.run`) compares the pipelines on every recording and recommends the
+  one that is best for the group as a whole, and also each recording's own pipeline, estimated
+  together with the others (two-level empirical Bayes).
+- **Eye channels regressed out when ICA cannot remove the blinks.** The recommended pipeline is
+  also tried with the EOG channels regressed out of the EEG, fitted on the eye activity without the
+  ERP, and kept only when its total error is lower.
 - **Statistically controlled ranking.** A paired bootstrap with simultaneous intervals identifies
   the pipelines that cannot be distinguished from the best, controlling the error rate across all
   candidates.
@@ -490,6 +495,15 @@ want them.
    cleaned, ready to average into ERPs or to compute band power; do not filter, re-reference or
    reject epochs again. **Save script…** writes the recommended pipeline (or the one selected on
    Results) as a MATLAB function that runs the same steps on your other recordings.
+6. **Group.** Compares the pipelines on several recordings at once (see
+   [One pipeline for a group of recordings](#one-pipeline-for-a-group-of-recordings)). The list
+   holds the datasets open in EEGLAB; **Add files…** adds `.set` files (they are read one at a
+   time, not kept open). Select the recordings (all are selected at first) and press **Run for
+   these recordings**: each is compared with the Simple tab's settings. The page then says which
+   pipeline to use for the whole group and, in the table, each recording's own pipeline and
+   whether it is the group's. **Save group script…** writes the group's pipeline as a MATLAB
+   function, **Save script of selected recording…** the pipeline of the recording selected in the
+   table.
 
 The window and EEGLAB share the data: the window works on the dataset that is current in EEGLAB
 and stores there what it opens or makes, so you can switch between the window, EEGLAB's menus and
@@ -792,6 +806,38 @@ it has no ICA, the first pipeline with ICA), and says so when:
 The note appears in the result window after the headline, in the Command Window, and in the
 advanced panel's notes below the results. Each pipeline's step list also gives, on its ICLabel
 line, how many components look like brain activity and how many were labelled *Other*.
+
+### Eye channels regressed out
+
+When ICA cannot separate the blinks (see above), they stay in the data. So after the ranking the
+recommended pipeline is run once more with one step added: the eye channels regressed out of the
+EEG channels (EOG regression). It goes just before the pipeline's first step that removes ICA
+components, makes epochs, or rejects or weights epochs; the steps before it make the same
+decisions as in the search (the same ICA, the same interpolated channels), the steps after it
+decide again on the new data, and the signal check replays the same regression on its copy. The
+new pipeline joins the ranking, which is made again: it is recommended only when its total error
+(noise and what blinks add, see [How a pipeline is chosen](#how-a-pipeline-is-chosen)) is lower.
+
+How the regression works:
+
+1. The eye channels are the recording's own EOG channels: type EOG (or HEOG, VEOG), or a channel
+   that is not scalp EEG whose label contains EOG or EYE (or is LO1/LO2, IO1/IO2, SO1/SO2). Fp1 and Fp2 are not used: they are EEG channels and would
+   remove brain activity with them. Without an eye channel of its own, the step is not tried, and
+   the Command Window says so.
+2. How much of each eye channel reaches each EEG channel is fitted by least squares, only on the
+   samples where an eye channel is beyond 4 robust standard deviations of its median (and 100 ms
+   on each side), where blinks and eye movements dominate. With less than 1 s of such samples, all
+   samples are used.
+3. Before fitting, the average of the epochs around each condition's events is taken out of every
+   channel. The ERP reaches the eye channels too; without this the fit would remove part of it.
+4. The fitted part is subtracted from every EEG channel; the eye channels are left as they were.
+
+Its step line says *Eye channels EOG1, EOG2 regressed out of the EEG channels (fitted on 40 s of
+eye activity)*, and its name ends with *eye channels regressed out*. In a saved script it is one
+line, `EEG = pipecompare.run.Steps.eogRegress(EEG, {...}, {...}, [...]);`. It is on in the simple
+mode; in the advanced panel tick *Options… > Try regressing the eyes out*; in scripts pass
+`'eogCheck', true` to `pipecompare.PipeCompare.optimize`. Its filter cutoffs are not fine-tuned
+afterwards. The step can also be added to a plan as `eogregress`.
 
 ### Peak-to-peak rejection
 
@@ -1222,6 +1268,8 @@ existing MATLAB or EEGLAB function (such as `pop_epoch`); PipeCompare refuses ot
 ### One pipeline for a group of recordings
 
 For a study you usually want **one** pipeline for every participant, not a different one each.
+The *6. Group* page of the PipeCompare window does this for the recordings you select (see
+[In the PipeCompare window](#in-the-pipecompare-window)); from the command line,
 `pipecompare.Group.run` takes the recordings (a list of `.set` files, or datasets in EEGLAB) and
 the same options as `pop_pipecompare`:
 
@@ -1230,6 +1278,8 @@ files = {'/path/to/sub01.set', '/path/to/sub02.set', '/path/to/sub03.set'};
 G = pipecompare.Group.run(files, 'measure', 'P3', 'events', {'target', 'standard'}, 'recipe', 'standard');
 G.table                                        % one row per pipeline; G.recommended is the row to use
 pipecompare.Group.writeScript(G, 'my_group_pipeline.m');   % then: EEG = my_group_pipeline(EEG); per recording
+G.own                                          % each recording's own pipeline
+pipecompare.Group.writeScript(G, 'sub02_pipeline.m', 2);  % the own pipeline of the 2nd recording
 ```
 
 (or `G = pipecompare.Group.run(ALLEEG, ...)` for the datasets open in EEGLAB). It works like this:
@@ -1246,6 +1296,18 @@ pipecompare.Group.writeScript(G, 'my_group_pipeline.m');   % then: EEG = my_grou
    each recording's bootstrap of its trials, combined the same way. Among those that cannot be told
    apart, the one that keeps the most trials in its worst recording is recommended, as for one
    recording.
+5. **Each recording's own pipeline** is also given (`G.own`: recording, pipeline, and whether it
+   is the group's). Picking on one recording alone is unreliable with a few dozen trials, and one
+   pipeline for all ignores real differences between recordings. So each pipeline's error on a
+   recording is estimated together with the others: a part common to the whole group (how good
+   the pipeline is on average, and how noisy the recording is), plus what is particular to this
+   recording, kept only as far as it is larger than its own bootstrap noise (two-level empirical
+   Bayes). How far the recordings differ is estimated from the data: when they hardly differ, all
+   recordings get the group's pipeline; when they differ a lot, each its own. In simulation (20
+   recordings, 12 pipelines) this was best or tied in every case, while choosing on each
+   recording alone or using one pipeline for all each failed clearly in one case. The Command
+   Window shows the own pipelines and the share of a recording's own differences that is kept
+   (`G.share`, 0 = one pipeline fits all; `G.ownShrunk` the estimated errors).
 
 The Command Window shows each recording's comparison, then the group's recommendation. `G` is also
 stored in the variable `pipecompare_group`; `G.perRecording` has each pipeline's noise on each

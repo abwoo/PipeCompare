@@ -28,6 +28,10 @@ classdef Main < handle
     %   5. Export    save the current dataset (after Use this pipeline: the
     %                cleaned data) as a .set file, and the pipeline as a
     %                script for other recordings.
+    %   6. Group     several recordings (datasets open, or files) compared
+    %                with the Simple tab's choices (pipecompare.Group.run):
+    %                one pipeline for the group, and each recording's own
+    %                pipeline helped by the others; a script for either.
     %   The data are EEGLAB's: the window works on the dataset current in
     %   EEGLAB (base EEG, ALLEEG, CURRENTSET) and stores what it opens or
     %   makes there, so EEGLAB's menus and the command line see the same
@@ -52,12 +56,14 @@ classdef Main < handle
         Results = []            % pipecompare.gui.SimpleResults on the Results page
         Result = []             % the last comparison
         ExportData; ExportNote
+        GroupList; GroupFiles = {}; GroupText; GroupTable   % 6. Group
+        Group = []              % the last pipecompare.Group.run
         Quick = '-'             % Session.quickPrint of the dataset shown
         Busy = false            % a comparison is running
     end
 
     properties (Constant)
-        PageNames = {'1. Import', '2. Settings', '3. Run', '4. Results', '5. Export'}
+        PageNames = {'1. Import', '2. Settings', '3. Run', '4. Results', '5. Export', '6. Group'}
     end
 
     methods (Static)
@@ -147,7 +153,7 @@ classdef Main < handle
             setappdata(obj.Fig, 'PipeCompareMain', obj);
             pipecompare.gui.helpMenu(obj.Fig);   % GitHub, user guide, latest version
             g = uigridlayout(obj.Fig, [1 2]); g.ColumnWidth = {170, '1x'};
-            left = uigridlayout(g, [4 1]); left.Padding = [0 0 0 0]; left.RowHeight = {30, 130, 22, '1x'};
+            left = uigridlayout(g, [4 1]); left.Padding = [0 0 0 0]; left.RowHeight = {30, 150, 22, '1x'};
             uilabel(left, 'Text', 'PipeCompare', 'FontWeight', 'bold', 'FontSize', 16);
             obj.Nav = uilistbox(left, 'Items', obj.PageNames, 'ItemsData', 1:numel(obj.PageNames), 'Value', 1, ...
                 'ValueChangedFcn', @(h, ~) obj.showPage(h.Value));
@@ -160,7 +166,7 @@ classdef Main < handle
                 obj.Pages(k) = uipanel(right, 'Title', obj.PageNames{k}, 'FontWeight', 'bold', 'Visible', k == 1);
                 obj.Pages(k).Layout.Row = 1; obj.Pages(k).Layout.Column = 1;
             end
-            obj.buildImport(); obj.buildSettings(); obj.buildRun(); obj.buildResults(); obj.buildExport();
+            obj.buildImport(); obj.buildSettings(); obj.buildRun(); obj.buildResults(); obj.buildExport(); obj.buildGroup();
             obj.Fig.AutoResizeChildren = 'off';   % the grids resize themselves; this lets SizeChangedFcn run
             obj.Fig.SizeChangedFcn = @(~, ~) obj.resized();
             obj.refreshData();
@@ -261,11 +267,164 @@ classdef Main < handle
             uilabel(s, 'Text', '');
         end
 
+        function buildGroup(obj)
+            g = uigridlayout(obj.Pages(6), [7 1]); g.RowHeight = {'fit', 140, 30, 30, 'fit', '1x', 30};
+            uilabel(g, 'WordWrap', 'on', 'Text', ['Several recordings of a study, compared with the choices of ', ...
+                '2. Settings > Simple (measure, event types, steps). Each recording runs the comparison on its own ', ...
+                'data; then PipeCompare picks one pipeline for the whole group, and for each recording its own ', ...
+                'pipeline, its estimate helped by the others (how much depends on how much the recordings really ', ...
+                'differ). Select the datasets (Ctrl/Cmd-click), or add files.']);
+            obj.GroupList = uilistbox(g, 'Items', {}, 'Multiselect', 'on');
+            b = uigridlayout(g, [1 3]); b.Padding = [0 0 0 0]; b.ColumnWidth = {200, 120, '1x'};
+            uibutton(b, 'Text', 'Run for these recordings', 'FontWeight', 'bold', 'ButtonPushedFcn', @(~, ~) obj.runGroup());
+            uibutton(b, 'Text', 'Add files...', 'ButtonPushedFcn', @(~, ~) obj.addGroupFiles());
+            uilabel(b, 'Text', '');
+            s = uigridlayout(g, [1 3]); s.Padding = [0 0 0 0]; s.ColumnWidth = {200, 260, '1x'};
+            uibutton(s, 'Text', 'Save group script...', 'Tooltip', 'The pipeline for the whole group, as a function', ...
+                'ButtonPushedFcn', @(~, ~) obj.saveGroupScript(0));
+            uibutton(s, 'Text', 'Save script of selected recording...', 'Tooltip', ...
+                'The own pipeline of the recording selected in the table', 'ButtonPushedFcn', @(~, ~) obj.saveGroupScript([]));
+            uilabel(s, 'Text', '');
+            obj.GroupText = uitextarea(g, 'Editable', 'off', 'Value', {'No group compared yet.'});
+            obj.GroupTable = uitable(g, 'ColumnName', {'recording', 'own pipeline', 'same as group'}, 'RowName', {}, ...
+                'SelectionType', 'row', 'Data', cell(0, 3));
+            uilabel(g, 'Text', '');
+        end
+
+        function showGroupList(obj)
+            % the datasets open and the files added, all selected at first
+            items = {}; data = {};
+            try
+                if evalin('base', 'exist(''ALLEEG'', ''var'')')
+                    A = evalin('base', 'ALLEEG');
+                    idx = find(arrayfun(@(e) isfield(e, 'data') && ~isempty(e.data), A));
+                    items = arrayfun(@(k) sprintf('dataset %d: %s', k, char(string(A(k).setname))), idx, 'UniformOutput', false);
+                    data = num2cell(idx);
+                end
+            catch
+            end
+            items = [items cellfun(@(f) ['file: ' f], obj.GroupFiles, 'UniformOutput', false)];
+            data = [data obj.GroupFiles];
+            was = obj.GroupList.Value;
+            obj.GroupList.Items = items; obj.GroupList.ItemsData = data;
+            keep = {};
+            if iscell(was), keep = was(cellfun(@(v) any(cellfun(@(d) isequal(d, v), data)), was)); end
+            if isempty(keep), keep = data; end
+            obj.GroupList.Value = keep;
+        end
+
+        function addGroupFiles(obj, files)
+            % .set files for the group (files: without the dialog)
+            if nargin < 2
+                [f, p] = uigetfile('*.set', 'Recordings of the group', 'MultiSelect', 'on');
+                if isequal(f, 0), return; end
+                files = fullfile(p, cellstr(f));
+            end
+            files = cellstr(files);
+            obj.GroupFiles = unique([obj.GroupFiles files(:)'], 'stable');
+            obj.showGroupList();
+            v = obj.GroupList.Value; named = v(cellfun(@ischar, v));
+            obj.GroupList.Value = [v(:)' files(~ismember(files, named))];   % the files added are selected too
+        end
+
+        function runGroup(obj)
+            % The selected recordings compared with the Simple tab's choices
+            if obj.Busy, return; end
+            o = [];
+            if ~isempty(obj.Simple) && isvalid(obj.Simple), o = obj.Simple.options(); end
+            if isempty(o)
+                uialert(obj.Fig, 'Choose what to measure first (2. Settings > Simple).', 'PipeCompare'); return;
+            end
+            sel = obj.GroupList.Value; if ~iscell(sel), sel = {sel}; end
+            if numel(sel) < 2
+                uialert(obj.Fig, 'Select at least two recordings.', 'PipeCompare'); return;
+            end
+            if all(cellfun(@isnumeric, sel))
+                A = evalin('base', 'ALLEEG'); data = A([sel{:}]);
+            elseif all(cellfun(@ischar, sel))
+                data = sel;
+            else
+                uialert(obj.Fig, 'Select either datasets or files, not both.', 'PipeCompare'); return;
+            end
+            o = rmfield(o, intersect(fieldnames(o), {'show', 'progress'}));
+            args = reshape([fieldnames(o)'; struct2cell(o)'], 1, []);
+            obj.Busy = true; obj.Nav.Enable = 'off';
+            dlg = uiprogressdlg(obj.Fig, 'Title', 'Group', 'Indeterminate', 'on', 'Message', sprintf(['Comparing the ', ...
+                'pipelines on %d recordings, one after the other (the Command Window shows each one).'], numel(sel)));
+            done = onCleanup(@() obj.groupEnded(dlg)); %#ok<NASGU>
+            try
+                G = pipecompare.Group.run(data, args{:});
+                if ~isvalid(obj), return; end
+                obj.showGroup(G);
+            catch ME
+                if isvalid(obj) && isvalid(obj.Fig), uialert(obj.Fig, ME.message, 'PipeCompare'); end
+            end
+        end
+
+        function groupEnded(obj, dlg)
+            if ~isempty(dlg) && isvalid(dlg), close(dlg); end
+            if isvalid(obj), obj.Busy = false; obj.Nav.Enable = 'on'; end
+        end
+
+        function showGroup(obj, G)
+            obj.Group = G;
+            T = G.table; v = {};
+            if isempty(G.recommended)
+                v{end+1} = G.note;
+            else
+                k = G.recommended;
+                v{end+1} = sprintf('For the whole group: pipeline %d, %s.', k, G.labels{k});
+                v{end+1} = sprintf(['It passes on all %d recordings; its noise over them is %.3g (root mean square); ', ...
+                    'at least %.0f%% of the trials are kept in every recording.'], T.passedIn(k), T.objective(k), ...
+                    100 * T.minRetention(k));
+            end
+            if ~isempty(G.leftOut), v{end+1} = sprintf('Left out (no pipeline passed on them): %s.', strjoin(G.leftOut, ', ')); end
+            t = pipecompare.Group.ownText(G); if ~isempty(t), v{end+1} = t; end
+            obj.GroupText.Value = v(:);
+            rows = cell(0, 3);
+            if isfield(G, 'own') && height(G.own) > 0
+                O = G.own; rows = cell(height(O), 3);
+                for i = 1:height(O)
+                    own = '(none passes)'; if isfinite(O.id(i)), own = sprintf('%d: %s', O.id(i), O.pipeline{i}); end
+                    rows(i, :) = {O.recording{i}, own, pipecompare.utils.ternary(O.sameAsGroup(i), 'yes', 'no')};
+                end
+            end
+            obj.GroupTable.Data = rows;
+            obj.showPage(6);
+        end
+
+        function saveGroupScript(obj, i, file)
+            % The group's pipeline (i = 0) or recording i's own (i = []:
+            % the row selected in the table) as a function file (file:
+            % without the dialog)
+            G = obj.Group;
+            if isempty(G)
+                uialert(obj.Fig, 'Compare a group first (Run for these recordings).', 'PipeCompare'); return;
+            end
+            if isempty(i)
+                i = obj.GroupTable.Selection;
+                if isempty(i), uialert(obj.Fig, 'Select a recording in the table.', 'PipeCompare'); return; end
+                i = i(1);
+            end
+            try
+                if nargin < 3
+                    [f, p] = uiputfile('*.m', 'Save the pipeline as a script', ...
+                        pipecompare.utils.ternary(i == 0, 'group_pipeline.m', sprintf('pipeline_recording%d.m', i)));
+                    if isequal(f, 0), return; end
+                    file = fullfile(p, f);
+                end
+                if i == 0, pipecompare.Group.writeScript(G, file); else, pipecompare.Group.writeScript(G, file, i); end
+            catch ME
+                uialert(obj.Fig, ME.message, 'PipeCompare');
+            end
+        end
+
         function showPage(obj, k)
             obj.refreshIfChanged();
             for i = 1:numel(obj.Pages), obj.Pages(i).Visible = i == k; end
             obj.Nav.Value = k;
             if k == 2, obj.tabChanged(); end
+            if k == 6, obj.showGroupList(); end
         end
 
         function tabChanged(obj)

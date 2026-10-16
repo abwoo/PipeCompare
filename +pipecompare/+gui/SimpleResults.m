@@ -193,6 +193,9 @@ classdef SimpleResults < handle
             if ~isempty(c) && isfield(c, 'notes') && any(contains(cellstr(c(1).notes), 'fine-tuned'))
                 t = [t ' (cutoffs fine-tuned from the data)'];
             end
+            if ~any(strcmp(skippable, 'eog')) && any(cellfun(@(e) strcmp(e.type, 'eogregress'), path))
+                t = [t ', eye channels regressed out'];   % tried after the comparison (Executor eogCheck)
+            end
         end
 
         function ids = skippable(obj)
@@ -334,6 +337,7 @@ switch type
     case 'icremove', t = 'ICLabel component removal';
     case 'epoch', t = 'epochs';
     case 'baseline', t = 'baseline removal';
+    case 'eogregress', t = 'eye channels regressed out';
     case 'weight_trials', t = 'epochs weighted by their noise';
     otherwise
         d = pipecompare.plan.Catalog.get(type); t = lower(d.label);
