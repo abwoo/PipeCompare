@@ -25,7 +25,8 @@ function [EEG, com, result] = pop_pipecompare(EEG, varargin)
 %              / of left-hand responses, and of the right (instead of
 %              'events'; one side may be left out)
 %   'recipe'   'standard' (default) | 'filters': which steps are compared
-%              (standard: all the steps below; filters: the two filters)
+%              (standard: badchannels, ica, highpass, lowpass, reject,
+%              weight; filters: the two filters)
 %   'steps'    instead of 'recipe', any of 'badchannels', 'ica',
 %              'icsme' (with 'ica': the components to remove also chosen
 %              by their effect on the noise, compared with ICLabel's
@@ -126,9 +127,8 @@ assert(nTotal > 1, 'PipeCompare:Simple', 'On these data the steps chosen (%s) gi
     strjoin(steps, ', '), nTotal, pipecompare.utils.ternary(isempty(notes), '', [': ' strjoin(notes, '; ')]));
 % the unit judged from the amplitude scale, as in the panel: rejection
 % thresholds in uV would remove nothing from data stored in V
-runOpts = struct('dataUnit', state.unitGuess, 'refineCutoffs', true, ...   % compared filter cutoffs: also a finer grid
-    'icaSeeds', 2, ...   % the deciding pipelines with ICA run again with ICA started in 2 other ways
-    'signalTemplate', 'data');   % the signal check with this recording's own waveform where it is reliable
+runOpts = pipecompare.simple.Presets.searchOptions();
+runOpts.dataUnit = state.unitGuess;
 if strcmp(state.unitGuess, 'V'), pipecompare.utils.log('The data are in volts (judged from the amplitude scale); they are compared in uV.'); end
 prog = pipecompare.gui.Progress.empty;
 if ~strcmp(opts.show, 'off')
@@ -155,7 +155,7 @@ pipecompare.utils.log('%d pipelines compared on %s in %s; %d passed the checks%s
     pipecompare.gui.Progress.timeText(toc(t0)), sum(strcmp(T.status, 'feasible')), pipecompare.utils.ternary(isempty(result.ranking.recommended), ...
     '', sprintf('; recommended: pipeline %d', result.ranking.recommended)));
 if pipecompare.eval.Rank.sameScores(result.ranking)
-    pipecompare.utils.log('All pipelines that passed have the same noise: the settings compared make no difference on these data.');
+    pipecompare.utils.log('All pipelines that passed have the same error (noise + bias): the settings compared make no difference on these data.');
 end
 n = result.ref.n; d = pipecompare.eval.Rank.defaults();
 if isempty(result.ranking.recommended) && ~opts.pool && ~pipecompare.simple.Presets.isLateral(opts.measure) && ...

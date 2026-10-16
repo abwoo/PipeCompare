@@ -224,26 +224,119 @@ Y = randn(rs, 25, 20) + [zeros(1, 9) 3 zeros(1, 10)];
 verifyEqual(tc, [a1 b1], [a0 b0], 'RelTol', 1e-10);
 end
 
+function testWeightsDoNotFollowTheScores(tc)
+% Weights from the epochs' noise (Steps.weightTrials) on slow, EEG-like
+% noise (AR(1), phi 0.95, at 250 Hz): with the part of the residual that
+% goes with the score left out, the weighted mean's SME (sandwich) matches
+% its spread over replications when every epoch has the same noise (the
+% whole-epoch residual alone made it a third too low, so weighting looked
+% better than equal weights), and with a third of the epochs 3 times
+% noisier the weights still lower the error.
+rs = RandStream('mt19937ar', 'Seed', 61);
+fs = 250; t = -0.2 + (0:249) / fs; win = t >= 0.3 - 1e-9 & t <= 0.6 + 1e-9; N = 35;
+E = struct('data', [], 'srate', fs, 'xmin', t(1), 'xmax', t(end), 'pnts', numel(t), 'trials', N, 'nbchan', 1, ...
+    'chanlocs', struct('labels', 'Pz'), 'etc', struct());
+E.event = struct('type', repmat({'11'}, 1, N), 'latency', num2cell(51 + 250 * (0:N - 1)), 'urevent', num2cell(1:N), ...
+    'epoch', num2cell(1:N));
+E.epoch = struct('event', num2cell(1:N), 'eventlatency', repmat({0}, 1, N), 'eventtype', repmat({'11'}, 1, N));
+opts = pipecompare.eval.Measure.defaults();
+o = struct('kind', 'scalar', 'polarity', 'positive', 'times', []);
+for hetero = [false true]
+    R = 1500; ew = zeros(R, 1); eq = ew; sw = ew;
+    for r = 1:R
+        X = filter(1, [1 -0.95], randn(rs, 450, N));
+        X = X(201:end, :);
+        if hetero, X(:, 1:round(N / 3)) = 3 * X(:, 1:round(N / 3)); end
+        X = X - mean(X(t < 0, :), 1);
+        E.data = reshape(X, 1, numel(t), N);
+        [~, Ew] = evalc('pipecompare.run.Steps.weightTrials(E, {''Pz''}, {{''11''}}, {{{''Pz''}, [0.3 0.6]}})');
+        w = pipecompare.eval.Measure.epochWeights(Ew);
+        sc = mean(X(win, :), 1)';
+        eq(r) = mean(sc);
+        [ew(r), sw(r)] = pipecompare.eval.Measure.estimate(o, sc, opts, 0, w(:));
+    end
+    fprintf('weights on slow noise (hetero %d): SME %.3f, true error %.3f; equal weights %.3f\n', hetero, mean(sw), std(ew), std(eq));
+    verifyEqual(tc, mean(sw), std(ew), 'RelTol', 0.12);
+    if hetero, verifyLessThan(tc, std(ew), 0.85 * std(eq)); end
+end
+end
+
+function testStandInFftfiltIsFilter(tc)
+% PipeCompare's own fftfilt (fallback/, used for long high-pass filters
+% where the Signal Processing Toolbox is missing) gives filter(b, 1, x):
+% columns and a row vector, a filter longer than the blocks it uses.
+d = fullfile(fileparts(mfilename('fullpath')), '..', 'fallback');
+addpath(d, '-begin'); c = onCleanup(@() rmpath(d)); %#ok<NASGU>
+rs = RandStream('mt19937ar', 'Seed', 81);
+b = randn(rs, 1, 3001); x = randn(rs, 20000, 3);
+y = filter(b, 1, x);
+verifyEqual(tc, fftfilt(b, x), y, 'AbsTol', 1e-9 * max(abs(y(:))));
+verifyEqual(tc, fftfilt(b, x(:, 1)'), y(:, 1)', 'AbsTol', 1e-9 * max(abs(y(:))));
+verifyEqual(tc, fftfilt(b(1:5), x(1:7, :)), filter(b(1:5), 1, x(1:7, :)), 'AbsTol', 1e-9 * max(abs(y(:))));
+end
+
 function testWhatBlinksAddToTheMean(tc)
 % Measure.eyeBias: the share of the blink trials times the difference of
 % their mean from the others' (what they add to the mean), its square
-% estimated without bias (minus its variance), 0 with no blink trial kept
-% or no other trial, and every mean (a column of weights) at once.
+% counted beyond 2 standard errors only (soft thresholding), 0 with no
+% blink trial kept or no other trial, and every mean (a column of weights)
+% at once.
 x = [1 1 1 3 3 NaN]'; b = logical([0 0 0 1 1 1])';
 [bias, sq] = pipecompare.eval.Measure.eyeBias(x, b, ones(6, 1));
 verifyEqual(tc, bias, 0.4 * 2, 'AbsTol', 1e-12);
 v = var([1 1 1 3 3]);
-verifyEqual(tc, sq, 0.8 ^ 2 - 0.4 ^ 2 * v * (1 / 2 + 1 / 3), 'AbsTol', 1e-12);
+verifyEqual(tc, sq, max(0.8 - 2 * 0.4 * sqrt(v * (1 / 2 + 1 / 3)), 0) ^ 2, 'AbsTol', 1e-12);
+x2 = [1 1 1 1 9 9 9]'; b2 = logical([0 0 0 0 1 1 1])';   % a clear difference
+[bias, sq] = pipecompare.eval.Measure.eyeBias(x2, b2, ones(7, 1));
+se = 3 / 7 * std(x2) * sqrt(1 / 3 + 1 / 4);
+verifyEqual(tc, sq, (bias - 2 * se) ^ 2, 'AbsTol', 1e-12);
+verifyGreaterThan(tc, sq, 0);
 K = [1 1 1 0 0 0; 0 0 0 1 1 0; 1 1 1 1 1 1]';
 [bias, sq] = pipecompare.eval.Measure.eyeBias(x, b, K);
 verifyEqual(tc, bias, [0 0 0.8], 'AbsTol', 1e-12);
 verifyEqual(tc, sq(1:2), [0 0]);
-% unbiased: over many samples without a real bias, the mean of sq is about 0
+% without a real bias, sq is small next to the SME^2 (1/40) even when
+% most trials have a blink
 rng(3); q = zeros(1, 2000);
 for k = 1:2000
-    [~, q(k)] = pipecompare.eval.Measure.eyeBias(randn(40, 1), rand(40, 1) < 0.3, ones(40, 1));
+    [~, q(k)] = pipecompare.eval.Measure.eyeBias(randn(40, 1), rand(40, 1) < 0.7, ones(40, 1));
 end
-verifyLessThan(tc, mean(q), 0.01);
+verifyLessThan(tc, mean(q), 0.05 / 40);
+end
+
+function testFactorialShrinkageChoosesBetter(tc)
+% 18 pipelines, high-pass (3) x low-pass (3) x weights (2; without them the
+% step is absent), true errors = main effects + interactions, estimated
+% with paired noise of 6% (correlation 0.5): the pipeline with the lowest
+% objective shrunk through the settings (Rank.factorialModel, shrink) is
+% truly better on average than the one with the lowest raw objective
+% (simulated in Python: 1.6% against 2.3% excess error). One factor alone
+% leaves nothing to borrow (no model).
+rs = RandStream('mt19937ar', 'Seed', 71);
+[h, l, w] = ndgrid(1:3, 1:3, 0:1); h = h(:); l = l(:); w = w(:);
+levels = cell(18, 1);
+for i = 1:18
+    levels{i} = {'hp', sprintf('highpass %d', h(i)); 'lp', sprintf('lowpass %d', l(i))};
+    if w(i), levels{i}(end+1, :) = {'weight', 'weight_trials'}; end
+end
+C = 0.06 ^ 2 * (0.5 * ones(18) + 0.5 * eye(18)); Lc = chol(C, 'lower');
+R = 1500; exRaw = zeros(R, 1); exSh = exRaw; s = exRaw;
+for r = 1:R
+    mh = 0.04 * randn(rs, 3, 1); ml = 0.04 * randn(rs, 3, 1); mw = 0.04 * randn(rs);
+    truth = 1 + mh(h) + ml(l) + mw * w + 0.02 * randn(rs, 18, 1);
+    pts = truth + Lc * randn(rs, 18, 1);
+    Bq = pts + Lc * randn(rs, 18, 300);
+    F = pipecompare.eval.Rank.factorialModel(levels, Bq, pts);
+    th = pipecompare.eval.Rank.shrink(F, pts);
+    [~, a] = min(pts); [~, b] = min(th);
+    exRaw(r) = truth(a) / min(truth) - 1; exSh(r) = truth(b) / min(truth) - 1; s(r) = F.s;
+end
+fprintf('factorial shrinkage: excess error %.2f%% (raw %.2f%%), mean shrinkage factor %.2f\n', 100 * mean(exSh), 100 * mean(exRaw), mean(s));
+verifyLessThan(tc, mean(exSh), 0.85 * mean(exRaw));
+verifyTrue(tc, all(s >= 0 & s <= 1));
+one = arrayfun(@(i) {'hp', sprintf('highpass %d', i)}, (1:4)', 'UniformOutput', false);
+verifyEmpty(tc, pipecompare.eval.Rank.factorialModel(one, randn(rs, 4, 100), randn(rs, 4, 1)));
+verifyEqual(tc, pipecompare.eval.Rank.shrink([], [3; 1; 2]), [3; 1; 2]);
 end
 
 function testSelectionFrequencyOfTheRecommendation(tc)

@@ -80,14 +80,24 @@ classdef SimpleResults < handle
                 kept = pipecompare.gui.PanelText.pctText(T.minRetention(k));
                 if pipecompare.eval.Rank.sameScores(R)
                     t = sprintf(['%sUse pipeline %d: %s. All pipelines that passed the checks have exactly the same ', ...
-                        'noise: on these data the settings compared make no difference.'], t, k, obj.name(k));
+                        'error: on these data the settings compared make no difference.'], t, k, obj.name(k));
                 elseif k == b.best
-                    t = sprintf('%sUse pipeline %d: %s. It has the least noise and keeps at least %s of the trials.', ...
+                    t = sprintf('%sUse pipeline %d: %s. It has the lowest error (noise + bias) and keeps at least %s of the trials.', ...
                         t, k, obj.name(k), kept);
+                elseif T.equivalent(k)
+                    why = 'it changes the known signal less';
+                    if T.minRetention(k) > T.minRetention(b.best), why = 'it removes less'; end
+                    t = sprintf(['%sUse pipeline %d: %s. Its error (noise + bias) is as low as that of the best one (pipeline %d; ', ...
+                        'the difference is negligible), and %s: it keeps at least %s of the trials.'], ...
+                        t, k, obj.name(k), b.best, why, kept);
+                elseif T.bias(b.best) > pipecompare.eval.Rank.BiasShare * T.noise(b.best)
+                    t = sprintf(['%sUse pipeline %d: %s. Pipeline %d looks a little better, but artifacts left in its trials ', ...
+                        '(blinks, eye movements or muscle) move its mean; this one is less biased. It keeps at least %s of ', ...
+                        'the trials.'], t, k, obj.name(k), b.best, kept);
                 else
-                    t = sprintf(['%sUse pipeline %d: %s. Its noise is as low as that of the best one (pipeline %d; ', ...
-                        'the difference is within chance), and it removes less: it keeps at least %s of the trials.'], ...
-                        t, k, obj.name(k), b.best, kept);
+                    t = sprintf(['%sUse pipeline %d: %s. Its error (noise + bias) is the lowest when the effect of each ', ...
+                        'setting is estimated from all the pipelines that share it; on its own, pipeline %d looks a little ', ...
+                        'better, within chance. It keeps at least %s of the trials.'], t, k, obj.name(k), b.best, kept);
                 end
                 t = sprintf('%s %d of %d pipelines passed the checks.', t, nFeas, height(T));
             end
@@ -179,6 +189,10 @@ classdef SimpleResults < handle
             skipped = setdiff(skippable, here, 'stable');   % (by index: an empty result can be 0x1)
             for q = 1:numel(skipped), parts{end+1} = noneText(skipped{q}, obj.Result.state); end %#ok<AGROW>
             if isempty(parts), t = obj.Result.labels{k}; else, t = strjoin(parts, ', '); end
+            c = obj.Result.cands([obj.Result.cands.id] == k);   % the cutoffs fine-tuned after the comparison
+            if ~isempty(c) && isfield(c, 'notes') && any(contains(cellstr(c(1).notes), 'fine-tuned'))
+                t = [t ' (cutoffs fine-tuned from the data)'];
+            end
         end
 
         function ids = skippable(obj)
@@ -233,11 +247,11 @@ classdef SimpleResults < handle
                 dlg = uiprogressdlg(obj.Fig, 'Title', 'Use this pipeline', 'Message', msg, 'Indeterminate', 'on');
                 pipecompare.PipeCompare.adopt(obj.Result, k, force);
                 close(dlg);
-                if ~isempty(obj.Host), obj.Host.adopted(k); return; end   % the window says what next
+                if ~isempty(obj.Host), obj.Host.adopted(k, obj.Result); return; end   % the window says what next
                 uialert(obj.Fig, sprintf(['Pipeline %d is now the current EEGLAB dataset. It is not saved yet: ', ...
-                    'use File > Save current dataset as. Its preprocessing is complete: average it (or compute the ', ...
-                    'band power) and measure. Filtering, re-referencing or rejecting epochs again would change ', ...
-                    'what was compared.'], k), 'Done', 'Icon', 'success');
+                    'use File > Save current dataset as. Its preprocessing is complete: %s. Filtering, ', ...
+                    're-referencing or rejecting epochs again would change what was compared.'], k, ...
+                    pipecompare.simple.Presets.nextText(obj.Result, k)), 'Done', 'Icon', 'success');
             catch ME
                 if ~isempty(dlg) && isvalid(dlg), close(dlg); end
                 uialert(obj.Fig, ME.message, 'PipeCompare');

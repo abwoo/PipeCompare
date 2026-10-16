@@ -232,10 +232,10 @@ classdef Executor
                     numel(notRun), numel(allc));
             end
             result.notRun = numel(notRun);
-            R = pipecompare.eval.Rank.run(allc, ref, opts);
+            R = pipecompare.eval.Rank.run(allc, ref, opts, levelsOf(result.leaves));
             if pipecompare.utils.fieldOr(opts, 'refineCutoffs', false) && isempty(notRun)
                 [result, allc, added] = refineCutoffs(result, env, root, S, ctx0, acc0, allc, R);
-                if added, R = pipecompare.eval.Rank.run(allc, ref, opts); end
+                if added, R = pipecompare.eval.Rank.run(allc, ref, opts, levelsOf(result.leaves)); end
             end
             result.icaSeeds = [];
             if pipecompare.utils.fieldOr(opts, 'icaSeeds', 0) > 0 && isempty(notRun)
@@ -929,6 +929,16 @@ keep = lines(~cellfun(@isempty, regexpi(lines, 'warning|error|\[PipeCompare\]', 
 for k = 1:numel(keep), fprintf('    %s\n', strtrim(keep{k})); end
 end
 
+function L = levelsOf(leaves)
+% per pipeline, its settings: one {slot, key} row per step it runs (for
+% the ranking's factorial model, Rank.factorialModel)
+L = cell(numel(leaves), 1);
+for i = 1:numel(leaves)
+    p = leaves(i).path;
+    L{i} = [cellfun(@(in) in.slot, p(:), 'UniformOutput', false), cellfun(@(in) in.key, p(:), 'UniformOutput', false)];
+end
+end
+
 function c = evaluateLeaf(env, li, E, S, acc)
 c = emptyCand();
 c.id = li; c.key = env.leaves(li).key; c.stratum = env.leaves(li).stratum;
@@ -1096,59 +1106,47 @@ end
 function out = icaSeedCheck(env, root, S, ctx, acc, allc, R, ref, opts)
 % How much the recommendation depends on where ICA starts. runica starts
 % from a fixed random state, so another start is another order of the
-% samples it sees (Steps.ica, ctx.icaSeed). The pipelines that decide the
-% recommendation (the recommended one, the best one and the next in the
-% recommendation's order, or the next best when no other is in the set
-% not distinguished from the best), those with an ICA step, run again
-% with seeds 1..opts.icaSeeds, every step taking its own decisions; with
-% each seed the ranking is made again with them (the others as they
-% are, no cross-fitting) and the recommendation compared. out: [] when
-% not checked; else seeds, ids (re-run), objective (ids x 1+seeds, the
-% first column the search's), recommended (1+seeds), same (true when
-% every seed recommends the same pipeline).
+% samples it sees (Steps.ica, ctx.icaSeed). With each seed 1..opts.icaSeeds
+% every pipeline with an ICA step runs again, every step taking its own
+% decisions, all of them under the same seed: the tree is walked as in the
+% search, so pipelines that share the steps up to ICA share one ICA per
+% seed (Standard: one ICA per seed for all its pipelines). The ranking is
+% then made again (no cross-fitting) and the recommendation compared. A
+% pipeline added by fine-tuning the cutoffs runs again too, reusing the
+% ICA of a pipeline with the same steps before it. out: [] when not
+% checked; else seeds, ids (re-run), objective (ids x 1+seeds, the first
+% column the search's), recommended (1+seeds), same (true when every seed
+% recommends the same pipeline).
 out = [];
 if ~isscalar(R.byStratum), return; end
-b = R.byStratum; T = R.table; k = b.recommended;
-rest = setdiff(b.set(:)', k, 'stable');
-if isempty(rest)
-    feas = find(strcmp(T.status, 'feasible'))'; feas(feas == k) = [];
-    [~, o] = sort(T.objective(feas)); rest = feas(o(1:min(1, end)));
-else
-    key = [-T.minRetention(rest), T.ampError(rest), T.objective(rest)];
-    [~, o] = sortrows(round(key, 10)); rest = rest(o(1));
-end
-ids = unique([k b.best rest], 'stable');
+k = R.byStratum.recommended; T = R.table;
 hasIca = @(li) any(cellfun(@(i) strcmp(i.type, 'ica'), env.leaves(li).path));
-ids = ids(arrayfun(hasIca, ids));
+nTree = numel(env.done);
+run = arrayfun(hasIca, 1:numel(env.leaves)) & ~strcmp({allc.status}, 'excluded');
+ids = find(run);
 if isempty(ids), return; end
 n = opts.icaSeeds;
-pipecompare.utils.log(['ICA check: pipeline(s) %s run again with ICA started in %d other way(s), ', ...
-    'to see whether the recommendation depends on it.'], strjoin(arrayfun(@num2str, ids, 'UniformOutput', false), ', '), n);
+pipecompare.utils.log(['ICA check: the %d pipeline(s) with ICA run again with ICA started in %d other way(s) ', ...
+    '(one ICA per seed for pipelines sharing the steps before it), to see whether the recommendation depends on it.'], ...
+    numel(ids), n);
+e2 = env; e2.checkpoint = ''; e2.done = ~run(1:nTree);
+if isfield(env.opts, 'progress') && ~isempty(env.opts.progress)
+    f0 = env.opts.progress;   % steps shown, candidates not counted again
+    e2.opts.progress = @(varargin) callProgress(f0, [{0} varargin(2:end)]);
+end
 obj = [T.objective(ids) nan(numel(ids), n)]; rec = [k nan(1, n)];
 ro = opts; ro.nSplits = 0;
 for seed = 1:n
-    c2 = allc;
-    for j = 1:numel(ids)
-        li = ids(j); path = env.leaves(li).path; E = root; S2 = S; cx0 = ctx; a = acc;
-        try
-            for q = 1:numel(path)
-                in = path{q};
-                if tick(env, 0, in), return; end
-                cx = cx0;
-                if strcmp(in.type, 'ica'), cx.icaSeed = seed; end
-                cx = pathContext(path, q, cx, S2, env.truth);
-                [E, coms, info] = runStep(in, E, cx, env.opts.verbose);
-                [S2, unmatched] = replayCopy(in, S2, info, cx0);
-                [cx0, a] = advance(in, cx0, a, info, coms, unmatched, 0);
-            end
-            c = evaluateLeaf(env, li, E, S2, a);
-        catch ME
-            pipecompare.utils.log('ICA check: pipeline %d failed with seed %d (%s); not checked.', li, seed, ME.message);
-            out = []; return;
-        end
+    c2 = allc; cx = ctx; cx.icaSeed = seed;
+    cands = pipecompare.run.Executor.runSubtree(e2, 1, root, S, cx, acc);
+    if tick(e2, 0), return; end   % stopped
+    for j = 1:numel(cands), c2(cands(j).id) = cands(j); end
+    for li = ids(ids > nTree)
+        c = rerunWithIca(e2, li, root, S, cx, acc, c2(1:nTree), allc(li));
+        if isempty(c), out = []; return; end
         c2(li) = c;
     end
-    R2 = pipecompare.eval.Rank.run(c2, ref, ro);
+    R2 = pipecompare.eval.Rank.run(c2, ref, ro, levelsOf(env.leaves));
     obj(:, seed + 1) = R2.table.objective(ids);
     if ~isempty(R2.recommended), rec(seed + 1) = R2.recommended; end
 end
@@ -1156,13 +1154,62 @@ out = struct('seeds', 1:n, 'ids', ids(:)', 'objective', obj, 'recommended', rec,
 ch = max(abs(obj(:, 2:end) ./ obj(:, 1) - 1), [], 2);
 if out.same
     pipecompare.utils.log(['ICA check: with ICA started in %d other way(s), the same pipeline (%d) is recommended; ', ...
-        'the total error of the pipelines run again changes by at most %.0f%%.'], n, k, 100 * max(ch));
+        'the total error of the pipelines run again changes by at most %.0f%%.'], n, k, 100 * max([0; ch(isfinite(ch))]));
 else
     alt = unique(rec(rec ~= k & isfinite(rec)));
     alt = strjoin(arrayfun(@(x) sprintf('pipeline %d', x), alt, 'UniformOutput', false), ', ');
     if isempty(alt), alt = 'no pipeline'; end
     pipecompare.utils.log(['ICA check: with ICA started in another way, %s would be recommended instead of %d: ', ...
         'this recommendation depends on where ICA starts.'], alt, k);
+end
+end
+
+function c = rerunWithIca(env, li, root, S, ctx, acc, done, orig)
+% A pipeline that is not in the tree (fine-tuned cutoffs) run again under
+% ctx.icaSeed. Its ICA is taken from a re-run pipeline of the tree with the
+% same steps before it (so not fitted again) when there is one; what the
+% search noted about it (cutoffs fine-tuned, shape spread) is kept from
+% orig. [] when it fails.
+c = [];
+path = env.leaves(li).path; keys = cellfun(@(i) i.key, path, 'UniformOutput', false);
+E = root; nIca = 0;
+try
+    for q = 1:numel(path)
+        in = path{q};
+        if tick(env, 0, in), return; end
+        d = [];
+        if strcmp(in.type, 'ica')
+            nIca = nIca + 1;
+            for j = 1:numel(done)
+                pj = env.leaves(j).path;
+                if numel(pj) >= q && numel(done(j).ica) >= nIca && ...
+                        isequal(cellfun(@(i) i.key, pj(1:q), 'UniformOutput', false), keys(1:q))
+                    d = done(j).ica{nIca}; break;
+                end
+            end
+        end
+        if isempty(d)
+            cx = pathContext(path, q, ctx, S, env.truth);
+            [E, coms, info] = runStep(in, E, cx, env.opts.verbose);
+        else
+            E.icaweights = d.icaweights; E.icasphere = d.icasphere;
+            E.icachansind = d.icachansind; E.icawinv = []; E.icaact = [];
+            E = eeg_checkset(E);
+            coms = d.coms; info = struct('ica', d);
+        end
+        [S, unmatched] = replayCopy(in, S, info, ctx);
+        [ctx, acc] = advance(in, ctx, acc, info, coms, unmatched, 0);
+    end
+    c = evaluateLeaf(env, li, E, S, acc);
+    for q = 1:min(numel(c.steps), numel(orig.steps))
+        if pipecompare.utils.fieldOr(orig.steps{q}, 'cutoffRefined', false), c.steps{q}.cutoffRefined = true; end
+    end
+    if isstruct(orig.signal) && isfield(orig.signal, 'shapeSpread') && isstruct(c.signal)
+        c.signal.shapeSpread = orig.signal.shapeSpread;
+    end
+catch ME
+    pipecompare.utils.log('ICA check: pipeline %d failed (%s); not checked.', li, ME.message);
+    c = [];
 end
 end
 

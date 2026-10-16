@@ -76,12 +76,15 @@ classdef Threshold
                 pick = unique([F(round(linspace(1, numel(F), pipecompare.eval.Threshold.MaxCompared - 1))) best]);
             end
             Bq = pipecompare.eval.Threshold.bootstrap(X, M, v(pick), opts, ref, C);
-            [keep, equiv] = pipecompare.eval.Rank.confidenceSet(obj(pick)', Bq, find(pick == best), ...
+            ib = find(pick == best);
+            keep = pipecompare.eval.Rank.confidenceSet(obj(pick)', Bq, ib, opts.alpha);
+            % the highest limit shown equivalent to the best, going up from it
+            [c, nEq] = pipecompare.eval.Rank.fixedSequence(obj(pick)', Bq, ib, ib+1:numel(pick), ...
                 opts.alpha, opts.equivalenceMargin);
-            chosen = max(pick(equiv));
+            chosen = pick(c);
             u = roundIn(v(chosen), nextAbove(v, chosen));
             info.uvBest = roundIn(v(best), nextAbove(v, best)); info.uvChosen = u;
-            info.compared = numel(pick); info.notDistinguished = sum(keep); info.equallyGood = sum(equiv);
+            info.compared = numel(pick); info.notDistinguished = sum(keep); info.equallyGood = nEq;
             info.objectiveBest = obj(best); info.objectiveChosen = obj(chosen);
             info.rejectedBest = sum([M{:}] > v(best)); info.rejectedChosen = sum([M{:}] > v(chosen));
             pipecompare.utils.log(['Rejection limit chosen from the data: %g uV (best %g uV; %d different limits, ', ...

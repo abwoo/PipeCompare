@@ -49,6 +49,7 @@ classdef Measure
 
     properties (Constant)
         BlinkZ = 3   % an epoch's eye activity this many robust SDs above the others' is a blink
+        BiasZ = 2    % what blinks add counts only beyond this many of its standard errors
     end
 
     methods (Static)
@@ -179,11 +180,17 @@ classdef Measure
             % mean is sum(K .* x) / sum(K); with blink share p (of the
             % weight) and blink and other trials' means mB and mN, it is mN
             % + p (mB - mN): bias = p (mB - mN), what the blinks add. The
-            % estimate is noisy, so its square has its variance taken off
-            % (a bias the data do not show counts about 0): sq =
-            % max(bias^2 - its variance, 0), the variance p^2 s^2
-            % (1/nB + 1/nN), s^2 the scores' variance. 0 when no kept trial
-            % (or every kept trial) has a blink: nothing to compare. 1 x L.
+            % estimate is noisy (its standard error se = p s sqrt(1/nB +
+            % 1/nN), s the scores' SD, often larger than the SME itself when
+            % most trials have a blink), so what counts is only the part
+            % beyond what chance makes: sq = max(|bias| - BiasZ se, 0)^2
+            % (soft thresholding). Taking only the variance off (bias^2 -
+            % se^2, kept at 0 or more) left a bias where there is none: in
+            % simulation with 70% blink trials and no real effect it added a
+            % third to the total error on average and pushed the choices
+            % towards rejecting blink trials; with soft thresholding about
+            % 1%. 0 when no kept trial (or every kept trial) has a blink:
+            % nothing to compare. 1 x L.
             ok = ~isnan(x); x(~ok) = 0; b = double(b(:) & ok(:)); o = double(ok(:)) - b;
             K = double(K) .* double(ok(:));
             nB = b' * K; nN = o' * K; n = nB + nN;
@@ -193,7 +200,8 @@ classdef Measure
             v = max(s2 ./ n - mu .^ 2, 0) .* n ./ max(n - 1, eps);
             p = nB ./ n;
             bias = p .* (sB ./ nB - sN ./ nN);
-            sq = max(bias .^ 2 - p .^ 2 .* v .* (1 ./ nB + 1 ./ nN), 0);
+            se = p .* sqrt(v .* (1 ./ nB + 1 ./ nN));
+            sq = max(abs(bias) - pipecompare.eval.Measure.BiasZ * se, 0) .^ 2;
             none = ~(nB > 0 & nN > 0);
             bias(none) = 0; sq(none) = 0;
         end

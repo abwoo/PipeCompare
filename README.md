@@ -96,8 +96,11 @@ PipeCompare makes this choice from the data, in these steps:
    It is corrected for how much each pipeline shrinks the signal, so a pipeline cannot look good
    just by making everything smaller. A bootstrap test then finds the pipelines that cannot be
    told apart from the best.
-7. **It recommends one pipeline**, among those as good as the best the one that keeps the most
-   trials and changes the signal least, and explains why. You can adopt it as a new EEGLAB dataset,
+7. **It recommends one pipeline** and explains why. Each pipeline's error is first estimated
+   together with the others that share its settings (how much a 0.5 Hz high-pass helps is seen in
+   every pipeline with it), which picks the truly better pipeline more often than its own error
+   alone. Among pipelines the data show to be equally good, the one that keeps the most trials and
+   changes the signal least is used. You can adopt it as a new EEGLAB dataset,
    already epoched and cleaned and ready to average, or save it as a MATLAB script to process your
    other recordings the same way.
 
@@ -203,9 +206,10 @@ makes nine times as many pipelines. See
 [Repairing epochs with a few bad channels](#repairing-epochs-with-a-few-bad-channels).
 An option of ICA can also be ticked, not part of *Standard*:
 **choosing the components by their effect on the noise**. Every pipeline is then also run with
-the components to remove chosen not by what ICLabel says they look like, but by how much removing
-each one lowers the SME, one at a time; ICLabel is only used to protect the components it takes
-for brain activity. Both ways are compared, which doubles the number of pipelines. See
+the components to remove chosen not by what ICLabel says they look like, but by how much noise
+each one adds compared with how much of the signal it carries; ICLabel is only used to protect the
+components it takes for brain activity, and components that follow the stimulus are kept unless
+they follow an eye channel. Both ways are compared, which doubles the number of pipelines. See
 [ICA components chosen by their effect on the noise](#ica-components-chosen-by-their-effect-on-the-noise).
 
 That makes 4 × 3 × 2 = 24 pipelines for an ERP, each with its own best ICLabel threshold and rejection limit. The *Filters only* recipe compares only
@@ -603,8 +607,11 @@ The recommended pipeline is marked with `*`, followed by the best of the others.
 | settings | the settings that differ between the pipelines |
 
 The line under the table names the steps that every pipeline shares. When several pipelines cannot
-be told apart from the best, PipeCompare recommends the one that keeps the most trials, so that
-data are not cleaned more than they need to be. The result then says whether the recommended
+be told apart from the best, PipeCompare recommends the one with the lowest error when each
+setting's effect is estimated from all the pipelines that share it (see *Recommendation* under
+[How a pipeline is chosen](#how-a-pipeline-is-chosen)); when some are shown to be equally good (within
+5 %), the one of those that keeps the most trials, so that data are not cleaned more than they
+need to be. The result then says whether the recommended
 pipeline's noise is within 5 % of the best one's (a negligible difference) or whether the data are
 too few to tell, with how much noisier it could be. It also says how the best pipeline does on
 trials that were not used to choose it: either *its advantage is not luck*, or its noise there is
@@ -993,7 +1000,9 @@ and drops none:
 
 1. For each epoch, its **noise** is measured at the electrodes you measure: the epoch minus the
    average of the *other* epochs of its condition (so an epoch cannot make itself look clean),
-   squared and averaged over those electrodes and all samples of the epoch.
+   squared and averaged over those electrodes and all samples of the epoch, leaving out the
+   part of it that goes with the measured score (otherwise an epoch would count less for having a
+   score far from the others', and the weighted average would look more precise than it is).
 2. Its **weight** is 1 / noise, scaled so that the weights of a condition average 1. If epochs
    differ only in how much noise they have, these weights give the average with the smallest
    possible error (inverse-variance weighting). Plain averaging and rejection are both special
@@ -1359,10 +1368,18 @@ and constraints and ranking options in `help pipecompare.eval.Rank`.
    much better the best looks than it is on those trials. The pipelines' own decisions (bad
    channels, ICA, rejected epochs) were made on all trials; only the choice between pipelines is
    held out.
-6. **Recommendation.** Within the set of step 3, PipeCompare recommends the least aggressive
-   pipeline: the one with the highest trial retention, then the least signal distortion. A
-   pipeline whose bias is more than half its noise is recommended only when no pipeline with less
-   bias is in that set: keeping more trials is no reason to keep the blinks they carry.
+6. **Recommendation.** The pipelines are combinations of settings (high-pass × low-pass ×
+   weights ...). Each setting's effect is estimated from every pipeline that has it, and what
+   a combination adds beyond the effects of its settings is kept only as far as the data show it
+   is more than noise (the rest is shrunk away: an empirical-Bayes estimate, with the noise from
+   the bootstrap of step 3). Within the set of step 3, PipeCompare recommends the pipeline with
+   the lowest of these estimates. With 30–40 trials almost every pipeline is in that set, and the
+   lowest error of one pipeline alone is mostly chance: in simulation the estimate through the
+   settings picked a pipeline with up to 60 % less excess error. Pipelines shown *equivalent* to the
+   best (within 5 %) are equally good, and of those the least aggressive is used when it keeps
+   more trials: the highest retention, then the least signal distortion. A pipeline whose bias is
+   more than half its noise is recommended only when no pipeline with less bias is in that set:
+   keeping more trials is no reason to keep the blinks they carry.
 7. **Stability.** In each bootstrap resample of step 3, steps 3 and 6 are done again on the
    resampled values (with the same critical value), and PipeCompare counts how often each
    pipeline would be recommended (the bootstrap selection frequency; Efron, 2014). The table has
@@ -1370,17 +1387,16 @@ and constraints and ranking options in `help pipecompare.eval.Rank`.
    data do not single that pipeline out.
 8. **ICA's random start.** ICA (runica) starts from a fixed random state, so the same data
    always give the same components, but another start would give somewhat different ones, and
-   with them other components removed. The pipelines that decide the recommendation (the
-   recommended one, the best one, and the next one the rule of step 6 would pick, or the next
-   best when no other is in the set of step 3), those that have ICA, are run again twice, with
+   with them other components removed. Every pipeline that has ICA is run again twice, with
    ICA seeing the samples in a different random order (seeds 1 and 2); every step after it
-   decides again on its own. With each seed the ranking is made again (those pipelines with
-   their new values, the others as they were) and the recommendation compared. The Command
+   decides again on its own. All pipelines use the same new decomposition, so pipelines that
+   share the steps before ICA fit only one ICA per seed (*Standard*: two more ICAs in all).
+   With each seed the ranking is made again and the recommendation compared. The Command
    Window shows how much their total error changed. On in the simple mode; in the advanced panel
    tick *Options… > Check ICA's random start*; in scripts pass `'icaSeeds', 2` to
    `pipecompare.PipeCompare.optimize`. The result is in `pipecompare_result.icaSeeds` (`ids`,
-   `objective` with the search's value first, `recommended`, `same`). It costs up to six more
-   pipeline runs.
+   `objective` with the search's value first, `recommended`, `same`). It costs one more ICA per
+   seed for each different set of steps before ICA, plus the steps after it.
 
 The ICLabel threshold and the epoch-rejection limit of the *Standard* recipe (and, with that option,
 the ICA components chosen by their effect on the noise) are chosen inside each pipeline, before

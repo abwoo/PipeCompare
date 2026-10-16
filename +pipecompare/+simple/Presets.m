@@ -150,6 +150,15 @@ classdef Presets
             end
         end
 
+        function o = searchOptions()
+            % The search options of the simple mode, also the advanced
+            % panel's defaults: the compared filter cutoffs also on a finer
+            % grid, the deciding pipelines with ICA run again with ICA
+            % started in 2 other ways, and the signal check with this
+            % recording's own waveform where it is reliable.
+            o = struct('refineCutoffs', true, 'icaSeeds', 2, 'signalTemplate', 'data');
+        end
+
         function steps = recipeSteps(name)
             % The steps of a recipe, or the steps given (validated, in the
             % order they run).
@@ -185,7 +194,7 @@ classdef Presets
             % to know about it (e.g. a filter the data already have).
             why = struct('badchannels', '', 'ica', '', 'icsme', '', 'highpass', '', 'lowpass', '', 'reject', '', 'peaktopeak', '', 'epochinterp', '', 'weight', '');
             info = why;
-            info.icsme = 'removes the components that lower the noise most, never ones ICLabel takes for brain activity';
+            info.icsme = 'removes the components that add the most noise for the least signal, never ones ICLabel takes for brain activity or that follow the stimulus';
             info.weight = 'no epoch removed: the noisier an epoch, the less it counts in the average';
             info.peaktopeak = sprintf('not fooled by slow drifts (with repair: limits %s uV compared)', ...
                 strjoin(cellfun(@num2str, pipecompare.simple.Presets.PeakToPeakUv, 'UniformOutput', false), ', '));
@@ -324,10 +333,12 @@ classdef Presets
         function tf = isNonEeg(chanlocs)
             % non-EEG channels (EOG, ECG, EMG, ...), by type or, when the
             % type is not set, by name (VEOG, HEOG, ECG1, EYEL; with the
-            % POL prefix of some EDF exports: POL EYEL); and ear/mastoid
-            % reference sites (isRefSite)
+            % POL prefix of some EDF exports: POL EYEL; BioSemi's external
+            % EXG1-8; the eye electrodes LO1/2, IO1/2, SO1/2 of ERPLAB's
+            % examples); and ear/mastoid reference sites (isRefSite)
             labels = {chanlocs.labels};
-            tf = ~cellfun(@isempty, regexpi(labels, '^(POL\s+)?([VH]?EOG|ECG|EKG|EMG|EYE)', 'once'));
+            tf = ~cellfun(@isempty, regexpi(labels, ['^(POL\s+)?([VH]?EOG|ECG|EKG|EMG|EYE)|^EXG\d+$|', ...
+                pipecompare.eval.Injection.EyeNames], 'once'));
             if isfield(chanlocs, 'type')
                 ty = arrayfun(@(c) upper(strtrim(char(string(c.type)))), chanlocs(:)', 'UniformOutput', false);
                 tf = tf | ismember(ty, {'EOG', 'HEOG', 'VEOG', 'ECG', 'EKG', 'EMG', 'MISC', 'TRIG', 'STIM'});
@@ -508,8 +519,9 @@ classdef Presets
                     case 'icremove'
                         th = p.threshold; how = '';
                         if strcmp(th, 'sme')
-                            t = sprintf(['ICA components chosen by their effect on the noise: %s of %s removed (one at a ', ...
-                                'time, the one that lowers the noise most; never one ICLabel takes for brain activity)'], ...
+                            t = sprintf(['ICA components chosen by their effect on the noise: %s of %s removed (taken in the ', ...
+                                'order of how much noise each adds over how much signal it carries; never one ICLabel ', ...
+                                'takes for brain activity)'], ...
                                 numText(f.icsRemoved), numText(f.icsTotal));
                             kp = pipecompare.utils.fieldOr(f, 'icsProtected', NaN);
                             if isfinite(kp) && kp > 0
@@ -589,6 +601,12 @@ classdef Presets
             if k ~= b.best && isfinite(T.diffHiKept(k)) && T.objective(b.best) > 0
                 if T.equivalent(k)
                     t = sprintf('Its error is within %.0f%% of the best one''s, a negligible difference.', margin);
+                elseif ~isempty(pipecompare.utils.fieldOr(b, 'factorial', [])) && ...
+                        ~(T.bias(b.best) > pipecompare.eval.Rank.BiasShare * T.noise(b.best))
+                    t = sprintf(['With this many trials the data do not tell it and the best-looking one apart (its error ', ...
+                        'could be up to %.0f%% larger, or smaller). It is the one with the lowest error when the effect of ', ...
+                        'each setting is estimated from all the pipelines that share it, which is more reliable ', ...
+                        'than the error of one pipeline alone.'], 100 * T.diffHiKept(k) / T.objective(b.best));
                 else
                     t = sprintf(['With this many trials its error could still be up to %.0f%% larger than the best one''s; ', ...
                         'more trials would tell them apart.'], 100 * T.diffHiKept(k) / T.objective(b.best));
@@ -886,6 +904,16 @@ classdef Presets
                     'are artifacts, nothing needs to change.'], c.id, s.component, s.condition, s.kept, ...
                     result.ref.units{1}, s.nKept, s.all, result.ref.units{1}, s.n);
                 return;
+            end
+        end
+
+        function t = nextText(result, k)
+            % What to do with pipeline k once it is the current dataset.
+            t = 'average it (or compute the band power) and measure';
+            if any(cellfun(@(in) strcmp(in.type, 'weight_trials'), result.leaves(k).path))
+                t = ['its epochs are weighted by their noise: the weighted average of each condition, the ERP ', ...
+                    'it was scored on, is in EEG.etc.pipecompare.weightedERP (EEGLAB''s and ERPLAB''s own ', ...
+                    'averages count every epoch equally); measure that'];
             end
         end
 

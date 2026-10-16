@@ -73,8 +73,10 @@ amplitude over the ROI channels and the window after baseline correction.
    - Candidates that differ in the reference are ranked in separate strata, never against each other.
      With several strata there is no overall recommendation: each stratum has its own (marked `*`),
      and you choose the one that fits your analysis.
-   - The recommendation is the least aggressive candidate among those not distinguished from the
-     best: most trials kept, then least distortion.
+   - The recommendation is the candidate with the lowest objective shrunk through the pipelines'
+     settings (section 3, factorial empirical Bayes) among those not distinguished from the best;
+     among those shown equivalent to the best, the least aggressive (most trials kept, then least
+     distortion).
 
 ## 1. Data quality: the standardized measurement error
 
@@ -244,11 +246,41 @@ In simulation (`test_statistics`), with 24 candidates of equal
 true noise and 60 trials, the apparent best objective was below the true SME by more than 5 %,
 while the cross-fitted value was within 5 % of it. [`pipecompare.eval.Rank.crossfit`]
 
+**Factorial shrinkage (which one to recommend).** With 30–40 trials per condition nearly every
+pipeline is in the kept set (simulation, 18 pipelines with true differences up to 10 %: median 18
+of 18), and the lowest objective among them is mostly chance. The pipelines are not unrelated,
+though: they are combinations of settings, one per step (high-pass × low-pass × weights in
+*Standard*). With each step a factor and its settings the levels (*absent* when a pipeline skips
+the step), the design *D* has an intercept and one column per level but the first of each factor,
+the main effects. With *H* = *D D*⁺ and *R* = *I* − *H*, the objectives split into *H*θ̂, the main
+effects, which every pipeline sharing a setting estimates together, and *r* = *R*θ̂, the
+interactions plus noise. If the interactions are independent with variance τ² and Σ is the
+covariance of θ̂ (from the paired bootstrap of this section), E|*r*|² = τ² tr *R* + tr(*R*Σ), and *r*
+is shrunk by the positive-part James–Stein factor
+
+  *s* = max(0, 1 − (*df* − 2)/*df* · tr(*R*Σ)/|*r*|²),  *df* = tr *R*,
+
+(Efron & Morris, 1973): θ̃ = *H*θ̂ + *s r*, empirical Bayes. An interaction the data show (|*r*|² well
+above what the noise gives) is kept; the rest is taken for noise. The model needs *df* ≥ 3 (one
+factor alone leaves nothing to borrow) and leaves out a pipeline whose cutoffs were fine-tuned
+afterwards (section 9e; its settings are its own). The recommendation is, among the candidates
+not distinguished from the best (unbiased first, section 15), the one with the lowest θ̃, unless
+candidates shown equivalent to the best keep more trials: then the least aggressive of those
+(highest minimum retention, then smallest amplitude error to 0.5 %). Keeping more trials decides
+only between pipelines the data show to be equally good; among those merely not told apart it
+cost 5–11 % of true error in simulation. The cross-fitted check above chooses on each half with
+the same shrinkage. In simulation (`test_statistics/testFactorialShrinkageChoosesBetter`; Python
+in the review notes: 18 pipelines, main effects of about 4 %, noise 3–10 %, correlated as paired
+estimates are) the pipeline with the lowest θ̃ had up to 60 % less excess error over the truly best
+than the one with the lowest θ̂, and never more. The table has θ̃ as `shrunk`, the model (*s*, *df*,
+the number of factors) is in `byStratum.factorial`. [`pipecompare.eval.Rank.factorialModel`]
+
 **Selection frequency (stability of the recommendation).** The recommendation is a function of the
 trials. In each bootstrap draw *b* of the same paired resamples, the choice is made again on the
 replicates θ*ₖᵇ: the candidates within *c* of the lowest replicate (the kept set of that draw, with
-the critical value *c* of the full sample), then the recommendation rule of the ranking (highest
-minimum retention, smallest amplitude error, lowest objective). The share of draws in which
+the critical value *c* of the full sample), then the recommendation rule of the ranking (the
+draw's objectives shrunk with the same factorial model, below; which candidates are equivalent to
+the best is that of the full sample). The share of draws in which
 candidate *k* is recommended is its selection frequency *f*ₖ (`chosenShare`; Σₖ *f*ₖ = 1), the
 bootstrap selection frequency used for model selection (Efron, 2014). *f* of the recommended
 pipeline is reported (`byStratum.stability`); below 0.7 the result names the next most often
@@ -260,14 +292,17 @@ the one recommended on the sample was recommended in about half of them. [`pipec
 is reproducible but is one of many local optima; which one depends on the order in which runica
 draws the samples. Seed *s* > 0 gives runica the samples of the fitting copy in the order of a
 Mersenne-Twister permutation with seed *s* (the objective of infomax does not depend on the order,
-only its path does); the weights are applied to the data as before. The pipelines that decide the
-recommendation, *D* = {recommended, best, runner-up} (runner-up: the next by the recommendation
-rule within the kept set, or the next lowest objective when the kept set has one member), those
-with an ICA step, are run again from the starting data with seeds 1 … *S* (`icaSeeds`, 2 in the
-simple mode), every later step deciding again (components, thresholds, rejected epochs) with its
-own signal check. For each seed the ranking (steps 1–5, without cross-fitting) is made again with
-the candidates of *D* replaced, and the recommendation is compared with the search's
-(`icaSeeds.same`). This is a sensitivity check, not part of the ranking: the recommendation and
+only its path does); the weights are applied to the data as before. With each seed 1 … *S*
+(`icaSeeds`, 2 in the simple mode) every pipeline with an ICA step is run again from the starting
+data, every later step deciding again (components, thresholds, rejected epochs) with its own
+signal check. All of them run under the same seed, walking the tree as the search does, so
+pipelines sharing the steps before ICA share one decomposition per seed (*Standard*: one ICA per
+seed in all); a pipeline added by fine-tuning the cutoffs reuses the decomposition of a pipeline
+with the same steps before it. For each seed the ranking (steps 1–5, without cross-fitting) is
+made again with every pipeline under that seed, and the recommendation is compared with the
+search's (`icaSeeds.same`). Comparing pipelines that all saw the same decomposition is the
+comparison the search makes; re-running only a few of them against the others' seed-0 values
+mixed two decompositions in one ranking. This is a sensitivity check, not part of the ranking: the recommendation and
 the adopted pipeline remain the search's (seed 0). [`pipecompare.run.Executor`, icaSeedCheck]
 
 ## 4. Signal preservation: matched-decision injection
@@ -557,9 +592,17 @@ pipelines (section 3): a paired bootstrap over trials (the same resampled trials
 moving blocks for segments of one recording) with the simultaneous max statistic over all pairs
 gives the limits not shown worse than another. At most 60 limits enter the bootstrap: the
 feasible ones spread evenly by rank over the range, the minimizer included. Among those shown
-*equivalent* to the best (section 3: θ̂ᵢ − θ̂_b + *c*_K ≤ δ·θ̂_b, δ = `equivalenceMargin`), the highest
-is used (the least aggressive), so an epoch is kept unless keeping it makes the measure measurably
-less precise. Not distinguished alone is not enough: the lenient limits keep the most variable
+*equivalent* to the best, the highest is used (the least aggressive), so an epoch is kept unless
+keeping it makes the measure measurably less precise. Equivalence is tested in a fixed sequence
+(Maurer, Hothorn & Lehmacher, 1995; Westfall & Krishen, 2001): from the best limit upwards, each
+limit against the best alone, equivalent when θ̂ᵢ − θ̂_b plus the (1 − α) bootstrap quantile of
+its deviations is at most δ·θ̂_b (δ = `equivalenceMargin`); the first limit that fails ends the
+sequence. Each test is made only when all before it passed, so the family-wise error stays α
+without a correction for their number. An earlier version bounded every difference with the
+critical value simultaneous over all pairs of the limits kept (*c*_K); the pairs of limits far
+apart set it, and no limit but the best was ever equivalent (simulation: the best itself in every
+run). The same sequence chooses the ICLabel threshold or components (towards fewer components,
+section 9d/9g) and the bad channels interpolated (towards more channels, section 5). Not distinguished alone is not enough: the lenient limits keep the most variable
 epochs, so their bootstrap differences are the widest and set the critical value *c*; the set not
 shown worse then reaches limits that reject almost nothing even when rejecting clearly helps (in
 simulation with 15% large-artifact trials and 100 trials per condition, the true SME of the limit
@@ -680,8 +723,19 @@ advanced panel (*Options… > Fine-tune filter cutoffs*) and `'refineCutoffs', t
 
 **Weights.** For epoch *i* of a condition with *n* epochs, let *r*ᵢ = *x*ᵢ − (Σ_{j≠i} *x*ⱼ)/(*n* − 1) be the
 epoch minus the leave-one-out mean of the others, at the measured electrodes (all of them, over
-all samples of the epoch). Its noise is *v*ᵢ = mean(*r*ᵢ²); the leave-one-out mean keeps the epoch
-from lowering its own noise. With *v*ᵢ floored at a tenth of the condition's median, the weight is
+all samples of the epoch). The part of *r* that goes with the scores is taken out first: with
+*k*ⱼ the kernel of score *j* (the mean over its electrodes and window) and *u*ⱼ = (*r*ᵢ · *k*ⱼ)ᵢ the
+epochs' score residuals (an *n*-vector each, *U* = [*u*₁ …]), *r* ← (*I* − *U U*⁺) *r* in each condition,
+which is *r* − Σ*k* (*k*ᵀΣ*k*)⁻¹ *k*ᵀ*r* with Σ the residuals' covariance over the samples. EEG noise is
+slow, so without this an epoch whose score happens to lie far from the others' also has a large
+residual over the epoch and would be counted less *for its score*: the weights then depend on the
+scores, and the sandwich SME below, which takes the weights as given, came out a third too low
+(simulation, AR(1) noise φ = 0.95 at 250 Hz, every epoch with the same noise: reported/true 0.67;
+the weighted mean looked 30 % better than equal weights while it was 5 % worse). With the
+projection, what is left is uncorrelated with the scores (independent for Gaussian noise of any
+size per epoch) and still follows each epoch's noise level: reported/true 1.04, and with a third of
+the epochs 3 times noisier, 0.95 and an error 0.67 of equal weights. Its noise is *v*ᵢ = mean(*r*ᵢ²);
+the leave-one-out mean keeps the epoch from lowering its own noise. With *v*ᵢ floored at a tenth of the condition's median, the weight is
 *w*ᵢ = (1/*v*ᵢ) / mean(1/*v*). If the noise of each epoch is a common process scaled by a factor σᵢ
 (*e*ᵢ = σᵢ *u*ᵢ), its score has variance ∝ σᵢ² ∝ *v*ᵢ, and the weighted mean Σ *w*ᵢ *s*ᵢ / Σ *w*ᵢ with *w*ᵢ ∝ 1/σᵢ²
 has the smallest variance among weighted means (Gauss–Markov; for ERPs, weighted averaging goes
@@ -892,9 +946,15 @@ weight and *m*_B, *m*_N the weighted mean scores of the blink and other trials,
   ȳ = *m*_N + *p* (*m*_B − *m*_N),  *e* = *p* (*m*_B − *m*_N):
 
 what the blink trials add to the mean (a pipeline that removed the eye activity, by ICA or by
-rejecting those trials, has *e* ≈ 0). *e* is itself an estimate; its square is used with its
-variance taken off, *e*² − *p*² *s*² (1/*n*_B + 1/*n*_N), floored at 0 (*s*² the scores' variance), so a
-bias the data do not show counts about 0 (`test_statistics/testWhatBlinksAddToTheMean`). In the
+rejecting those trials, has *e* ≈ 0). *e* is itself an estimate, with standard error
+*se* = *p* *s* √(1/*n*_B + 1/*n*_N) (*s* the scores' SD); with most trials blinking it is often larger than
+the SME itself. Only the part beyond what chance makes counts: (|*e*| − 2 *se*)₊², soft thresholding
+(`test_statistics/testWhatBlinksAddToTheMean`). Taking only the variance off, *e*² − *se*², floored at
+0, counts a bias where there is none, since its positive part has a positive mean: in simulation
+with 35 trials, no real effect and 70 % blink trials it added a third to the total error on
+average (twice as much in one run in ten) and pulled the rejection limit towards rejecting blink
+trials; soft thresholding adds about 1 %. A real bias is underestimated by up to 2 *se*, the price
+of not acting on noise. In the
 bootstrap (section 3) *e* is recomputed in every resample. A difference of the blink trials'
 mean that is real brain activity (a larger P3 in the trials with a blink) is counted as bias too;
 using the blink's size only to select the trials, not as a regressor, keeps frontal brain activity

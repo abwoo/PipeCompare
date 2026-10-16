@@ -39,9 +39,9 @@ classdef Steps
                         coms{end+1} = sprintf('EEG.srate = %g; EEG = eeg_checkset(EEG); %% PipeCompare: exact rate after resampling', p.fs);
                     end
                 case 'highpass'
-                    fa = fftArgs(EEG, p.cutoff);
+                    [fa, fb] = fftArgs(EEG, p.cutoff);   % fb: the stand-in fftfilt while it runs
                     [EEG, com] = pop_eegfiltnew(EEG, 'locutoff', p.cutoff, 'plotfreqz', 0, fa{:});
-                    coms = {com};
+                    coms = {plainCommand(com, fb)};
                 case 'lowpass'
                     [EEG, com] = pop_eegfiltnew(EEG, 'hicutoff', p.cutoff, 'plotfreqz', 0);
                     coms = {com};
@@ -129,11 +129,14 @@ classdef Steps
                     assert(strcmp(c.analysis, 'erp'), 'PipeCompare:Weights', ...
                         'Weighting epochs by their noise is for ERPs (a weighted mean of band power would favour the epochs with less power).');
                     roi = c.allRoi(); groups = {c.conditions.events};
-                    [EEG, info] = pipecompare.run.Steps.weightTrials(EEG, roi, groups);
-                    coms = {sprintf(['EEG = pipecompare.run.Steps.weightTrials(EEG, %s, %s); %% PipeCompare: epochs ', ...
+                    scores = arrayfun(@(m) {cellstr(m.roi), m.window}, c.components, 'UniformOutput', false);
+                    [EEG, info] = pipecompare.run.Steps.weightTrials(EEG, roi, groups, scores);
+                    coms = {sprintf(['EEG = pipecompare.run.Steps.weightTrials(EEG, %s, %s, %s); %% PipeCompare: epochs ', ...
                         'weighted by their noise (EEG.etc.pipecompare.trialWeights; weighted average: ', ...
                         'pipecompare.eval.Measure.epochWeights)'], strCells(roi), ...
-                        ['{' strjoin(cellfun(@strCells, groups, 'UniformOutput', false), ', ') '}'])};
+                        ['{' strjoin(cellfun(@strCells, groups, 'UniformOutput', false), ', ') '}'], ...
+                        ['{' strjoin(cellfun(@(q) sprintf('{%s, [%.17g %.17g]}', strCells(q{1}), q{2}), scores, ...
+                        'UniformOutput', false), ', ') '}'])};
                 case 'native'
                     [EEG, coms, info] = pipecompare.run.Steps.native(EEG, p.command);
                 otherwise
@@ -185,6 +188,8 @@ classdef Steps
                         EEG = pipecompare.run.Steps.run(inst, EEG, ctx);
                         matched = all(cellfun(@isFixedTransform, pipecompare.run.Native.statements(inst.params.command)));
                     end
+                case {'highpass', 'lowpass', 'linenoise'}
+                    EEG = lowRankRun(inst, EEG, ctx);
                 case 'asr'
                     if isfield(info, 'asr') && ~isempty(info.asr)
                         % the windows and reconstructions ASR chose on the real data
@@ -485,9 +490,9 @@ classdef Steps
                 % weights are applied to the data as they are (ERP signal kept).
                 pre = {}; what = {};
                 if fitHp
-                    fa = fftArgs(EEG, p.fitHighpass);
+                    [fa, fb] = fftArgs(EEG, p.fitHighpass); %#ok<ASGLU>
                     [tmp, ~] = pop_eegfiltnew(EEG, 'locutoff', p.fitHighpass, 'plotfreqz', 0, fa{:});
-                    fftTxt = ''; if ~isempty(fa), fftTxt = ', ''usefftfilt'', 1'; end
+                    fftTxt = ''; if ~isempty(fa) && isempty(fb), fftTxt = ', ''usefftfilt'', 1'; end
                     pre{end+1} = sprintf('EEGica = pop_eegfiltnew(EEG, ''locutoff'', %g, ''plotfreqz'', 0%s);', p.fitHighpass, fftTxt);
                     what{end+1} = sprintf('a %g Hz high-passed copy', p.fitHighpass);
                 else
@@ -742,13 +747,24 @@ classdef Steps
             info.rejected = numel(idx); info.rejIdx = idx; info.epochsBefore = n0;
         end
 
-        function [EEG, info] = weightTrials(EEG, roi, groups)
+        function [EEG, info] = weightTrials(EEG, roi, groups, scores)
             % Weights for averaging the epochs, from their noise at the
             % electrodes roi (labels); groups: the event types of each
             % condition. An epoch's noise is the mean square, over those
             % electrodes and all its samples, of the epoch minus the mean of
             % the other epochs of its condition (leave-one-out, so the epoch
-            % does not lower its own noise). Its weight is 1 / noise, scaled
+            % does not lower its own noise). scores (optional): the measured
+            % scores, a cell of {electrodes, window in s}, each the mean
+            % over its electrodes and window. The part of that residual
+            % that goes with the scores is left out of the noise first (in
+            % each condition, the residuals' projection on the epochs'
+            % score residuals): EEG noise is slow, so an epoch whose score
+            % happens to be far from the others' also has a large residual
+            % over the epoch, and weighting by it would count such epochs
+            % less for their score, which makes the weighted mean look more
+            % precise than it is (its SME a third too low in simulation).
+            % What is left is uncorrelated with the scores and still
+            % follows each epoch's noise level. Its weight is 1 / noise, scaled
             % to a mean of 1 per condition: with noise that differs between
             % epochs only in size, these weights give the weighted mean with
             % the smallest error (inverse-variance weighting). A noise below
@@ -772,12 +788,29 @@ classdef Steps
                 u(k) = double(e.urevent);
             end
             w = nan(1, EEG.trials); X = double(EEG.data(ch, :, :));
+            % each score as a kernel over those electrodes and the samples
+            if nargin < 4, scores = {}; end
+            times = EEG.xmin + (0:EEG.pnts - 1) / EEG.srate;
+            Kn = zeros(numel(ch) * EEG.pnts, 0);
+            for j = 1:numel(scores)
+                kc = ismember(lower({EEG.chanlocs(ch).labels}), lower(cellstr(scores{j}{1})))';
+                kt = times >= scores{j}{2}(1) - 1e-9 & times <= scores{j}{2}(2) + 1e-9;
+                if ~any(kc) || ~any(kt), continue; end
+                kk = double(kc) / sum(kc) * double(kt) / sum(kt);   % channels x samples
+                Kn(:, end+1) = kk(:); %#ok<AGROW>
+            end
             ratio = 1;
             for c = 1:numel(groups)
                 k = find(g == c); n = numel(k);
                 if n < 2, w(k) = 1; continue; end
                 Xc = X(:, :, k);
                 R = Xc - (sum(Xc, 3) - Xc) / (n - 1);
+                if ~isempty(Kn) && n > size(Kn, 2) + 1
+                    Rm = reshape(R, [], n)';   % epochs x (channels x samples)
+                    U = Rm * Kn;               % the score residuals
+                    Rm = Rm - U * (pinv(U) * Rm);
+                    R = reshape(Rm', size(R));
+                end
                 v = reshape(mean(mean(R .^ 2, 1), 2), 1, n);
                 v = max(v, median(v) / 10);
                 wc = 1 ./ v; wc = wc / mean(wc);
@@ -1008,14 +1041,68 @@ catch ME
 end
 end
 
-function a = fftArgs(EEG, edge)
+function [a, fb] = fftArgs(EEG, edge)
 % A high-pass with a long FIR (above order 2000, as EEGLAB's dialog
-% advises; e.g. 0.1 or 0.3 Hz at 250 Hz) runs in the frequency domain
-% (firfilt's fftfilt option): the same filter, much faster. It needs
-% fftfilt (Signal Processing Toolbox); without it the filter runs as before.
-a = {};
+% advises; e.g. 0.1 or 0.3 Hz at 250 Hz, 33,000 taps for 0.1 Hz at 1000
+% Hz) runs in the frequency domain (firfilt's fftfilt option): the same
+% filter, much faster. fftfilt is the Signal Processing Toolbox's; without
+% it, PipeCompare's own (fallback/fftfilt.m, overlap-add, the same result
+% to rounding) is put on the path while the filter runs: fb, an object
+% that takes it off again when it is cleared ([] when not needed).
+a = {}; fb = [];
 df = min(max(edge * 0.25, 2), edge);              % pop_eegfiltnew's default transition band (high-pass)
-if exist('fftfilt', 'file') == 2 && 3.3 * EEG.srate / df > 2000, a = {'usefftfilt', 1}; end
+if ~(3.3 * EEG.srate / df > 2000), return; end
+if exist('fftfilt', 'file') ~= 2
+    d = fullfile(fileparts(fileparts(fileparts(mfilename('fullpath')))), 'fallback');
+    if ~isfolder(d), return; end
+    addpath(d); fb = onCleanup(@() rmpath(d));
+end
+a = {'usefftfilt', 1};
+end
+
+function EEG = lowRankRun(inst, EEG, ctx)
+% A filter step on the signal-check copy. The copy holds only the known
+% signals: one field over the channels per measure, each with its own time
+% course, so its channels x samples are U G with U orthonormal (channels x
+% k, k the number of fields, often 1 to 3) and G = U' X. The filter is
+% linear, time-invariant and the same for every channel, so filtering the
+% channels is filtering the k rows of G: k channels filtered instead of
+% all of them, the same result to rounding. The factors come from the
+% eigenvectors of X X'; the step runs as usual when the copy is not of low
+% rank (k above a quarter of the channels) or U G does not give it back.
+n = EEG.nbchan;
+Y = reshape(EEG.data, n, []); m = size(Y, 2);
+blocks = arrayfun(@(b) b:min(m, b + 1e5 - 1), 1:1e5:m, 'UniformOutput', false);   % (memory)
+C = zeros(n);
+for q = 1:numel(blocks), X = double(Y(:, blocks{q})); C = C + X * X'; end
+[V, d] = eig((C + C') / 2, 'vector');
+[d, o] = sort(d, 'descend'); V = V(:, o);
+k = sum(d > 1e-12 * max(d));
+if k == 0 || k > n / 4
+    EEG = pipecompare.run.Steps.run(inst, EEG, ctx); return;
+end
+U = V(:, 1:k); G = zeros(k, m); left = 0;
+for q = 1:numel(blocks)
+    X = double(Y(:, blocks{q})); G(:, blocks{q}) = U' * X;
+    left = left + norm(X - U * G(:, blocks{q}), 'fro') ^ 2;
+end
+if sqrt(left) > 1e-6 * sqrt(sum(d))
+    EEG = pipecompare.run.Steps.run(inst, EEG, ctx); return;
+end
+F = EEG;
+F.data = cast(reshape(G, k, EEG.pnts, EEG.trials), 'like', EEG.data);
+F.nbchan = k;
+if numel(EEG.chanlocs) >= k, F.chanlocs = EEG.chanlocs(1:k); end
+F.icaweights = []; F.icasphere = []; F.icawinv = []; F.icaact = []; F.icachansind = [];
+F = pipecompare.run.Steps.run(inst, F, ctx);
+EEG.data = cast(reshape(U * double(reshape(F.data, k, [])), n, F.pnts, F.trials), 'like', EEG.data);
+end
+
+function com = plainCommand(com, fb)
+% the command as a script would run it where fftfilt is missing: without
+% the frequency-domain option when PipeCompare's stand-in was used (the
+% same filter, only slower)
+if ~isempty(fb), com = regexprep(com, ',\s*''usefftfilt''\s*,\s*1', ''); end
 end
 
 function requireLocations(locs, what)
@@ -1070,7 +1157,7 @@ end
 function T = bandCopy(T, doHp, hp, doLp, lp)
 % the copy bad channels are tested on: high-passed at hp and/or low-passed at lp
 if doHp
-    fa = fftArgs(T, hp);
+    [fa, fb] = fftArgs(T, hp); %#ok<ASGLU>
     T = pop_eegfiltnew(T, 'locutoff', hp, 'plotfreqz', 0, fa{:});
 end
 if doLp, T = pop_eegfiltnew(T, 'hicutoff', lp, 'plotfreqz', 0); end

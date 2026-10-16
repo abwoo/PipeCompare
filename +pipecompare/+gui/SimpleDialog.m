@@ -22,10 +22,12 @@ classdef SimpleDialog < handle
     %   resemble their neighbours; pipecompare.live.Montage).
     %   3. Which steps are compared: a list in the order they run (bad
     %      channels, reference, ICA, high-pass, low-pass, epochs, epoch
-    %      rejection, and as its option, repairing epochs with up to 3
-    %      channels over the limit by interpolation); tick any of them, or
-    %      one of the two recipes (Standard, preselected: all but the
-    %      repair; Filters only). The order is fixed. Steps these data cannot take are greyed out with the
+    %      rejection with its options peak-to-peak and repairing epochs
+    %      with up to 3 channels over the limit by interpolation, ICA's
+    %      option of choosing the components by their effect on the
+    %      noise, and weighting epochs by their noise); tick any of them,
+    %      or one of the two recipes (Standard, preselected: bad channels,
+    %      ICA, the filters, rejection and weighting; Filters only). The order is fixed. Steps these data cannot take are greyed out with the
     %      reason (e.g. filters on epoched data), and the bad channels are
     %      always detected before an average reference. The number of
     %      pipelines is shown live, with the steps left out and why.
@@ -503,6 +505,8 @@ classdef SimpleDialog < handle
             end
             if nargin < 2, make = @() pipecompare.gui.Panel(); end
             app = make();
+            % the simple mode's search options, as its Run would use them
+            app.setOptions(pipecompare.utils.withDefaults(pipecompare.simple.Presets.searchOptions(), app.Options));
             if ~isempty(c)
                 [plan, notes] = pipecompare.simple.Presets.recipe(o.steps, obj.State, c, o.reference, ...
                     pipecompare.simple.Presets.nonEegChannels(obj.EEG));
