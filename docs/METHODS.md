@@ -843,6 +843,34 @@ their noise; a component that matters only for other measures or electrodes may 
 adopting a pipeline the components the search chose are reused; `apply` chooses again on the data
 it is given.
 
+## 9h. Eye channels regressed out (after the ranking)
+
+[`pipecompare.run.Steps.eogRegress`; `pipecompare.run.Executor` eogCheck] With eye channels
+*e* (dedicated EOG only, `Injection.dedicatedEyes`; Fp1/Fp2 are scalp EEG and are never used) and
+EEG channels *t* (all scalp EEG except *e*), the step replaces *X*_t by *X*_t − *B* *X*_e, with
+
+  *B* = *C*_te *C*_ee⁺,
+
+the least-squares coefficients (pseudo-inverse: two eye channels can be nearly collinear). *C* is
+the covariance over the samples where some eye channel is beyond 4 robust SDs (median, 1.4826 ×
+MAD) of its median, dilated by ±100 ms; with fewer than one second of such samples, over all
+samples. Before *C* is formed the time-locked average of the epochs (the contract's epoch window
+around each condition's events; on epoched data the average epoch) is subtracted from every
+channel, so the ERP, which also reaches the eye channels, does not enter *B* and is not removed
+with the blinks. *B* is fixed once fitted, so the step is linear and the signal-check copy
+(section 4) replays exactly the same *B*. What is not removed (background EEG shared between the
+eye channels and the scalp, which biases *B* slightly; simulation: residual blink error 0.33 µV of
+2.37 µV before) is seen by the total error's blink term (section 15).
+
+The step is tried, after the ranking, on the recommended pipeline only: it is inserted before the
+pipeline's first step among IC removal, epoching, epoch rejection and weighting; the steps before
+it repeat the search's decisions (the same ICA, the same interpolated channels), the steps from it
+decide again. The new pipeline joins the candidates and the ranking (section 3) is made again, so
+it is recommended only when its total error is lower. In the simulation of the plan
+(`sims-2026-10-16c/eog_regression.py`, blinks time-locked in 40 % of 35 trials, 8 % of them reaching Pz) the RMS error of
+the P3 mean amplitude at Pz fell from 2.37 to 0.92 µV. It is not combined with cutoff fine-tuning
+(section 9e). On in the simple mode (`eogCheck`).
+
 ## 10. Montage check (before a run)
 
 Scalp potentials vary smoothly over the head, so after an average reference a channel resembles its
@@ -905,6 +933,23 @@ the choice among those not distinguished from the best (highest minimum retentio
 recordings, then smallest largest amplitude error, then lowest objective) follow section 3. The
 uncertainty is that of these recordings' trials, not of sampling other participants: the choice is
 for this group's data, as the single-recording choice is for one recording's.
+
+**Each recording's own pipeline (two-level empirical Bayes).** [`pipecompare.Group.twoLevel`] Let
+*Y*_{s,k} = *J*_{s,k} for the pipelines passing on *s* (others missing) and *V*_{s,k} the variance of
+its bootstrap replicates. On the log scale, *y*_{s,k} = log *Y*_{s,k} = *a*_s + *c*_k + *u*_{s,k} +
+ε_{s,k}: a recording effect (how noisy it is), a pipeline effect (how good it is on average), what
+is particular to this pair, *u* ~ (0, τ²), and estimation noise of variance *v*_{s,k} =
+*V*_{s,k}/*Y*_{s,k}² (delta method). *a* and *c* are fitted by alternating means over the observed
+cells; with residuals *r* and *df* = cells − (*S* + *K* − 1),
+
+  τ̂² = max(0, Σ *r*² / *df* − mean *v*),   *w*_{s,k} = τ̂² / (τ̂² + *v*_{s,k}),
+  θ̂_{s,k} = exp(*â*_s + *ĉ*_k + *w*_{s,k} *r*_{s,k}).
+
+Recording *s* gets argmin_k θ̂_{s,k} over the pipelines passing on it (`G.own`, `G.ownShrunk`);
+`G.share` = mean *w*. With τ̂² = 0 every recording gets the pipeline with the best ĉ (one for
+all); with τ̂² large, its own lowest *Y*. Simulated (20 recordings × 12 pipelines, excess error
+over the true best per recording): own choice 0.4–2.4 %, one for all 0.8–9.5 %, two-level
+0.4–1.6 %, best or tied in all settings (`sims-2026-10-16c/group_eb.py`).
 
 ## 15. Total error: noise and bias together
 

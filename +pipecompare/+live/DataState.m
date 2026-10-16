@@ -25,6 +25,10 @@ classdef DataState
             s.isEpoched = EEG.trials > 1 || (isfield(EEG, 'epoch') && ~isempty(EEG.epoch));
             s.xmin = EEG.xmin; s.xmax = EEG.xmax;
             s.labels = channelLabels(EEG);
+            s.eyeChannels = {};                % eye channels of their own (EOG), for regressing the eyes out
+            if isfield(EEG, 'chanlocs') && numel(EEG.chanlocs) == EEG.nbchan
+                s.eyeChannels = s.labels(pipecompare.eval.Injection.dedicatedEyes(EEG.chanlocs));
+            end
             s.refSites = {};                   % ear/mastoid channels (A1, A2, M1, M2), not scalp
             if isfield(EEG, 'chanlocs') && numel(EEG.chanlocs) == EEG.nbchan && isfield(EEG.chanlocs, 'labels')
                 s.refSites = s.labels(pipecompare.simple.Presets.isRefSite(EEG.chanlocs));

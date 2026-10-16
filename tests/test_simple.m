@@ -744,7 +744,7 @@ verifyFalse(tc, contains(logText, 'pipelines compared'));       % not the summar
 verifyEqual(tc, char(get(0, 'Diary')), 'off');                  % the diary is off again
 verifyEqual(tc, out, EEG);                                      % the dataset is not modified
 verifyEqual(tc, r.report.nLeaves, 12);
-verifyTrue(tc, any(numel(r.cands) == [12 13]));                 % fine-tuned cutoffs: one more
+verifyTrue(tc, any(numel(r.cands) == [12 13 14]));              % fine-tuned cutoffs, eye channels regressed out: one more each
 verifyEqual(tc, com, ['EEG = pop_pipecompare(EEG, ''measure'',''P3'',''events'',{''11'',''31''},''recipe'',''filters'',', ...
     '''show'',''off'');']);                                      % 'show','off' is repeated too
 evalin('base', 'clear pipecompare_result');

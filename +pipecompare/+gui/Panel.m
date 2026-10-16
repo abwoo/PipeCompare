@@ -36,7 +36,7 @@ classdef Panel < handle
         LimitFields = struct()
         ObjectiveField
         Options = struct('dataUnit', 'auto', 'checkpoint', '', ...
-            'parallel', false, 'refineCutoffs', false, 'icaSeeds', 0, 'signalTemplate', 'bump')
+            'parallel', false, 'refineCutoffs', false, 'eogCheck', false, 'icaSeeds', 0, 'signalTemplate', 'bump')
         ResultTable; StatusLabel; DetailArea
         MenuStepButton            % Add EEGLAB menu step... (needs EEGLAB's main window)
     end
@@ -823,8 +823,8 @@ classdef Panel < handle
 
         function optionsDialog(obj)
             o = obj.Options;
-            d = uifigure('Name', 'PipeCompare search options', 'Position', [240 240 520 366], 'WindowStyle', 'modal');
-            gl = uigridlayout(d, [7 3]); gl.ColumnWidth = {170, '1x', 110}; gl.RowHeight = repmat({26}, 1, 7);
+            d = uifigure('Name', 'PipeCompare search options', 'Position', [240 240 520 400], 'WindowStyle', 'modal');
+            gl = uigridlayout(d, [8 3]); gl.ColumnWidth = {170, '1x', 110}; gl.RowHeight = repmat({26}, 1, 8);
             uilabel(gl, 'Text', 'Data unit of the dataset');
             du = uidropdown(gl, 'Items', {'auto', 'uV', 'V'}, 'Value', o.dataUnit, 'Tooltip', ...
                 'auto: from the amplitude scale of the dataset; V: scaled to uV on PipeCompare''s copy (ICA weights too)');
@@ -839,6 +839,11 @@ classdef Panel < handle
             rc = uicheckbox(gl, 'Text', '', 'Value', pipecompare.utils.fieldOr(o, 'refineCutoffs', false), 'Tooltip', ...
                 ['When filter cutoffs are compared: the recommended pipeline''s are also tried on a finer grid ', ...
                  'between them, its decisions held fixed, and the best ones run as one more pipeline (as in the simple mode)']);
+            uilabel(gl, 'Text', '');
+            uilabel(gl, 'Text', 'Try regressing the eyes out');
+            eo = uicheckbox(gl, 'Text', '', 'Value', pipecompare.utils.fieldOr(o, 'eogCheck', false), 'Tooltip', ...
+                ['With an eye channel of its own (EOG): the recommended pipeline also runs with the eye channels ', ...
+                 'regressed out of the EEG, and is recommended so when that lowers the total error (as in the simple mode)']);
             uilabel(gl, 'Text', '');
             uilabel(gl, 'Text', 'Check ICA''s random start');
             is = uicheckbox(gl, 'Text', '', 'Value', pipecompare.utils.fieldOr(o, 'icaSeeds', 0) > 0, 'Tooltip', ...
@@ -859,7 +864,7 @@ classdef Panel < handle
             end
             function apply()
                 o.dataUnit = du.Value; o.parallel = pa.Value; o.refineCutoffs = rc.Value;
-                o.icaSeeds = 2 * is.Value;
+                o.icaSeeds = 2 * is.Value; o.eogCheck = eo.Value;
                 o.signalTemplate = pipecompare.utils.ternary(st.Value, 'data', 'bump');
                 obj.setOptions(o); delete(d);
             end

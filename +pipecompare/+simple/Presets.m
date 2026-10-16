@@ -155,8 +155,10 @@ classdef Presets
             % panel's defaults: the compared filter cutoffs also on a finer
             % grid, the deciding pipelines with ICA run again with ICA
             % started in 2 other ways, and the signal check with this
-            % recording's own waveform where it is reliable.
-            o = struct('refineCutoffs', true, 'icaSeeds', 2, 'signalTemplate', 'data');
+            % recording's own waveform where it is reliable, and the
+            % recommended pipeline also run with the eye channels regressed
+            % out (Executor eogCheck: when there is an EOG channel).
+            o = struct('refineCutoffs', true, 'icaSeeds', 2, 'signalTemplate', 'data', 'eogCheck', true);
         end
 
         function steps = recipeSteps(name)
@@ -563,6 +565,11 @@ classdef Presets
                         t = sprintf('Epochs rejected by %s (%g SD): %s', pipecompare.utils.ternary(strcmp(f.type, ...
                             'reject_kurtosis'), 'kurtosis', 'joint probability'), p.sd, ofText(f));
                         t = [t repairText(p, f) notTested(p)];
+                    case 'eogregress'
+                        e = pipecompare.utils.fieldOr(f, 'eog', []);
+                        if isempty(e), t = 'Eye channels regressed out of the EEG channels';
+                        else, t = sprintf('Eye channels %s regressed out of the EEG channels (fitted on %.0f s of eye activity)', ...
+                                strjoin(e.eyes, ', '), e.seconds); end
                     case 'weight_trials'
                         t = 'Epochs weighted by their noise at the measured electrodes (none removed)';
                         r = pipecompare.utils.fieldOr(f, 'weightRatio', NaN);
