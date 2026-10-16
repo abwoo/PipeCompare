@@ -290,6 +290,41 @@ end
 verifyLessThan(tc, mean(q), 0.05 / 40);
 end
 
+function testFactorialShrinkageChoosesBetter(tc)
+% 18 pipelines, high-pass (3) x low-pass (3) x weights (2; without them the
+% step is absent), true errors = main effects + interactions, estimated
+% with paired noise of 6% (correlation 0.5): the pipeline with the lowest
+% objective shrunk through the settings (Rank.factorialModel, shrink) is
+% truly better on average than the one with the lowest raw objective
+% (simulated in Python: 1.6% against 2.3% excess error). One factor alone
+% leaves nothing to borrow (no model).
+rs = RandStream('mt19937ar', 'Seed', 71);
+[h, l, w] = ndgrid(1:3, 1:3, 0:1); h = h(:); l = l(:); w = w(:);
+levels = cell(18, 1);
+for i = 1:18
+    levels{i} = {'hp', sprintf('highpass %d', h(i)); 'lp', sprintf('lowpass %d', l(i))};
+    if w(i), levels{i}(end+1, :) = {'weight', 'weight_trials'}; end
+end
+C = 0.06 ^ 2 * (0.5 * ones(18) + 0.5 * eye(18)); Lc = chol(C, 'lower');
+R = 1500; exRaw = zeros(R, 1); exSh = exRaw; s = exRaw;
+for r = 1:R
+    mh = 0.04 * randn(rs, 3, 1); ml = 0.04 * randn(rs, 3, 1); mw = 0.04 * randn(rs);
+    truth = 1 + mh(h) + ml(l) + mw * w + 0.02 * randn(rs, 18, 1);
+    pts = truth + Lc * randn(rs, 18, 1);
+    Bq = pts + Lc * randn(rs, 18, 300);
+    F = pipecompare.eval.Rank.factorialModel(levels, Bq, pts);
+    th = pipecompare.eval.Rank.shrink(F, pts);
+    [~, a] = min(pts); [~, b] = min(th);
+    exRaw(r) = truth(a) / min(truth) - 1; exSh(r) = truth(b) / min(truth) - 1; s(r) = F.s;
+end
+fprintf('factorial shrinkage: excess error %.2f%% (raw %.2f%%), mean shrinkage factor %.2f\n', 100 * mean(exSh), 100 * mean(exRaw), mean(s));
+verifyLessThan(tc, mean(exSh), 0.85 * mean(exRaw));
+verifyTrue(tc, all(s >= 0 & s <= 1));
+one = arrayfun(@(i) {'hp', sprintf('highpass %d', i)}, (1:4)', 'UniformOutput', false);
+verifyEmpty(tc, pipecompare.eval.Rank.factorialModel(one, randn(rs, 4, 100), randn(rs, 4, 1)));
+verifyEqual(tc, pipecompare.eval.Rank.shrink([], [3; 1; 2]), [3; 1; 2]);
+end
+
 function testSelectionFrequencyOfTheRecommendation(tc)
 % A pipeline clearly better than the others is recommended in nearly
 % every resample of the trials. Among pipelines with the same true noise

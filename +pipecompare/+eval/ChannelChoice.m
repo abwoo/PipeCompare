@@ -87,9 +87,11 @@ classdef ChannelChoice
             for i = 1:numel(F)
                 Bq(i, :) = pipecompare.eval.Threshold.bootstrap(X{F(i)}, M{F(i)}, u(F(i)), opts, ref, C{F(i)});
             end
-            [~, equiv] = pipecompare.eval.Rank.confidenceSet(f(F)', Bq, find(F == best), opts.alpha, opts.equivalenceMargin);
-            k = min(F(equiv));
-            chosen = sort(sets{k}); info.chosen = chosen; info.equallyGood = sum(equiv);
+            % the most channels interpolated shown equivalent to the best, going towards all from it
+            ib = find(F == best);
+            [c, nEq] = pipecompare.eval.Rank.fixedSequence(f(F)', Bq, ib, ib-1:-1:1, opts.alpha, opts.equivalenceMargin);
+            k = F(c);
+            chosen = sort(sets{k}); info.chosen = chosen; info.equallyGood = nEq;
             left = setdiff(bad, chosen);
             if isempty(left)
                 pipecompare.utils.log(['Bad channels by their effect on the total error: all %d interpolated (leaving one as ', ...

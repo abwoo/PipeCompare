@@ -96,8 +96,11 @@ PipeCompare makes this choice from the data, in these steps:
    It is corrected for how much each pipeline shrinks the signal, so a pipeline cannot look good
    just by making everything smaller. A bootstrap test then finds the pipelines that cannot be
    told apart from the best.
-7. **It recommends one pipeline**, among those as good as the best the one that keeps the most
-   trials and changes the signal least, and explains why. You can adopt it as a new EEGLAB dataset,
+7. **It recommends one pipeline** and explains why. Each pipeline's error is first estimated
+   together with the others that share its settings (how much a 0.5 Hz high-pass helps is seen in
+   every pipeline with it), which picks the truly better pipeline more often than its own error
+   alone. Among pipelines the data show to be equally good, the one that keeps the most trials and
+   changes the signal least is used. You can adopt it as a new EEGLAB dataset,
    already epoched and cleaned and ready to average, or save it as a MATLAB script to process your
    other recordings the same way.
 
@@ -604,8 +607,11 @@ The recommended pipeline is marked with `*`, followed by the best of the others.
 | settings | the settings that differ between the pipelines |
 
 The line under the table names the steps that every pipeline shares. When several pipelines cannot
-be told apart from the best, PipeCompare recommends the one that keeps the most trials, so that
-data are not cleaned more than they need to be. The result then says whether the recommended
+be told apart from the best, PipeCompare recommends the one with the lowest error when each
+setting's effect is estimated from all the pipelines that share it (see *Recommendation* under
+[How the ranking works](#how-the-ranking-works)); when some are shown to be equally good (within
+5 %), the one of those that keeps the most trials, so that data are not cleaned more than they
+need to be. The result then says whether the recommended
 pipeline's noise is within 5 % of the best one's (a negligible difference) or whether the data are
 too few to tell, with how much noisier it could be. It also says how the best pipeline does on
 trials that were not used to choose it: either *its advantage is not luck*, or its noise there is
@@ -1362,10 +1368,18 @@ and constraints and ranking options in `help pipecompare.eval.Rank`.
    much better the best looks than it is on those trials. The pipelines' own decisions (bad
    channels, ICA, rejected epochs) were made on all trials; only the choice between pipelines is
    held out.
-6. **Recommendation.** Within the set of step 3, PipeCompare recommends the least aggressive
-   pipeline: the one with the highest trial retention, then the least signal distortion. A
-   pipeline whose bias is more than half its noise is recommended only when no pipeline with less
-   bias is in that set: keeping more trials is no reason to keep the blinks they carry.
+6. **Recommendation.** The pipelines are combinations of settings (high-pass × low-pass ×
+   weights ...). Each setting's effect is estimated from every pipeline that has it, and what
+   a combination adds beyond the effects of its settings is kept only as far as the data show it
+   is more than noise (the rest is shrunk away: an empirical-Bayes estimate, with the noise from
+   the bootstrap of step 3). Within the set of step 3, PipeCompare recommends the pipeline with
+   the lowest of these estimates. With 30–40 trials almost every pipeline is in that set, and the
+   lowest error of one pipeline alone is mostly chance: in simulation the estimate through the
+   settings picked a pipeline with up to 60 % less excess error. Pipelines shown *equivalent* to the
+   best (within 5 %) are equally good, and of those the least aggressive is used when it keeps
+   more trials: the highest retention, then the least signal distortion. A pipeline whose bias is
+   more than half its noise is recommended only when no pipeline with less bias is in that set:
+   keeping more trials is no reason to keep the blinks they carry.
 7. **Stability.** In each bootstrap resample of step 3, steps 3 and 6 are done again on the
    resampled values (with the same critical value), and PipeCompare counts how often each
    pipeline would be recommended (the bootstrap selection frequency; Efron, 2014). The table has

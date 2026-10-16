@@ -5,6 +5,18 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- Which pipeline is recommended: each pipeline's error is first estimated together with the
+  others that share its settings (factorial empirical Bayes: the effect of each step's setting
+  from every pipeline with it, and what a combination adds beyond them shrunk by the
+  James-Stein factor from the bootstrap covariance). Among pipelines not told apart from the
+  best, the one with the lowest such estimate is recommended; keeping more trials decides only
+  among those shown equivalent to the best. In simulation it picks a pipeline with up to 60 % less
+  excess error than the lowest raw error, and the old rule (most trials among those not told
+  apart) cost 5-11 %. Table column `shrunk`; method: docs/METHODS.md, section 3.
+- The most lenient rejection limit, ICLabel threshold, component set and interpolated channels
+  "equivalent to the best" are found by fixed-sequence equivalence tests (from the best towards
+  the lenient end, each against the best alone). The bound simultaneous over all pairs used
+  before never let any option but the best be equivalent.
 - Weighted epochs: an epoch's noise no longer includes the part that goes with its score. EEG
   noise is slow, so an epoch whose score was far from the others' was counted less for it; the
   weighted average's SME was then a third too low and weighting looked 30 % better than equal

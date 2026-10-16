@@ -185,10 +185,12 @@ classdef IcThreshold
                 for i = 1:numel(F)
                     Bq(i, :) = pipecompare.eval.Threshold.bootstrap(X{F(i)}, M{F(i)}, u(F(i)), opts, ref, C{F(i)});
                 end
-                [keep, equiv] = pipecompare.eval.Rank.confidenceSet(f(F)', Bq, find(F == best), ...
-                    opts.alpha, opts.equivalenceMargin);
-                chosen = min(F(equiv));
-                info.notDistinguished = sum(keep); info.equallyGood = sum(equiv);
+                ib = find(F == best);
+                keep = pipecompare.eval.Rank.confidenceSet(f(F)', Bq, ib, opts.alpha);
+                % the fewest components shown equivalent to the best, going down from it
+                [c, nEq] = pipecompare.eval.Rank.fixedSequence(f(F)', Bq, ib, ib-1:-1:1, opts.alpha, opts.equivalenceMargin);
+                chosen = F(c);
+                info.notDistinguished = sum(keep); info.equallyGood = nEq;
                 info.objectiveBest = f(best); info.objectiveChosen = f(chosen);
             end
             comps = sort(sets{chosen});
@@ -255,10 +257,12 @@ classdef IcThreshold
                 for i = 1:numel(F)
                     Bq(i, :) = pipecompare.eval.Threshold.bootstrap(X{F(i)}, M{F(i)}, u(F(i)), opts, ref, C{F(i)});
                 end
-                [keep, equiv] = pipecompare.eval.Rank.confidenceSet(f(F)', Bq, find(F == best), ...
-                    opts.alpha, opts.equivalenceMargin);
-                chosen = min(F(equiv));
-                info.notDistinguished = sum(keep); info.equallyGood = sum(equiv);
+                ib = find(F == best);
+                keep = pipecompare.eval.Rank.confidenceSet(f(F)', Bq, ib, opts.alpha);
+                % the fewest components shown equivalent to the best, going down from it
+                [c, nEq] = pipecompare.eval.Rank.fixedSequence(f(F)', Bq, ib, ib-1:-1:1, opts.alpha, opts.equivalenceMargin);
+                chosen = F(c);
+                info.notDistinguished = sum(keep); info.equallyGood = nEq;
                 info.objectiveBest = f(best); info.objectiveChosen = f(chosen);
             end
             info.curves = struct('options', {C}, 'ok', isfinite(f), 'chosen', chosen);   % for Rank.crossfit

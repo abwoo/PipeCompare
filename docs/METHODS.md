@@ -73,8 +73,10 @@ amplitude over the ROI channels and the window after baseline correction.
    - Candidates that differ in the reference are ranked in separate strata, never against each other.
      With several strata there is no overall recommendation: each stratum has its own (marked `*`),
      and you choose the one that fits your analysis.
-   - The recommendation is the least aggressive candidate among those not distinguished from the
-     best: most trials kept, then least distortion.
+   - The recommendation is the candidate with the lowest objective shrunk through the pipelines'
+     settings (section 3, factorial empirical Bayes) among those not distinguished from the best;
+     among those shown equivalent to the best, the least aggressive (most trials kept, then least
+     distortion).
 
 ## 1. Data quality: the standardized measurement error
 
@@ -244,11 +246,41 @@ In simulation (`test_statistics`), with 24 candidates of equal
 true noise and 60 trials, the apparent best objective was below the true SME by more than 5 %,
 while the cross-fitted value was within 5 % of it. [`pipecompare.eval.Rank.crossfit`]
 
+**Factorial shrinkage (which one to recommend).** With 30–40 trials per condition nearly every
+pipeline is in the kept set (simulation, 18 pipelines with true differences up to 10 %: median 18
+of 18), and the lowest objective among them is mostly chance. The pipelines are not unrelated,
+though: they are combinations of settings, one per step (high-pass × low-pass × weights in
+*Standard*). With each step a factor and its settings the levels (*absent* when a pipeline skips
+the step), the design *D* has an intercept and one column per level but the first of each factor,
+the main effects. With *H* = *D D*⁺ and *R* = *I* − *H*, the objectives split into *H*θ̂, the main
+effects, which every pipeline sharing a setting estimates together, and *r* = *R*θ̂, the
+interactions plus noise. If the interactions are independent with variance τ² and Σ is the
+covariance of θ̂ (from the paired bootstrap of this section), E|*r*|² = τ² tr *R* + tr(*R*Σ), and *r*
+is shrunk by the positive-part James–Stein factor
+
+  *s* = max(0, 1 − (*df* − 2)/*df* · tr(*R*Σ)/|*r*|²),  *df* = tr *R*,
+
+(Efron & Morris, 1973): θ̃ = *H*θ̂ + *s r*, empirical Bayes. An interaction the data show (|*r*|² well
+above what the noise gives) is kept; the rest is taken for noise. The model needs *df* ≥ 3 (one
+factor alone leaves nothing to borrow) and leaves out a pipeline whose cutoffs were fine-tuned
+afterwards (section 9e; its settings are its own). The recommendation is, among the candidates
+not distinguished from the best (unbiased first, section 15), the one with the lowest θ̃, unless
+candidates shown equivalent to the best keep more trials: then the least aggressive of those
+(highest minimum retention, then smallest amplitude error to 0.5 %). Keeping more trials decides
+only between pipelines the data show to be equally good; among those merely not told apart it
+cost 5–11 % of true error in simulation. The cross-fitted check above chooses on each half with
+the same shrinkage. In simulation (`test_statistics/testFactorialShrinkageChoosesBetter`; Python
+in the review notes: 18 pipelines, main effects of about 4 %, noise 3–10 %, correlated as paired
+estimates are) the pipeline with the lowest θ̃ had up to 60 % less excess error over the truly best
+than the one with the lowest θ̂, and never more. The table has θ̃ as `shrunk`, the model (*s*, *df*,
+the number of factors) is in `byStratum.factorial`. [`pipecompare.eval.Rank.factorialModel`]
+
 **Selection frequency (stability of the recommendation).** The recommendation is a function of the
 trials. In each bootstrap draw *b* of the same paired resamples, the choice is made again on the
 replicates θ*ₖᵇ: the candidates within *c* of the lowest replicate (the kept set of that draw, with
-the critical value *c* of the full sample), then the recommendation rule of the ranking (highest
-minimum retention, smallest amplitude error, lowest objective). The share of draws in which
+the critical value *c* of the full sample), then the recommendation rule of the ranking (the
+draw's objectives shrunk with the same factorial model, below; which candidates are equivalent to
+the best is that of the full sample). The share of draws in which
 candidate *k* is recommended is its selection frequency *f*ₖ (`chosenShare`; Σₖ *f*ₖ = 1), the
 bootstrap selection frequency used for model selection (Efron, 2014). *f* of the recommended
 pipeline is reported (`byStratum.stability`); below 0.7 the result names the next most often
@@ -557,9 +589,17 @@ pipelines (section 3): a paired bootstrap over trials (the same resampled trials
 moving blocks for segments of one recording) with the simultaneous max statistic over all pairs
 gives the limits not shown worse than another. At most 60 limits enter the bootstrap: the
 feasible ones spread evenly by rank over the range, the minimizer included. Among those shown
-*equivalent* to the best (section 3: θ̂ᵢ − θ̂_b + *c*_K ≤ δ·θ̂_b, δ = `equivalenceMargin`), the highest
-is used (the least aggressive), so an epoch is kept unless keeping it makes the measure measurably
-less precise. Not distinguished alone is not enough: the lenient limits keep the most variable
+*equivalent* to the best, the highest is used (the least aggressive), so an epoch is kept unless
+keeping it makes the measure measurably less precise. Equivalence is tested in a fixed sequence
+(Maurer, Hothorn & Lehmacher, 1995; Westfall & Krishen, 2001): from the best limit upwards, each
+limit against the best alone, equivalent when θ̂ᵢ − θ̂_b plus the (1 − α) bootstrap quantile of
+its deviations is at most δ·θ̂_b (δ = `equivalenceMargin`); the first limit that fails ends the
+sequence. Each test is made only when all before it passed, so the family-wise error stays α
+without a correction for their number. An earlier version bounded every difference with the
+critical value simultaneous over all pairs of the limits kept (*c*_K); the pairs of limits far
+apart set it, and no limit but the best was ever equivalent (simulation: the best itself in every
+run). The same sequence chooses the ICLabel threshold or components (towards fewer components,
+section 9d/9g) and the bad channels interpolated (towards more channels, section 5). Not distinguished alone is not enough: the lenient limits keep the most variable
 epochs, so their bootstrap differences are the widest and set the critical value *c*; the set not
 shown worse then reaches limits that reject almost nothing even when rejecting clearly helps (in
 simulation with 15% large-artifact trials and 100 trials per condition, the true SME of the limit

@@ -232,10 +232,10 @@ classdef Executor
                     numel(notRun), numel(allc));
             end
             result.notRun = numel(notRun);
-            R = pipecompare.eval.Rank.run(allc, ref, opts);
+            R = pipecompare.eval.Rank.run(allc, ref, opts, levelsOf(result.leaves));
             if pipecompare.utils.fieldOr(opts, 'refineCutoffs', false) && isempty(notRun)
                 [result, allc, added] = refineCutoffs(result, env, root, S, ctx0, acc0, allc, R);
-                if added, R = pipecompare.eval.Rank.run(allc, ref, opts); end
+                if added, R = pipecompare.eval.Rank.run(allc, ref, opts, levelsOf(result.leaves)); end
             end
             result.icaSeeds = [];
             if pipecompare.utils.fieldOr(opts, 'icaSeeds', 0) > 0 && isempty(notRun)
@@ -929,6 +929,16 @@ keep = lines(~cellfun(@isempty, regexpi(lines, 'warning|error|\[PipeCompare\]', 
 for k = 1:numel(keep), fprintf('    %s\n', strtrim(keep{k})); end
 end
 
+function L = levelsOf(leaves)
+% per pipeline, its settings: one {slot, key} row per step it runs (for
+% the ranking's factorial model, Rank.factorialModel)
+L = cell(numel(leaves), 1);
+for i = 1:numel(leaves)
+    p = leaves(i).path;
+    L{i} = [cellfun(@(in) in.slot, p(:), 'UniformOutput', false), cellfun(@(in) in.key, p(:), 'UniformOutput', false)];
+end
+end
+
 function c = evaluateLeaf(env, li, E, S, acc)
 c = emptyCand();
 c.id = li; c.key = env.leaves(li).key; c.stratum = env.leaves(li).stratum;
@@ -1148,7 +1158,7 @@ for seed = 1:n
         end
         c2(li) = c;
     end
-    R2 = pipecompare.eval.Rank.run(c2, ref, ro);
+    R2 = pipecompare.eval.Rank.run(c2, ref, ro, levelsOf(env.leaves));
     obj(:, seed + 1) = R2.table.objective(ids);
     if ~isempty(R2.recommended), rec(seed + 1) = R2.recommended; end
 end

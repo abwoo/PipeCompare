@@ -78,15 +78,28 @@ classdef Rank
     %      limit, an ICLabel threshold or components chosen from the data)
     %      is made again on the selecting half too (nested cross-fitting),
     %      so its advantage by chance is held out as well.
-    %   5. Among candidates the data do not distinguish from the best, the
-    %      recommendation is the least aggressive: highest minimum trial
-    %      retention, then smallest signal distortion (to AmpStep: two
-    %      pipelines keeping the same trials, as with and without trial
-    %      weights, differ in it only by filter tails of neighbouring
-    %      epochs), then best objective;
-    %      a biased one (bias above BiasShare of its noise) only when no
-    %      unbiased one is among them, since keeping more trials is no
-    %      reason to keep what they carry in.
+    %   5. The objectives are first shrunk through the pipelines'
+    %      settings (factorialModel, shrink: each step is a factor and its
+    %      settings the levels; the main effects are estimated from every
+    %      pipeline that shares a setting, and what is left, interactions
+    %      and noise, is shrunk by the positive-part James-Stein factor
+    %      from the bootstrap covariance: factorial empirical Bayes). With
+    %      30-40 trials nearly every pipeline is "not distinguished from
+    %      the best", and the lowest raw objective is mostly chance; in
+    %      simulation (18 pipelines, high-pass x low-pass x weights) the
+    %      lowest shrunk objective had up to 60% less excess error than the
+    %      lowest raw one. Among candidates the data do not distinguish
+    %      from the best, a biased one (bias above BiasShare of its noise)
+    %      only when no unbiased one is among them; of the others, the one
+    %      with the lowest shrunk objective, unless candidates shown
+    %      equivalent to the best (step 4) keep more trials: then the least
+    %      aggressive of those (highest minimum retention, then smallest
+    %      signal distortion, to AmpStep: two pipelines keeping the same
+    %      trials, as with and without trial weights, differ in it only by
+    %      filter tails of neighbouring epochs). Keeping more trials is a
+    %      reason to choose only between pipelines the data show to be
+    %      equally good: among those merely not told apart it cost 5-11% of
+    %      true error in simulation.
     %   5b. Stability: how often the recommendation would be the same with
     %      other trials. In each paired bootstrap resample of the trials
     %      (those of step 4), the choice of steps 4 and 5 is made again on
@@ -119,8 +132,12 @@ classdef Rank
                 'nBootPeak', 1000, 'alpha', 0.02, 'seed', 1, 'equivalenceMargin', 0.05, 'nSplits', 20);
         end
 
-        function R = run(cands, ref, opts)
+        function R = run(cands, ref, opts, levels)
+            % levels (optional): per candidate, its settings as a cell of
+            % {slot, key} rows (Executor), for the factorial shrinkage of
+            % step 5; without them the objectives are not shrunk.
             if nargin < 3, opts = struct(); end
+            if nargin < 4, levels = {}; end
             opts = pipecompare.utils.withDefaults(opts, pipecompare.eval.Rank.defaults());
             n = numel(cands);
             objName = resolveObjective(opts.objective, ref);
@@ -176,8 +193,9 @@ classdef Rank
 
             lo = nan(n, 1); hi = nan(n, 1); hiKept = nan(n, 1); notDist = false(n, 1); equiv = false(n, 1);
             recommended = []; best = [];
-            byStratum = struct('stratum', {}, 'best', {}, 'recommended', {}, 'set', {}, 'crossfit', {}, 'stability', {});
-            chosen = nan(n, 1);
+            byStratum = struct('stratum', {}, 'best', {}, 'recommended', {}, 'set', {}, 'crossfit', {}, 'stability', {}, ...
+                'factorial', {});
+            chosen = nan(n, 1); shrunk = nan(n, 1);
             strata = unique(stratum(strcmp(status, 'feasible')), 'stable');
             for s = 1:numel(strata)
                 feas = find(strcmp(status, 'feasible') & strcmp(stratum, strata{s}));
@@ -190,25 +208,26 @@ classdef Rank
                 hEq(~keep) = NaN; hiKept(feas) = hEq;
                 equiv(feas) = keep & hEq <= opts.equivalenceMargin * pts(ib);
                 t = feas(keep);
-                % least aggressive among those not distinguished from the
-                % best, a biased one only when no unbiased one is among them
+                % step 5: the objectives shrunk through the pipelines'
+                % settings (factorial empirical Bayes), then the choice
+                F = pipecompare.eval.Rank.factorialModel(levelsAt(levels, feas, cands(feas)), boot{1}, pts(:));
+                th = pipecompare.eval.Rank.shrink(F, pts(:)); shrunk(feas) = th;
                 biased = double(bias > pipecompare.eval.Rank.BiasShare * noise);
-                key = [biased(t), -minRet(t), ampStep(ampErr(t)), primary(t)];
-                [~, o] = sortrows(round(key, 10));
-                cf = pipecompare.eval.Rank.crossfit(cands(feas), ref, opts, objName, pts(ib));
-                f = selectionFrequency(boot{1}, crit, minRet(feas), ampStep(ampErr(feas)), biased(feas));
+                rec = feas(choose(keep, th, biased(feas), equiv(feas), minRet(feas), ampStep(ampErr(feas))));
+                cf = pipecompare.eval.Rank.crossfit(cands(feas), ref, opts, objName, pts(ib), F);
+                f = selectionFrequency(boot{1}, crit, minRet(feas), ampStep(ampErr(feas)), biased(feas), equiv(feas), F);
                 chosen(feas) = f;
-                byStratum(end+1) = struct('stratum', strata{s}, 'best', feas(ib), 'recommended', t(o(1)), 'set', t, ...
-                    'crossfit', cf, 'stability', f(feas == t(o(1)))); %#ok<AGROW>
+                byStratum(end+1) = struct('stratum', strata{s}, 'best', feas(ib), 'recommended', rec, 'set', t, ...
+                    'crossfit', cf, 'stability', f(feas == rec), 'factorial', F); %#ok<AGROW>
             end
             if isscalar(byStratum)
                 recommended = byStratum.recommended; best = byStratum.best;
             end
             feasAll = find(strcmp(status, 'feasible'));
             order = [sortBy(feasAll, primary); find(strcmp(status, 'rejected')); find(strcmp(status, 'failed'))];
-            T = table((1:n)', stratum, status, primary, noise, bias, lo, hi, notDist, equiv, hiKept, chosen, minRet, minKept, interp, ...
+            T = table((1:n)', stratum, status, primary, noise, bias, shrunk, lo, hi, notDist, equiv, hiKept, chosen, minRet, minKept, interp, ...
                 ampErr, latSh, artPct, wCorr, tCorr, reasons, notes, ...
-                'VariableNames', {'id','stratum','status','objective','noise','bias','diffLo','diffHi','notDistinguished','equivalent','diffHiKept', ...
+                'VariableNames', {'id','stratum','status','objective','noise','bias','shrunk','diffLo','diffHi','notDistinguished','equivalent','diffHiKept', ...
                 'chosenShare','minRetention','minTrials','interpolated','ampError', ...
                 'latencyShiftMs','artifactPct','waveformCorr','topoCorr','reason','note'});
             for k = 1:nO
@@ -307,6 +326,32 @@ classdef Rank
             equiv(ib) = true;
         end
 
+        function [chosen, nEq] = fixedSequence(pts, Bq, ib, seq, alpha, margin)
+            % The most lenient of nested options shown equivalent to the
+            % best, by fixed-sequence testing (Maurer, Hothorn & Lehmacher,
+            % 1995; Westfall & Krishen, 2001). pts: point objectives (K x
+            % 1); Bq: paired bootstrap replicates (K x B); ib: the best;
+            % seq: the options more lenient than the best, nearest first.
+            % Each in turn is compared with the best alone: equivalent when
+            % the upper bound of the difference (the difference plus the
+            % (1-alpha) bootstrap quantile of its deviations) is within
+            % margin times the best objective; the first that is not ends
+            % the sequence. Each test is made only when all before it
+            % passed, so no correction for their number is needed, and the
+            % options far from the best no longer widen the bound of those
+            % near it, as the bound simultaneous over all pairs did (with it
+            % the rule chose the best itself in every simulated run).
+            % chosen: the last option that passed (ib when none); nEq:
+            % how many are equivalent, the best included.
+            chosen = ib; nEq = 1;
+            for i = seq(:)'
+                d = pts(i) - pts(ib);
+                dev = (Bq(i, :) - Bq(ib, :)) - d; dev = dev(isfinite(dev));
+                if ~isfinite(d) || isempty(dev) || ~(d + upperQuantile(dev, alpha) <= margin * pts(ib)), break; end
+                chosen = i; nEq = nEq + 1;
+            end
+        end
+
         function v = pointObjective(m, ref, opts, g, spread)
             % The ranking's objective of one candidate's measures m with
             % the signal gains g and shape spreads (Injection.shapeSpreads;
@@ -321,7 +366,7 @@ classdef Rank
             name = resolveObjective(obj, ref);
         end
 
-        function cf = crossfit(cands, ref, opts, objName, apparent)
+        function cf = crossfit(cands, ref, opts, objName, apparent, F)
             % The objective of the pipeline that is best on one half of the
             % trials, scored on the other half (rescaled to all trials by
             % sqrt(m/N), as the half-samples of bootstrap; SME ~ 1/sqrt(n)),
@@ -344,8 +389,12 @@ classdef Rank
             % The other data-driven decisions (bad channels, the ICA
             % decomposition, fine-tuned cutoffs, trial weights) were made
             % on all trials.
+            % F (optional): the factorial model of step 5; the pipeline
+            % chosen on a half is then the one with the lowest shrunk
+            % objective there (the same shrinkage, fixed), as on all trials.
             cf = [];
             if nargin < 5, apparent = NaN; end
+            if nargin < 6, F = []; end
             opts = pipecompare.utils.withDefaults(opts, pipecompare.eval.Rank.defaults());
             if opts.nSplits < 1 || any(ref.n < 4), return; end
             s = RandStream('mt19937ar', 'Seed', opts.seed + 101);
@@ -374,7 +423,7 @@ classdef Rank
                 end
                 vAA(~isfinite(vAA)) = NaN; vBB(~isfinite(vBB)) = NaN;
                 if all(isnan(vAA)) || all(isnan(vBB)), continue; end
-                [~, ia] = min(vAA); [~, ib] = min(vBB);
+                [~, ia] = min(pipecompare.eval.Rank.shrink(F, vAA(:))); [~, ib] = min(pipecompare.eval.Rank.shrink(F, vBB(:)));
                 honest = [honest vAB(ia) vBA(ib)]; inSample = [inSample vAA(ia) vBB(ib)]; %#ok<AGROW>
             end
             ok = isfinite(honest);
@@ -382,6 +431,68 @@ classdef Rank
             h = mean(honest(ok));
             cf = struct('apparent', apparent, 'honest', h, 'overstatement', h / apparent - 1, ...
                 'halfInSample', mean(inSample(ok)), 'nSplits', nS, 'nested', numel(nest));
+        end
+
+        function F = factorialModel(levels, Bq, pts)
+            % Step 5's model of the K pipelines' objectives through their
+            % settings. levels: per pipeline its settings ({slot, key}
+            % rows; {} = unknown, or a pipeline left out of the model, as
+            % one whose cutoffs were fine-tuned afterwards); Bq: paired
+            % bootstrap replicates (K x B); pts: the objectives (K x 1).
+            % Each slot (step) is a factor whose levels are its settings
+            % ('absent' when skipped); the design D has an intercept and a
+            % column per level but the first of each factor (main effects).
+            % With H = D D^+ and R = I - H, the objectives are y = H y + r:
+            % the main effects, which every pipeline sharing a setting
+            % estimates together, and r, the interactions plus noise. With
+            % Sigma the bootstrap covariance of y (the noise of the
+            % objectives, paired), E|r|^2 = tau^2 tr(R) + tr(R Sigma) when
+            % the interactions are independent with variance tau^2, so r is
+            % shrunk towards 0 by the positive-part James-Stein factor
+            % s = max(0, 1 - (df - 2)/df tr(R Sigma) / |r|^2), df = tr(R)
+            % (Efron & Morris, 1973; empirical Bayes): the interactions
+            % the data show are kept, the rest is taken for noise. F: the
+            % pipelines in the model (use), H, s, df; [] when fewer than 4
+            % pipelines are in it or df < 3 (nothing to borrow).
+            F = [];
+            K = numel(pts);
+            if numel(levels) ~= K, return; end
+            use = find(~cellfun(@isempty, levels(:)'));
+            ok = all(isfinite(Bq(use, :)), 1);
+            if numel(use) < 4 || nnz(ok) < 20 || ~all(isfinite(pts(use))), return; end
+            slots = {};
+            for i = use, slots = [slots levels{i}(:, 1)']; end %#ok<AGROW>
+            slots = unique(slots, 'stable');
+            D = ones(numel(use), 1);
+            for q = 1:numel(slots)
+                v = repmat({'absent'}, numel(use), 1);
+                for a = 1:numel(use)
+                    L = levels{use(a)}; at = find(strcmp(L(:, 1), slots{q}), 1);
+                    if ~isempty(at), v{a} = L{at, 2}; end
+                end
+                [u, ~, g] = unique(v, 'stable');
+                for j = 2:numel(u), D(:, end+1) = double(g == j); end %#ok<AGROW>
+            end
+            H = D * pinv(D); Rm = eye(numel(use)) - H;
+            df = trace(Rm);
+            if df < 3 - 1e-9, return; end
+            Sig = cov(Bq(use, ok)');
+            r = Rm * pts(use);
+            s = max(0, 1 - (df - 2) / df * trace(Rm * Sig) / max(r' * r, eps));
+            F = struct('use', use, 'H', H, 's', s, 'df', round(df), 'factors', numel(slots));
+        end
+
+        function th = shrink(F, v)
+            % The objectives v (K x 1) through the factorial model F
+            % (factorialModel): H v + s (I - H) v for the pipelines in it,
+            % v itself for the others, and all of v when F is [] or a value
+            % in the model is not finite.
+            th = v;
+            if isempty(F), return; end
+            x = v(F.use);
+            if ~all(isfinite(x)), return; end
+            fit = F.H * x;
+            th(F.use) = fit + F.s * (x - fit);
         end
 
         function T = marginal(R, leaves, searched)
@@ -636,18 +747,33 @@ function a = ampStep(a)
 a = round(a / pipecompare.eval.Rank.AmpStep) * pipecompare.eval.Rank.AmpStep;
 end
 
-function f = selectionFrequency(Bq, c, ret, amp, biased)
+function k = choose(keep, th, biased, eqv, ret, amp)
+% Step 5 among K candidates: of those kept (not distinguished from the
+% best), the unbiased ones (all when none is); among them the one with the
+% lowest shrunk objective th, and with it those shown equivalent to the
+% best (eqv); of these, the highest minimum retention, the smallest
+% amplitude error (to AmpStep), the lowest shrunk objective.
+U = find(keep(:) & ~biased(:));
+if isempty(U), U = find(keep(:)); end
+[~, j] = min(th(U));
+E = unique([U(eqv(U)); U(j)]);
+[~, o] = sortrows(round([-ret(E), amp(E), th(E)], 10));
+k = E(o(1));
+end
+
+function f = selectionFrequency(Bq, c, ret, amp, biased, eqv, F)
 % The share of the bootstrap resamples (columns of Bq, K x B) in which
 % each of K candidates is recommended: those within c of the lowest
-% objective of the resample, then the rule of step 5 (unbiased first,
-% highest minimum retention, smallest amplitude error, lowest objective).
+% objective of the resample, then the rule of step 5 (choose) on the
+% resample's objectives shrunk with the same model F; which ones are
+% equivalent to the best (eqv) is that of all trials.
 K = size(Bq, 1); cnt = zeros(K, 1); used = 0;
 for b = 1:size(Bq, 2)
     v = Bq(:, b); ok = isfinite(v);
     if ~any(ok), continue; end
-    t = find(ok & v - min(v(ok)) <= c);
-    [~, o] = sortrows(round([biased(t), -ret(t), amp(t), v(t)], 10));
-    cnt(t(o(1))) = cnt(t(o(1))) + 1; used = used + 1;
+    th = pipecompare.eval.Rank.shrink(F, v);
+    k = choose(ok & v - min(v(ok)) <= c, th, biased, eqv, ret, amp);
+    cnt(k) = cnt(k) + 1; used = used + 1;
 end
 f = cnt / max(used, 1);
 if used == 0, f(:) = NaN; end
@@ -660,6 +786,20 @@ function v = upperQuantile(z, alpha)
 z = sort(z(:));
 r = min(numel(z), ceil((numel(z) + 1) * (1 - alpha) - 1e-9));
 v = z(max(r, 1));
+end
+
+function L = levelsAt(levels, feas, cands)
+% the settings of the candidates feas for factorialModel; {} for one whose
+% cutoffs were fine-tuned after the comparison (a setting no other
+% pipeline shares, so the model would leave it as it is anyway) and for
+% all when none were given
+L = repmat({{}}, numel(feas), 1);
+if isempty(levels), return; end
+for a = 1:numel(feas)
+    st = pipecompare.utils.fieldOr(cands(a), 'steps', {});
+    if any(cellfun(@(x) isfield(x, 'cutoffRefined') && isequal(x.cutoffRefined, true), st)), continue; end
+    L{a} = levels{feas(a)};
+end
 end
 
 function i = sortBy(idx, val)
