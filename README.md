@@ -609,7 +609,7 @@ The recommended pipeline is marked with `*`, followed by the best of the others.
 The line under the table names the steps that every pipeline shares. When several pipelines cannot
 be told apart from the best, PipeCompare recommends the one with the lowest error when each
 setting's effect is estimated from all the pipelines that share it (see *Recommendation* under
-[How the ranking works](#how-the-ranking-works)); when some are shown to be equally good (within
+[How a pipeline is chosen](#how-a-pipeline-is-chosen)); when some are shown to be equally good (within
 5 %), the one of those that keeps the most trials, so that data are not cleaned more than they
 need to be. The result then says whether the recommended
 pipeline's noise is within 5 % of the best one's (a negligible difference) or whether the data are
