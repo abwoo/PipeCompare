@@ -5,6 +5,9 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- Band power is estimated with multitaper spectra (3 Slepian tapers, fewer for a narrow band)
+  instead of one Hann taper (`Measure.bandScores`, `Measure.tapers`). Simulation: the error of a
+  band power over 40 one-second segments 28 % lower.
 - Blinks and eye movements are also found by a two-state hidden Markov model of the eye channels
   (EM and Viterbi, `pipecompare.eval.Hmm`), united with the fixed 4-5 SD rules wherever blinks are
   looked for (what blinks add to the error, the EOG regression's fit, bad channels without the

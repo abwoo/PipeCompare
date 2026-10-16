@@ -269,6 +269,49 @@ classdef Measure
             end
         end
 
+        function s = bandScores(X, fs, band)
+            % X: ROI channels x samples x trials. Per trial: log10 of the mean
+            % power in the band (multitaper: the one-sided power spectral
+            % density averaged over the tapers of Measure.tapers, the band's
+            % bins and the ROI channels).
+            [~, n, nt] = size(X);
+            H = pipecompare.eval.Measure.tapers(n, fs, band);
+            f = (0:n-1) * fs / n;
+            sel = f >= band(1) & f <= band(2);
+            assert(any(sel), 'PipeCompare:Measure', 'The window is too short to resolve the band [%g %g] Hz.', band(1), band(2));
+            Xp = permute(X, [2 1 3]);                              % samples x ROI x trials
+            P = 0;
+            for k = 1:size(H, 2)
+                F = fft(Xp .* H(:, k), [], 1);
+                P = P + 2 * abs(F(sel, :, :)) .^ 2 / (fs * sum(H(:, k) .^ 2));
+            end
+            s = reshape(log10(mean(mean(P / size(H, 2), 1), 2)), nt, 1);
+        end
+
+        function H = tapers(n, fs, band)
+            % Discrete prolate spheroidal (Slepian) tapers for n samples at fs
+            % Hz: the orthonormal windows whose power is most concentrated
+            % within +-W Hz (eigenvectors of Percival and Walden's
+            % tridiagonal matrix, the largest eigenvalues first). Time-
+            % bandwidth NW = W T = 2 (3 tapers), lowered for a band narrower
+            % than 4 / T so that the smoothing (2 W) stays within the band:
+            % NW = 1.5 gives 2 tapers, NW = 1 a single one. Cached per size.
+            persistent cache
+            if isempty(cache), cache = containers.Map('KeyType', 'char', 'ValueType', 'any'); end
+            NW = max(1, min(2, (band(2) - band(1)) * n / fs / 2));
+            K = max(1, floor(2 * NW + 1e-9) - 1);
+            key = sprintf('%d_%.6g', n, NW);
+            if isKey(cache, key), H = cache(key); return; end
+            k = (0:n-1)';
+            d = ((n - 1 - 2 * k) / 2) .^ 2 * cos(2 * pi * NW / n);
+            e = k(2:end) .* (n - k(2:end)) / 2;
+            M = spdiags([[e; 0] d [0; e]], -1:1, n, n);
+            [V, D] = eigs(M, K, 'largestreal', 'SubspaceDimension', min(n, max(20, 2 * K + 1)));
+            [~, o] = sort(diag(D), 'descend');
+            H = V(:, o) ./ vecnorm(V(:, o));
+            cache(key) = H;
+        end
+
         function v = sme(S)
             % Analytic SME of a mean score per column, ignoring missing (NaN) trials.
             v = nan(1, size(S, 2));
@@ -472,7 +515,7 @@ classdef Measure
                 w = times >= win(1) - 1e-9 & times <= win(2) + 1e-9;
                 for b = 1:numel(contract.bands)
                     band = contract.bands(b);
-                    T.data{b} = bandScores(data(roiIndex(band.roi, labels), w, :), EEG.srate, band.freq);
+                    T.data{b} = pipecompare.eval.Measure.bandScores(data(roiIndex(band.roi, labels), w, :), EEG.srate, band.freq);
                     T.times{b} = [];
                 end
                 return;
@@ -524,20 +567,6 @@ switch comp.measure
     case 'mean', kind = 'scalar';
     otherwise, kind = comp.measure;
 end
-end
-
-function s = bandScores(X, fs, band)
-% X: ROI channels x samples x trials. Per trial: log10 of the mean power
-% in the band (Hann taper, one-sided power spectral density, averaged
-% over the band's bins and the ROI channels).
-[~, n, nt] = size(X);
-w = 0.5 - 0.5 * cos(2 * pi * (0:n-1)' / (n - 1));
-F = fft(permute(X, [2 1 3]) .* w, [], 1);              % samples x ROI x trials
-f = (0:n-1) * fs / n;
-sel = f >= band(1) & f <= band(2);
-assert(any(sel), 'PipeCompare:Measure', 'The window is too short to resolve the band [%g %g] Hz.', band(1), band(2));
-P = 2 * abs(F(sel, :, :)) .^ 2 / (fs * sum(w .^ 2));
-s = reshape(log10(mean(mean(P, 1), 2)), nt, 1);
 end
 
 function v = peakOf(avgs, o)

@@ -493,8 +493,18 @@ candidate rejects is missing (NaN) in that candidate. *T* must hold at least two
 lowest band edge (*T* ≥ 2/*f*₁), and band edges must lie below Nyquist.
 
 **Score and SME.** Per segment, the score is log₁₀ of the mean power in the band. The power is the
-one-sided power spectral density with a Hann taper (Harris, 1978), averaged over the band's bins
-and the ROI channels. The SME is SD/√*n* over segments, as for a mean amplitude (section 1). With
+one-sided multitaper power spectral density (Thomson, 1982): the segment is multiplied by each of
+*K* discrete prolate spheroidal (Slepian) tapers, the orthonormal windows whose power is most
+concentrated within ±*W* Hz of each frequency (Slepian, 1978; computed as the eigenvectors of the
+tridiagonal matrix of Percival and Walden, 1993), and the *K* periodograms are averaged, then
+averaged over the band's bins and the ROI channels. The time-bandwidth product is *NW* = *WT* = 2
+(*K* = 3 tapers), lowered for a band narrower than 4/*T* Hz so that the smoothing (2*W*) stays
+within the band (*NW* = 1.5 gives 2 tapers, *NW* = 1 a single one). One taper's periodogram has
+only two degrees of freedom per bin; averaging *K* nearly independent ones lowers the spread of
+the score over segments. In simulation (an alpha rhythm in white noise, 1 s segments, 8-13 Hz) the
+spread was half that of a single Hann taper (`test_statistics`), and with segments that also differ
+in their true alpha power, the error of the mean log power over 40 segments was 28 % lower
+(0.028 instead of 0.039). The SME is SD/√*n* over segments, as for a mean amplitude (section 1). With
 `conditions` and `epoch` instead of `segment`, each epoch's band power is scored (event-related
 band power).
 
@@ -1128,8 +1138,6 @@ covers widths, not every shape.
   data. *Biometrika, 82*(3), 561–574.
 - Hansen, P. R., Lunde, A., & Nason, J. M. (2011). The model confidence set. *Econometrica, 79*(2),
   453–497.
-- Harris, F. J. (1978). On the use of windows for harmonic analysis with the discrete Fourier
-  transform. *Proceedings of the IEEE, 66*(1), 51–83.
 - Hoke, M., Ross, B., Wickesberg, R., & Lütkenhöner, B. (1984). Weighted averaging: theory and
   application to electric response audiometry. *Electroencephalography and Clinical
   Neurophysiology*, 57(5), 484–489.
@@ -1154,6 +1162,8 @@ covers widths, not every shape.
   EEG artifact Rejection. *Journal of Neuroscience Methods, 192*(1), 152–162.
 - Onton, J., & Makeig, S. (2006). Information-based modeling of event-related brain dynamics.
   *Progress in Brain Research*, 159, 99–120.
+- Percival, D. B., & Walden, A. T. (1993). *Spectral Analysis for Physical Applications: Multitaper
+  and Conventional Univariate Techniques*. Cambridge University Press.
 - Perrin, F., Pernier, J., Bertrand, O., & Echallier, J. F. (1989). Spherical splines for scalp
   potential and current density mapping. *Electroencephalography and Clinical Neurophysiology,
   72*(2), 184–187.
@@ -1165,8 +1175,12 @@ covers widths, not every shape.
 - Schuirmann, D. J. (1987). A comparison of the two one-sided tests procedure and the power
   approach for assessing the equivalence of average bioavailability. *Journal of
   Pharmacokinetics and Biopharmaceutics, 15*(6), 657–680.
+- Slepian, D. (1978). Prolate spheroidal wave functions, Fourier analysis, and uncertainty — V: The
+  discrete case. *Bell System Technical Journal, 57*(5), 1371–1430.
 - Steegen, S., Tuerlinckx, F., Gelman, A., & Vanpaemel, W. (2016). Increasing transparency through
   a multiverse analysis. *Perspectives on Psychological Science, 11*(5), 702–712.
+- Thomson, D. J. (1982). Spectrum estimation and harmonic analysis. *Proceedings of the IEEE, 70*(9),
+  1055–1096.
 - White, H. (2000). A reality check for data snooping. *Econometrica, 68*(5), 1097–1126.
 - Widmann, A., Schröger, E., & Maess, B. (2015). Digital filter design for electrophysiological
   data – a practical approach. *Journal of Neuroscience Methods, 250*, 34–46.

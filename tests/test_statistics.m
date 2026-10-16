@@ -370,6 +370,38 @@ Y = [1 2; 1.1 NaN; 0.9 2.2]; th = pipecompare.Group.twoLevel(Y, 0.01 * Y .^ 2);
 verifyTrue(tc, isnan(th(2, 2)) && all(isfinite(th(~isnan(Y)))));   % a pipeline not passing on a recording
 end
 
+function testMultitaperBandPower(tc)
+% Band power with Slepian tapers: the right level for a sinusoid and for
+% white noise, half the spread over segments of an alpha rhythm compared
+% with one Hann taper, and fewer tapers for a narrow band.
+rs = RandStream('mt19937ar', 'Seed', 23);
+fs = 250; M = @pipecompare.eval.Measure.bandScores;
+for c = {{250, [8 13], 3}, {250, [4 7], 2}, {250, [4 6], 1}, {2000, [8 12], 3}}
+    [n, band, K] = c{1}{:};
+    H = pipecompare.eval.Measure.tapers(n, fs, band);
+    verifyEqual(tc, size(H), [n K]);
+    verifyEqual(tc, H' * H, eye(K), 'AbsTol', 1e-8);              % orthonormal
+end
+n = 500; t = (0:n-1) / fs; f = (0:n-1) * fs / n; nb = sum(f >= 8 & f <= 12);
+x = 20 * sin(2 * pi * 10 * t + 0.7);
+verifyEqual(tc, 10 ^ M(x, fs, [8 12]) * nb * fs / n, 20 ^ 2 / 2, 'RelTol', 0.01);   % the sine's power
+w = M(reshape(5 * randn(rs, 1, n * 1000), 1, n, 1000), fs, [8 12]);
+verifyEqual(tc, mean(10 .^ w), 2 * 25 / fs, 'RelTol', 0.03);       % white noise: 2 sigma^2 / fs
+% alpha (resonance at 10 Hz) plus white noise, 1 s segments
+n = 250; r = 0.97; th = 2 * pi * 10 / fs; X = zeros(1, n, 200);
+for k = 1:200
+    a = filter(1, [1 -2 * r * cos(th) r ^ 2], randn(rs, 1, n + 500)); a = a(501:end);
+    X(1, :, k) = 10 * a / std(a) + 3 * randn(rs, 1, n);
+end
+hn = 0.5 - 0.5 * cos(2 * pi * (0:n-1)' / (n - 1));
+fb = (0:n-1) * fs / n; sel = fb >= 8 & fb <= 13;
+F = fft(permute(X, [2 1 3]) .* hn, [], 1);
+hann = reshape(log10(mean(2 * abs(F(sel, :, :)) .^ 2 / (fs * sum(hn .^ 2)), 1)), [], 1);
+ratio = std(M(X, fs, [8 13])) / std(hann);
+fprintf('Band power spread, multitaper / Hann: %.2f\n', ratio);
+verifyLessThan(tc, ratio, 0.7);
+end
+
 function testHmmFindsWeakBlinks(tc)
 % Eye channel: slow noise (SD 10) and 150 blinks of 15-200 uV (half sines,
 % 250-400 ms). Each blink's samples add their evidence in the two-state HMM

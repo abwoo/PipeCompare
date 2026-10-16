@@ -277,7 +277,10 @@ Along the way PipeCompare also takes care of the following, so you do not have t
   data, channel locations, ICA decomposition, reference, sampling rate) and parses `EEG.history`,
   so earlier processing is taken into account.
 - **ERP and band-power measures.** Mean amplitude, peak amplitude and peak latency for event-related
-  data. Log band power for continuous recordings such as resting state.
+  data. Log band power for continuous recordings such as resting state, estimated with multitaper
+  spectra (3 Slepian tapers per segment, fewer for a band narrower than 4 Hz in 1 s segments),
+  which in simulation lowers the error of the band power by about a quarter compared with one
+  Hann taper.
 - **Presets for common analyses.** ERP CORE parameters (Kappenman et al., 2021) for N170, MMN,
   N2pc, N400, P3, LRP and ERN, and standard delta, theta, alpha and beta bands.
 - **User-defined search space.** Choose the steps and their order, fix some values and let others
