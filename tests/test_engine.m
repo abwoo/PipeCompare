@@ -1707,7 +1707,7 @@ in = struct('type', 'eogregress', 'params', struct('channels', {{}}), 'key', 'eo
 S = E1; S.data = single(randn(size(E1.data)));
 S2 = pipecompare.run.Steps.replayDecision(in, S, struct('eog', info), struct('contract', c));
 verifyEqual(tc, double(S2.data(ti, :)), double(S.data(ti, :)) - info.B * double(S.data(ei, :)), 'AbsTol', 1e-4);
-[~, com] = evalc('pipecompare.run.Steps.run(in, E1, struct(''contract'', c))');
+[~, ~, com] = evalc('pipecompare.run.Steps.run(in, E1, struct(''contract'', c))');
 verifyTrue(tc, contains(com{1}, 'pipecompare.run.Steps.eogRegress(EEG'));
 % in the search
 nqc_setBase(E1);
