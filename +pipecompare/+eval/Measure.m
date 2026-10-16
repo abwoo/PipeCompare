@@ -306,7 +306,11 @@ classdef Measure
             d = ((n - 1 - 2 * k) / 2) .^ 2 * cos(2 * pi * NW / n);
             e = k(2:end) .* (n - k(2:end)) / 2;
             M = spdiags([[e; 0] d [0; e]], -1:1, n, n);
-            [V, D] = eigs(M, K, 'largestreal', 'SubspaceDimension', min(n, max(20, 2 * K + 1)));
+            % shift-invert just above the largest eigenvalue (Gershgorin
+            % bound): plain Lanczos for the largest ones does not converge
+            % for long segments, their gaps being small relative to them
+            [V, D] = eigs(M, K, max(d) + 2 * max([e; 0]) + 1);
+            assert(all(isfinite(D(:))) && all(isfinite(V(:))), 'PipeCompare:Measure', 'Could not compute the tapers.');
             [~, o] = sort(diag(D), 'descend');
             H = V(:, o) ./ vecnorm(V(:, o));
             cache(key) = H;

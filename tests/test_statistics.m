@@ -376,12 +376,14 @@ function testMultitaperBandPower(tc)
 % with one Hann taper, and fewer tapers for a narrow band.
 rs = RandStream('mt19937ar', 'Seed', 23);
 fs = 250; M = @pipecompare.eval.Measure.bandScores;
+lastwarn('');
 for c = {{250, [8 13], 3}, {250, [4 7], 2}, {250, [4 6], 1}, {2000, [8 12], 3}}
     [n, band, K] = c{1}{:};
     H = pipecompare.eval.Measure.tapers(n, fs, band);
     verifyEqual(tc, size(H), [n K]);
     verifyEqual(tc, H' * H, eye(K), 'AbsTol', 1e-8);              % orthonormal
 end
+verifyEmpty(tc, lastwarn);                                       % the eigenvectors converged
 n = 500; t = (0:n-1) / fs; f = (0:n-1) * fs / n; nb = sum(f >= 8 & f <= 12);
 x = 20 * sin(2 * pi * 10 * t + 0.7);
 verifyEqual(tc, 10 ^ M(x, fs, [8 12]) * nb * fs / n, 20 ^ 2 / 2, 'RelTol', 0.01);   % the sine's power
