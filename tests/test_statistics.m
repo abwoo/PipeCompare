@@ -339,6 +339,37 @@ verifyEmpty(tc, pipecompare.eval.Rank.factorialModel(one, randn(rs, 4, 100), ran
 verifyEqual(tc, pipecompare.eval.Rank.shrink([], [3; 1; 2]), [3; 1; 2]);
 end
 
+function testTwoLevelShrinkageChoosesEachRecordingsPipeline(tc)
+% Group.twoLevel: 20 recordings x 12 pipelines, log objective = recording
+% effect + pipeline effect + what the pipeline does on that recording (SD
+% tau), estimated with 5 % noise. Each recording's pick by the estimate
+% has less excess error than its own estimate or one pipeline for all
+% (simulated: 1.6 % against 2.1 % and 3.6 %); with tau = 0 almost nothing
+% of the differences between recordings is kept.
+rs = RandStream('mt19937ar', 'Seed', 12); S = 20; P = 12; sig = 0.05;
+for tau = [0 0.05]
+    ex = zeros(1, 3); sh = 0; reps = 150;
+    for r = 1:reps
+        th = exp(0.3 * randn(rs, S, 1) + 0.05 * randn(rs, 1, P) + tau * randn(rs, S, P));
+        Y = th .* exp(sig * randn(rs, S, P)); V = (sig * Y) .^ 2;
+        [e, share] = pipecompare.Group.twoLevel(Y, V); sh = sh + share / reps;
+        best = min(th, [], 2); idx = @(c) sub2ind([S P], (1:S)', c);
+        [~, own] = min(Y, [], 2); [~, eb] = min(e, [], 2); [~, g] = min(mean(log(Y), 1));
+        ex = ex + [mean(th(idx(own)) ./ best - 1), mean(th(:, g) ./ best - 1), mean(th(idx(eb)) ./ best - 1)] / reps;
+    end
+    if tau == 0
+        verifyLessThan(tc, sh, 0.1);
+        verifyLessThan(tc, ex(3), ex(1));
+    else
+        verifyLessThan(tc, ex(3), 0.9 * ex(1));
+        verifyLessThan(tc, ex(3), 0.9 * ex(2));
+        verifyGreaterThan(tc, sh, 0.2);
+    end
+end
+Y = [1 2; 1.1 NaN; 0.9 2.2]; th = pipecompare.Group.twoLevel(Y, 0.01 * Y .^ 2);
+verifyTrue(tc, isnan(th(2, 2)) && all(isfinite(th(~isnan(Y)))));   % a pipeline not passing on a recording
+end
+
 function testSelectionFrequencyOfTheRecommendation(tc)
 % A pipeline clearly better than the others is recommended in nearly
 % every resample of the trials. Among pipelines with the same true noise

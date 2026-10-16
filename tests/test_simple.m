@@ -696,6 +696,10 @@ verifyEqual(tc, evalin('base', 'pipecompare_group.recommended'), k);
 f = fullfile(tempdir, 'pc_group_script.m'); cl = onCleanup(@() delete(f)); %#ok<NASGU>
 pipecompare.Group.writeScript(G, f);
 verifyTrue(tc, contains(fileread(f), G.labels{k}), fileread(f));
+verifyEqual(tc, height(G.own), 3);
+verifyTrue(tc, all(isfinite(G.own.id)));
+pipecompare.Group.writeScript(G, f, 2);
+verifyTrue(tc, contains(fileread(f), G.labels{G.own.id(2)}), fileread(f));
 end
 
 function testGroupPipelineMustPassOnEveryRecording(tc)
@@ -722,6 +726,11 @@ verifyEqual(tc, G.table.status, {'excluded'; 'passed'});
 verifyEqual(tc, G.table.passedIn, [2; 3]);
 verifyEqual(tc, G.recommended, 2);
 verifyEqual(tc, size(G.perRecording), [3 2]);
+% each recording's own pipeline: a where it passes (half the noise), b on r3
+verifyEqual(tc, G.own.recording, {'r1'; 'r2'; 'r3'});
+verifyEqual(tc, G.own.id, [1; 1; 2]);
+verifyEqual(tc, G.own.sameAsGroup, [false; false; true]);
+verifyTrue(tc, contains(pipecompare.Group.ownText(G), 'r3: 2'));
 end
 
 function testPopFunctionFromAScript(tc)

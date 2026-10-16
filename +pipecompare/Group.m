@@ -37,9 +37,24 @@ classdef Group
     %   G.recordings, G.leftOut. Also stored in the base variable
     %   pipecompare_group.
     %
+    %   Each recording's own pipeline, helped by the group (G.own; two-level
+    %   empirical Bayes, Group.twoLevel): the log of each pipeline's
+    %   objective on each recording is a recording effect plus a pipeline
+    %   effect (fitted over all recordings) plus what this pipeline does on
+    %   this recording beyond them. That last part is shrunk towards 0 by
+    %   tau^2 / (tau^2 + v), v its bootstrap variance and tau^2 how much the
+    %   recordings really differ in it (method of moments). Each recording
+    %   gets the pipeline lowest by this estimate among those passing on it.
+    %   With tau^2 = 0 every recording gets the same pipeline; with
+    %   precise recordings each gets its own best. G.own: a table (recording,
+    %   id, pipeline, sameAsGroup); G.ownShrunk (recordings x pipelines);
+    %   G.share: the share of the differences between recordings kept (the
+    %   mean shrinkage factor, 0 = one pipeline fits all).
+    %
     %   pipecompare.Group.writeScript(G, file) writes the recommended
     %   pipeline as a function to run on each recording (its decisions are
-    %   made on that recording's own data).
+    %   made on that recording's own data); writeScript(G, file, i) the
+    %   pipeline of recording i in G.own.
 
     methods (Static)
         function G = run(data, varargin)
@@ -110,18 +125,31 @@ classdef Group
             status = repmat({'excluded'}, nK, 1); status(feas) = {'passed'};
             nd = false(nK, 1); eq = false(nK, 1);
             F = find(feas);
+            % each recording's bootstrap of the pipelines passing on it
+            Fm = false(nU, nK); V = nan(nU, nK); boots = cell(1, nU);
+            for j = 1:nU
+                s = S(u(j)); [~, loc] = ismember(keys, s.keys);
+                Fm(j, :) = strcmp(s.table.status(loc), 'feasible')';
+                if ~any(Fm(j, :)), continue; end
+                b = pipecompare.eval.Rank.bootstrap(s.cands(loc(Fm(j, :))), s.ref, s.ranking.options, {s.ranking.objective});
+                boots{j} = nan(nK, size(b{1}, 2)); boots{j}(Fm(j, :), :) = b{1};
+                V(j, Fm(j, :)) = var(b{1}, 0, 2)';
+            end
+            G.own = table(); G.ownShrunk = nan(nU, nK); G.share = NaN;
+            if nU >= 2
+                Y = G.perRecording; Y(~Fm) = NaN;
+                [G.ownShrunk, G.share] = pipecompare.Group.twoLevel(Y, V);
+                th = G.ownShrunk; th(~Fm) = Inf;
+                [best, own] = min(th, [], 2); own(~isfinite(best)) = NaN;
+                G.ownChoice = own;
+            end
             if nU == 0
                 G.note = 'No pipeline passed on any recording.';
             elseif isempty(F)
                 G.note = 'No pipeline passed on every recording.';
             else
-                acc = [];
-                for j = 1:nU
-                    s = S(u(j)); [~, loc] = ismember(keys(F), s.keys);
-                    b = pipecompare.eval.Rank.bootstrap(s.cands(loc), s.ref, s.ranking.options, {s.ranking.objective});
-                    if isempty(acc), acc = zeros(size(b{1})); end
-                    acc = acc + b{1} .^ 2;
-                end
+                acc = 0;
+                for j = 1:nU, acc = acc + boots{j}(F, :) .^ 2; end
                 Bq = sqrt(acc / nU);
                 [~, ib] = min(J(F));
                 opts = pipecompare.utils.withDefaults(S(u(1)).ranking.options, pipecompare.eval.Rank.defaults());
@@ -134,6 +162,42 @@ classdef Group
             G.table = table((1:nK)', G.labels(:), status, J', nd, eq, ret', amp', passed', ...
                 'VariableNames', {'id', 'pipeline', 'status', 'objective', 'notDistinguished', 'equivalent', ...
                 'minRetention', 'ampError', 'passedIn'});
+            if isfield(G, 'ownChoice')
+                own = G.ownChoice; ok = isfinite(own);
+                lab = repmat({''}, nU, 1); lab(ok) = G.labels(own(ok));
+                same = false(nU, 1); if ~isempty(G.recommended), same = own == G.recommended; end
+                G.own = table(G.recordings(u)', own, lab, same, ...
+                    'VariableNames', {'recording', 'id', 'pipeline', 'sameAsGroup'});
+                G = rmfield(G, 'ownChoice');
+            end
+        end
+
+        function [theta, share, tau2] = twoLevel(Y, V)
+            % Two-level empirical Bayes estimate of each recording's
+            % objective for each pipeline (see the class help). Y, V:
+            % recordings x pipelines objectives and their bootstrap
+            % variances, NaN where the pipeline does not pass. theta: the
+            % estimates (NaN where Y is); share: the mean shrinkage factor
+            % over the cells; tau2: the variance between recordings of what
+            % a pipeline does beyond the two effects (log scale).
+            ok = isfinite(Y) & Y > 0 & isfinite(V);
+            L = nan(size(Y)); L(ok) = log(Y(ok));
+            VL = nan(size(Y)); VL(ok) = V(ok) ./ Y(ok) .^ 2;   % variance of the log (delta method)
+            [nR, nP] = size(Y);
+            a = zeros(nR, 1); b = zeros(1, nP);   % recording and pipeline effects: alternating means over the cells
+            for it = 1:50
+                a0 = a; b0 = b;
+                R = L - b; R(~ok) = NaN; a = mean(R, 2, 'omitnan'); a(~isfinite(a)) = 0;
+                R = L - a; R(~ok) = NaN; b = mean(R, 1, 'omitnan'); b(~isfinite(b)) = 0;
+                if max(abs([a - a0; (b - b0)'])) < 1e-12, break; end
+            end
+            fit = a + b; r = L - fit; r(~ok) = 0;
+            df = sum(ok(:)) - (sum(any(ok, 2)) + sum(any(ok, 1)) - 1);   % cells less the effects fitted
+            tau2 = 0;
+            if df > 0, tau2 = max(0, sum(r(ok) .^ 2) / df - mean(VL(ok))); end
+            w = zeros(size(Y)); if tau2 > 0, w(ok) = tau2 ./ (tau2 + VL(ok)); end
+            theta = nan(size(Y)); theta(ok) = exp(fit(ok) + w(ok) .* r(ok));
+            share = mean(w(ok));
         end
 
         function print(G)
@@ -148,13 +212,41 @@ classdef Group
             pipecompare.utils.log(['Recommended for the group: pipeline %d, %s (noise %.3g, root mean square over the ', ...
                 'recordings; at least %.0f%% of the trials kept in every recording; %d pipeline(s) not distinguished ', ...
                 'from the best).'], k, G.labels{k}, T.objective(k), 100 * T.minRetention(k), sum(T.notDistinguished));
+            pipecompare.utils.log('%s', pipecompare.Group.ownText(G));
         end
 
-        function writeScript(G, file)
-            % The recommended pipeline as a function file (PipeCompare.writeScript).
-            assert(~isempty(G.recommended) && ~isempty(G.first), 'PipeCompare:Group', ...
-                'There is no recommended pipeline for this group.');
-            idx = find(strcmp({G.first.leaves.key}, G.keys{G.recommended}), 1);
+        function t = ownText(G)
+            % Each recording's own pipeline, in words ('' when not made)
+            t = '';
+            if ~isfield(G, 'own') || isempty(G.own) || height(G.own) == 0, return; end
+            O = G.own; ok = isfinite(O.id);
+            if ~any(ok), return; end
+            t = sprintf(['Each recording''s own pipeline, its estimate helped by the others (two-level empirical ', ...
+                'Bayes; %.0f%% of the differences between recordings kept): '], 100 * G.share);
+            if ~isempty(G.recommended) && all(O.sameAsGroup(ok))
+                t = [t sprintf('every recording gets the group''s pipeline %d, so one pipeline fits them all.', G.recommended)];
+            else
+                parts = arrayfun(@(i) sprintf('%s: %d', O.recording{i}, O.id(i)), find(ok)', 'UniformOutput', false);
+                t = [t strjoin(parts, '; ') '.'];
+                if ~isempty(G.recommended)
+                    t = [t sprintf(' %d of %d use the group''s pipeline %d.', sum(O.sameAsGroup(ok)), sum(ok), G.recommended)];
+                end
+            end
+        end
+
+        function writeScript(G, file, i)
+            % The recommended pipeline as a function file (PipeCompare.writeScript);
+            % i: recording i's own pipeline (a row of G.own) instead.
+            if nargin < 3
+                assert(~isempty(G.recommended) && ~isempty(G.first), 'PipeCompare:Group', ...
+                    'There is no recommended pipeline for this group.');
+                k = G.recommended;
+            else
+                assert(isfield(G, 'own') && i >= 1 && i <= height(G.own) && isfinite(G.own.id(i)) && ~isempty(G.first), ...
+                    'PipeCompare:Group', 'Recording %d has no pipeline of its own.', i);
+                k = G.own.id(i);
+            end
+            idx = find(strcmp({G.first.leaves.key}, G.keys{k}), 1);
             pipecompare.PipeCompare.writeScript(G.first, idx, file);
         end
     end
