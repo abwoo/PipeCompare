@@ -1606,7 +1606,13 @@ pipeline (0.1-30 Hz, average reference, rejection at 100 µV) and a common one (
 bad-channel interpolation and ICA with ICLabel). It reports, per pipeline, the bias and the root
 mean square error of each condition and of their difference against the P3 actually in the data,
 the trials kept, and where the recommendation ranks by actual error among all the pipelines
-PipeCompare compared. It takes hours (an ICA per pipeline and recording), so on GitHub it runs
+PipeCompare compared. It also checks that PipeCompare's own error estimate tells the truth: for
+every pipeline compared, the actual error of each condition's P3 (corrected by the signal check's
+gain) against the error PipeCompare reports for it (SME and what blinks add, divided by the gain).
+The ratio of the two (root mean squares over recordings; 1 = right, below 1 = the error is
+understated) is given for all pipelines, and with and without each step learned from the data
+(EOG regression, ICA components chosen by SME, ICA, trial weights, stretches interpolated), so a
+step that makes the SME too small is seen (`calibration.csv`, `benchmark_summary.txt`). It takes hours (an ICA per pipeline and recording), so on GitHub it runs
 by hand only (Actions > *benchmark* > *Run workflow*; the results, written after every recording,
 are kept as an artifact), or locally:
 

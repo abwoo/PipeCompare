@@ -5,6 +5,9 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- Benchmark: whether the reported error tells the truth. For every pipeline compared, actual
+  error against reported error (SME and blink bias, over the signal gain), overall and with and
+  without each step learned from the data (`calibration.csv`).
 - Band power is estimated with multitaper spectra (3 Slepian tapers, fewer for a narrow band)
   instead of one Hann taper (`Measure.bandScores`, `Measure.tapers`). Simulation: the error of a
   band power over 40 one-second segments 28 % lower.
