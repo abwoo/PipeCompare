@@ -100,6 +100,20 @@ verifyFalse(tc, t1.shape.info.used(1));
 verifyTrue(tc, contains(t1.shape.info.why{1}, 'eye activity'), t1.shape.info.why{1});
 end
 
+function testFilteringTheSignalCopyByItsFieldsIsExact(tc)
+% Filters on the signal-check copy run on its few field time courses
+% (Steps.replayDecision, low rank) and give what filtering every channel
+% gives.
+[S, ~] = pipecompare.eval.Injection.prepare(tc.TestData.EEG, tc.TestData.c, tc.TestData.ref);
+for in = {inst('highpass', 'cutoff', 0.5), inst('lowpass', 'cutoff', 30), ...
+        inst('linenoise', 'freq', 50, 'halfwidth', 2)}
+    A = pipecompare.run.Steps.replayDecision(in{1}, S, struct(), ctx(tc));
+    B = pipecompare.run.Steps.run(in{1}, S, ctx(tc));
+    verifyEqual(tc, size(A.data), size(B.data));
+    verifyEqual(tc, double(A.data), double(B.data), 'AbsTol', 1e-5 * max(abs(double(B.data(:)))));
+end
+end
+
 function testReReferencingIsNotDistortion(tc)
 [S, truth] = pipecompare.eval.Injection.prepare(tc.TestData.EEG, tc.TestData.c, tc.TestData.ref);
 in = inst('reref', 'mode', 'average', 'channels', {});

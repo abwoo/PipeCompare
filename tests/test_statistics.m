@@ -261,6 +261,20 @@ for hetero = [false true]
 end
 end
 
+function testStandInFftfiltIsFilter(tc)
+% PipeCompare's own fftfilt (fallback/, used for long high-pass filters
+% where the Signal Processing Toolbox is missing) gives filter(b, 1, x):
+% columns and a row vector, a filter longer than the blocks it uses.
+d = fullfile(fileparts(mfilename('fullpath')), '..', 'fallback');
+addpath(d, '-begin'); c = onCleanup(@() rmpath(d)); %#ok<NASGU>
+rs = RandStream('mt19937ar', 'Seed', 81);
+b = randn(rs, 1, 3001); x = randn(rs, 20000, 3);
+y = filter(b, 1, x);
+verifyEqual(tc, fftfilt(b, x), y, 'AbsTol', 1e-9 * max(abs(y(:))));
+verifyEqual(tc, fftfilt(b, x(:, 1)'), y(:, 1)', 'AbsTol', 1e-9 * max(abs(y(:))));
+verifyEqual(tc, fftfilt(b(1:5), x(1:7, :)), filter(b(1:5), 1, x(1:7, :)), 'AbsTol', 1e-9 * max(abs(y(:))));
+end
+
 function testWhatBlinksAddToTheMean(tc)
 % Measure.eyeBias: the share of the blink trials times the difference of
 % their mean from the others' (what they add to the mean), its square
