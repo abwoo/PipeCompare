@@ -306,13 +306,29 @@ classdef Measure
             d = ((n - 1 - 2 * k) / 2) .^ 2 * cos(2 * pi * NW / n);
             e = k(2:end) .* (n - k(2:end)) / 2;
             M = spdiags([[e; 0] d [0; e]], -1:1, n, n);
-            % shift-invert just above the largest eigenvalue (Gershgorin
-            % bound): plain Lanczos for the largest ones does not converge
-            % for long segments, their gaps being small relative to them
-            [V, D] = eigs(M, K, max(d) + 2 * max([e; 0]) + 1);
-            assert(all(isfinite(D(:))) && all(isfinite(V(:))), 'PipeCompare:Measure', 'Could not compute the tapers.');
-            [~, o] = sort(diag(D), 'descend');
-            H = V(:, o) ./ vecnorm(V(:, o));
+            % each eigenvalue exactly by bisection on the Sturm count, its
+            % vector by inverse iteration (as LAPACK's dstebz and dstein);
+            % Krylov solvers (eigs) do not converge for long segments, the
+            % gaps between the largest eigenvalues being small relative to them
+            e2 = e .^ 2; lo = min(d) - 2 * max([e; 0]); hi = max(d) + 2 * max([e; 0]);
+            H = zeros(n, K);
+            for j = 1:K
+                a = lo; b = hi;                       % the j-th largest: n - j eigenvalues below it
+                for it = 1:200
+                    m = (a + b) / 2;
+                    if countBelow(d, e2, m) <= n - j, a = m; else, b = m; end
+                    if b - a <= 1e-14 * max(abs(a), abs(b)), break; end
+                end
+                lam = (a + b) / 2;
+                A = M - (lam + 1e-8 * abs(lam)) * speye(n);
+                v = 1 + (0:n-1)' / n;
+                for it = 1:4
+                    v = A \ v;
+                    v = v - H(:, 1:j-1) * (H(:, 1:j-1)' * v);
+                    v = v / norm(v);
+                end
+                H(:, j) = v;
+            end
             cache(key) = H;
         end
 
@@ -570,6 +586,18 @@ pol = comp.polarity;
 switch comp.measure
     case 'mean', kind = 'scalar';
     otherwise, kind = comp.measure;
+end
+end
+
+function c = countBelow(d, e2, x)
+% The number of eigenvalues below x of the symmetric tridiagonal matrix with
+% diagonal d and squared off-diagonal e2 (Sturm sequence).
+c = 0; q = d(1) - x;
+if q < 0, c = 1; end
+for i = 2:numel(d)
+    if q == 0, q = realmin; end
+    q = d(i) - x - e2(i-1) / q;
+    if q < 0, c = c + 1; end
 end
 end
 
