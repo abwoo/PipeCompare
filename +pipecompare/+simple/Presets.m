@@ -462,13 +462,23 @@ classdef Presets
                         t = sprintf('%s filter %g Hz', pipecompare.utils.ternary(strcmp(f.type, 'highpass'), 'High-pass', 'Low-pass'), p.cutoff);
                         if pipecompare.utils.fieldOr(f, 'cutoffRefined', false), t = [t ' (fine-tuned from these data)']; end
                     case 'badchannels'
-                        how = strrep(strrep(strrep(p.measure, 'kurt', 'kurtosis'), 'prob', 'joint probability'), '+', ' or ');
+                        how = strrep(strrep(strrep(strrep(p.measure, 'kurt', 'kurtosis'), 'prob', 'joint probability'), ...
+                            'resid', 'noise the other channels do not explain'), '+', ' or ');
                         t = sprintf('Bad channels (%s over %g SD', how, p.threshold);
-                        if pipecompare.utils.fieldOr(p, 'detectHighpass', 0) > 0
-                            t = sprintf('%s, found on a %g Hz high-passed copy', t, p.detectHighpass);
+                        hp = pipecompare.utils.fieldOr(p, 'detectHighpass', 0); lp = pipecompare.utils.fieldOr(p, 'detectLowpass', 0);
+                        if hp > 0 && lp > 0
+                            t = sprintf('%s, found on a %g-%g Hz band-passed copy', t, hp, lp);
+                        elseif hp > 0
+                            t = sprintf('%s, found on a %g Hz high-passed copy', t, hp);
+                        elseif lp > 0
+                            t = sprintf('%s, found on a %g Hz low-passed copy', t, lp);
                         end
                         t = [t '): ' listText(pipecompare.utils.ternary(isempty(f.removed), f.interpolated, f.removed), ...
                             pipecompare.utils.ternary(isempty(f.removed), 'interpolated', 'removed'), 'none found')];
+                        left = pipecompare.utils.fieldOr(f, 'leftAsIs', {});
+                        if ~isempty(left)
+                            t = sprintf('%s; %s left as they are (interpolating them would raise the error)', t, strjoin(left, ', '));
+                        end
                         t = [t notTested(p)];
                     case 'channels'
                         t = sprintf('Named channels %s: %s', pipecompare.utils.ternary(strcmp(p.action, 'remove'), ...
@@ -569,7 +579,8 @@ classdef Presets
             % how much better the best looks than it is on trials not used
             % to choose it (Rank.crossfit), and how often it would be
             % recommended with other trials (selection frequency, Rank step
-            % 5b). '' when there is nothing to say.
+            % 5b), and whether ICA started differently changes it
+            % (result.icaSeeds). '' when there is nothing to say.
             t = '';
             R = result.ranking;
             if numel(R.byStratum) ~= 1 || pipecompare.eval.Rank.sameScores(R), return; end
@@ -577,9 +588,9 @@ classdef Presets
             margin = 100 * R.options.equivalenceMargin;
             if k ~= b.best && isfinite(T.diffHiKept(k)) && T.objective(b.best) > 0
                 if T.equivalent(k)
-                    t = sprintf('Its noise is within %.0f%% of the best one''s, a negligible difference.', margin);
+                    t = sprintf('Its error is within %.0f%% of the best one''s, a negligible difference.', margin);
                 else
-                    t = sprintf(['With this many trials it could still be up to %.0f%% noisier than the best one; ', ...
+                    t = sprintf(['With this many trials its error could still be up to %.0f%% larger than the best one''s; ', ...
                         'more trials would tell them apart.'], 100 * T.diffHiKept(k) / T.objective(b.best));
                 end
             end
@@ -592,9 +603,9 @@ classdef Presets
                     on = 'trials not used to choose it';
                 end
                 if cf.overstatement < 0.02
-                    u = sprintf('Checked on %s, the best pipeline''s noise is as low as it looks here: its advantage is not luck.', on);
+                    u = sprintf('Checked on %s, the best pipeline''s error is as low as it looks here: its advantage is not luck.', on);
                 else
-                    u = sprintf(['Checked on %s, the best pipeline''s noise is about %.0f%% higher than ', ...
+                    u = sprintf(['Checked on %s, the best pipeline''s error is about %.0f%% higher than ', ...
                         'it looks here: part of its advantage over the others is luck.'], on, 100 * cf.overstatement);
                 end
                 t = strtrim(sprintf('%s %s', t, u));
@@ -610,6 +621,24 @@ classdef Presets
                     u = sprintf('%s, No. %d %.0f%% of the time: the data do not single out one pipeline clearly.', u, j, 100 * g);
                 else
                     u = [u ': the data do not single out one pipeline clearly.'];
+                end
+                t = strtrim(sprintf('%s %s', t, u));
+            end
+            % whether it would be the same with ICA started differently (Executor icaSeedCheck)
+            q = pipecompare.utils.fieldOr(result, 'icaSeeds', []);
+            if ~isempty(q)
+                if q.same
+                    u = sprintf(['With ICA started in %d other ways, the same pipeline is recommended: ', ...
+                        'ICA''s randomness does not change the choice.'], numel(q.seeds));
+                else
+                    alt = unique(q.recommended(q.recommended ~= k & isfinite(q.recommended)));
+                    u = 'With ICA started in another way, ';
+                    if isempty(alt)
+                        u = [u 'no pipeline is recommended'];
+                    else
+                        u = [u sprintf('No. %d is recommended instead', alt(1))];
+                    end
+                    u = [u ': this recommendation depends on ICA''s randomness.'];
                 end
                 t = strtrim(sprintf('%s %s', t, u));
             end
@@ -782,6 +811,59 @@ classdef Presets
                 pipecompare.utils.ternary(numel(top) > 1, 'them', 'it'), pipecompare.utils.ternary(numel(top) > 1, 'them', 'it'));
         end
 
+        function lp = detectLowpass(state, contract)
+            % The low-pass of the copy bad channels are found on: the band
+            % the analysis keeps (40 Hz for ERPs, the highest low-pass
+            % compared, whose stop band begins at 50 Hz; above the highest
+            % band for band power), so that line noise alone, which a later
+            % low-pass removes, does not make a channel bad. 0 (none) for
+            % epoched data, a band near the Nyquist frequency, or data
+            % already low-passed at or below it.
+            lp = 0;
+            if state.isEpoched, return; end
+            edge = 40;
+            if strcmp(contract.analysis, 'bandpower')
+                f = vertcat(contract.bands.freq); edge = max(40, max(f(:, 2)) + 5);
+            end
+            done = pipecompare.utils.fieldOr(pipecompare.utils.fieldOr(state, 'filters', struct()), 'lowpass', []);
+            if edge >= 0.9 * state.srate / 2 || (~isempty(done) && min(done) <= edge), return; end
+            lp = edge;
+        end
+
+        function t = biasText(result)
+            % The bias in the recommended pipeline's total error, in words
+            % (Rank step 3b): what blinks add to each measure's mean and
+            % how much its filters could change a measure for another
+            % signal shape; or that no eye channel let blinks be checked.
+            % '' when there is nothing to say.
+            t = '';
+            if ~isfield(result, 'ranking') || ~isfield(result.ranking, 'recommended') || ...
+                    isempty(result.ranking.recommended) || ~isfield(result, 'ref'), return; end
+            R = result.ranking; T = R.table; ref = result.ref; k = R.recommended;
+            parts = {};
+            for o = 1:numel(ref.objectives)
+                col = matlab.lang.makeValidName(['eyeBias_' ref.objectives{o}]);
+                if ismember(col, T.Properties.VariableNames) && abs(T.(col)(k)) > 0
+                    parts{end+1} = sprintf('blinks, eye movements and muscle activity in the trials it keeps add about %.2g %s to the %s mean', ...
+                        T.(col)(k), ref.units{o}, ref.objectives{o}); %#ok<AGROW>
+                end
+                col = matlab.lang.makeValidName(['shapeSpread_' ref.objectives{o}]);
+                if ismember(col, T.Properties.VariableNames) && T.(col)(k) >= 0.01
+                    parts{end+1} = sprintf(['its filters would change the %s by up to %.0f%% more or less ', ...
+                        'than the check''s signal if the real one had another shape'], ref.objectives{o}, 100 * T.(col)(k)); %#ok<AGROW>
+                end
+            end
+            if ~isempty(parts)
+                t = sprintf(['In pipeline %d, %s. This bias counts in its error together with the noise ', ...
+                    '(the error column).'], k, strjoin(parts, '; '));
+            end
+            info = pipecompare.utils.fieldOr(ref, 'blinkInfo', struct('channels', {{}}));
+            if isfield(result, 'contract') && strcmp(result.contract.analysis, 'erp') && isempty(info.channels)
+                t = strtrim([t ' There is no eye channel (EOG, or Fp1/Fp2/FPz that you do not measure), so what ', ...
+                    'blinks add to the means could not be checked.']);
+            end
+        end
+
         function t = keptShiftText(result)
             % A warning when a rejection step of the recommended pipeline
             % kept epochs with clearly less of a measured component than all
@@ -928,13 +1010,18 @@ classdef Presets
                 end
                 % fixed: a searched step before ICA would multiply the
                 % decompositions; kurtosis flags spiky channels, joint
-                % probability noisy ones (e.g. poor contact), so either
-                % marks a channel bad; on continuous data detected on a
-                % 1 Hz high-passed copy (slow drifts distort both), as
-                % ICA is fitted; always before an average reference
+                % probability channels whose values are unusually
+                % distributed, resid channels with noise of their own
+                % (e.g. poor contact: just noisier, which the other two
+                % cannot see), so any of them marks a channel bad; on
+                % continuous data detected on a 1 Hz high-passed copy
+                % (slow drifts distort them), as ICA is fitted, low-passed
+                % to the band the analysis keeps (detectLowpass); always
+                % before an average reference
                 if has('badchannels') || strcmp(reference, 'average')
-                    plan = plan.add('badchannels', 'measure', 'kurt+prob', 'threshold', 5, ...
-                        'detectHighpass', double(continuous), exclusion{:});
+                    plan = plan.add('badchannels', 'measure', 'kurt+prob+resid', 'threshold', 5, 'repair', 'error', ...
+                        'detectHighpass', double(continuous), ...
+                        'detectLowpass', pipecompare.simple.Presets.detectLowpass(state, contract), exclusion{:});
                 end
                 plan = addReference(plan, reference, exclude);
                 if has('ica')

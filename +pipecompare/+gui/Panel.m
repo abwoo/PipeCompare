@@ -36,7 +36,7 @@ classdef Panel < handle
         LimitFields = struct()
         ObjectiveField
         Options = struct('dataUnit', 'auto', 'checkpoint', '', ...
-            'parallel', false, 'refineCutoffs', false, 'signalTemplate', 'bump')
+            'parallel', false, 'refineCutoffs', false, 'icaSeeds', 0, 'signalTemplate', 'bump')
         ResultTable; StatusLabel; DetailArea
         MenuStepButton            % Add EEGLAB menu step... (needs EEGLAB's main window)
     end
@@ -229,7 +229,7 @@ classdef Panel < handle
             resP.Layout.Row = 3; resP.Layout.Column = 1;
             rgl = uigridlayout(resP, [2 1]); rgl.RowHeight = {'1x', 96};
             obj.ResultTable = uitable(rgl, 'RowName', {}, 'ColumnName', ...
-                {'id','status','objective','diff vs best','nd','min ret.','interp.','amp. err.','artifact','pipeline / reason'}, ...
+                {'id','status','total error','diff vs best','nd','min ret.','interp.','amp. err.','artifact','pipeline / reason'}, ...
                 'ColumnWidth', {40, 70, 72, 128, 34, 66, 60, 74, 66, 'auto'}, ...
                 'Tooltip', 'nd = not distinguished from the best by these data (not equivalence; whether it is equivalent is in the text below); * = recommended. Select a row for the full text below.', ...
                 'SelectionChangedFcn', @(t, ~) obj.showDetails('result', t));
@@ -385,9 +385,11 @@ classdef Panel < handle
             % As in the simple mode: non-EEG channels (EOG, ECG, ...) and
             % ear/mastoid channels (A1, A2, M1, M2) are left out of
             % bad-channel detection, the average and epoch rejection, and
-            % bad channels are kurtosis or joint probability
-            % (z = 5), detected on a 1 Hz high-passed copy of continuous
-            % data. Shown in the table; Edit values... changes them.
+            % bad channels are kurtosis, joint probability or noise the
+            % other channels do not explain (z = 5), detected on a 1 Hz
+            % high-passed copy of continuous data, low-passed to the band
+            % the analysis keeps. Shown in the table; Edit values...
+            % changes them.
             type = obj.TypeDrop.Value; args = {};
             EEG = pipecompare.live.Session.current();
             if ~isempty(EEG)
@@ -396,7 +398,10 @@ classdef Panel < handle
                     args = {'exclude', ex};
                 end
                 if strcmp(type, 'badchannels')
-                    args = [{'measure', 'kurt+prob', 'threshold', 5, 'detectHighpass', double(EEG.trials == 1)} args];
+                    try, c = obj.contract(); catch, c = struct('analysis', 'erp'); end
+                    lp = pipecompare.simple.Presets.detectLowpass(pipecompare.live.DataState.fromEEG(EEG), c);
+                    args = [{'measure', 'kurt+prob+resid', 'threshold', 5, 'repair', 'error', 'detectHighpass', double(EEG.trials == 1), ...
+                        'detectLowpass', lp} args];
                 end
             end
             obj.Plan = obj.Plan.add(type, args{:});
@@ -817,8 +822,8 @@ classdef Panel < handle
 
         function optionsDialog(obj)
             o = obj.Options;
-            d = uifigure('Name', 'PipeCompare search options', 'Position', [240 240 520 330], 'WindowStyle', 'modal');
-            gl = uigridlayout(d, [6 3]); gl.ColumnWidth = {170, '1x', 110}; gl.RowHeight = repmat({26}, 1, 6);
+            d = uifigure('Name', 'PipeCompare search options', 'Position', [240 240 520 366], 'WindowStyle', 'modal');
+            gl = uigridlayout(d, [7 3]); gl.ColumnWidth = {170, '1x', 110}; gl.RowHeight = repmat({26}, 1, 7);
             uilabel(gl, 'Text', 'Data unit of the dataset');
             du = uidropdown(gl, 'Items', {'auto', 'uV', 'V'}, 'Value', o.dataUnit, 'Tooltip', ...
                 'auto: from the amplitude scale of the dataset; V: scaled to uV on PipeCompare''s copy (ICA weights too)');
@@ -834,6 +839,11 @@ classdef Panel < handle
                 ['When filter cutoffs are compared: the recommended pipeline''s are also tried on a finer grid ', ...
                  'between them, its decisions held fixed, and the best ones run as one more pipeline (as in the simple mode)']);
             uilabel(gl, 'Text', '');
+            uilabel(gl, 'Text', 'Check ICA''s random start');
+            is = uicheckbox(gl, 'Text', '', 'Value', pipecompare.utils.fieldOr(o, 'icaSeeds', 0) > 0, 'Tooltip', ...
+                ['The pipelines that decide the recommendation, when they have ICA, run again with ICA started in ', ...
+                 '2 other ways, to see whether the recommendation stays the same (as in the simple mode)']);
+            uilabel(gl, 'Text', '');
             uilabel(gl, 'Text', 'Signal check with own waveform');
             st = uicheckbox(gl, 'Text', '', 'Value', strcmp(pipecompare.utils.fieldOr(o, 'signalTemplate', 'bump'), 'data'), 'Tooltip', ...
                 ['The known signal of the signal check takes the shape of this recording''s own average waveform at ', ...
@@ -848,6 +858,7 @@ classdef Panel < handle
             end
             function apply()
                 o.dataUnit = du.Value; o.parallel = pa.Value; o.refineCutoffs = rc.Value;
+                o.icaSeeds = 2 * is.Value;
                 o.signalTemplate = pipecompare.utils.ternary(st.Value, 'data', 'bump');
                 obj.setOptions(o); delete(d);
             end
@@ -1461,9 +1472,9 @@ classdef Panel < handle
                         if ~isempty(T.reason{k}), v{end+1} = ['Reason: ' T.reason{k}]; end
                         if ismember('note', T.Properties.VariableNames) && ~isempty(T.note{k}), v{end+1} = ['Note: ' T.note{k}]; end
                         if ~isempty(T.stratum{k}), v{end+1} = ['Stratum (what is measured): ' T.stratum{k}]; end
-                        v{end+1} = sprintf(['Objective (gain-corrected SME) %.4g; difference from the best [%.3g %.3g]; not distinguished %d; ', ...
+                        v{end+1} = sprintf(['Objective (total error) %.4g = noise (gain-corrected SME) %.4g with bias %.3g; difference from the best [%.3g %.3g]; not distinguished %d; ', ...
                             'min retention %s; min trials %g; interpolated %s; amplitude error %s; latency shift %.3g ms; ', ...
-                            'artifactual deflection %s; waveform r %.3f; topography r %.3f'], T.objective(k), T.diffLo(k), T.diffHi(k), ...
+                            'artifactual deflection %s; waveform r %.3f; topography r %.3f'], T.objective(k), T.noise(k), T.bias(k), T.diffLo(k), T.diffHi(k), ...
                             T.notDistinguished(k), pipecompare.gui.PanelText.pctText(T.minRetention(k)), T.minTrials(k), pipecompare.gui.PanelText.pctText(T.interpolated(k)), ...
                             pipecompare.gui.PanelText.pctText(T.ampError(k)), T.latencyShiftMs(k), pipecompare.gui.PanelText.pctText(T.artifactPct(k)), T.waveformCorr(k), T.topoCorr(k));
                         v{end+1} = sprintf('Equivalent to the best (the whole interval within %.0f%% of it): %d', ...
@@ -1616,6 +1627,8 @@ prior = pipecompare.simple.Presets.priorFilterText(r);
 if ~isempty(prior), lines{end+1} = prior; end
 tpl = pipecompare.simple.Presets.templateText(r);
 if ~isempty(tpl), lines{end+1} = tpl; end
+bt = pipecompare.simple.Presets.biasText(r);
+if ~isempty(bt), lines{end+1} = bt; end
 ks = pipecompare.simple.Presets.keptShiftText(r);
 if ~isempty(ks), lines{end+1} = ks; end
 wt = pipecompare.simple.Presets.weightsText(r);

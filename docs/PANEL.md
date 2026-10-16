@@ -59,8 +59,8 @@ Two choices (what to measure; for ERP, the event types); the steps are preselect
    epoch rejection is ticked, each filter uses one edge, the catalog value nearest the band
    outside it (outside the band a filter does not change its power): 9 pipelines for all steps;
    with only the filters ticked their cutoffs are compared. Bad channels are detected
-   once (kurtosis or joint probability, z = 5, on a 1 Hz high-passed copy; the channels are interpolated in the data as
-   they are) and ICA is fitted once, before the filters, so every filter choice shares
+   once (kurtosis, joint probability or noise the other channels do not explain, z = 5, on a 1 Hz high-passed, 40 Hz low-passed copy; the channels are interpolated in the data as
+   they are, except one whose interpolation would measurably raise the total error) and ICA is fitted once, before the filters, so every filter choice shares
    one decomposition (fitted on a 1 Hz high-passed copy; filtering and unmixing are linear, so
    their order does not change the data). Non-EEG channels (typed EOG, ECG, … or named so, such
    as VEOG, HEOG, ECG1) are not tested as bad channels and are ignored by epoch rejection. ASR is compared from the panel or a script. The number
@@ -150,7 +150,9 @@ runs on its own copy.
   *Edit values…* lists the parameters (channel lists picked in EEGLAB's channel list). *Skipping allowed*, *Must come before…* and the *pin* column
   control alternatives and order. As in the simple mode, an added bad-channel, re-reference or
   epoch-rejection step leaves the non-EEG channels (EOG, ECG, ...) out, and an added bad-channel
-  step uses kurtosis or joint probability (z = 5) on a 1 Hz high-passed copy of continuous data;
+  step uses kurtosis, joint probability or noise the other channels do not explain (z = 5) on a 1 Hz
+  high-passed copy of continuous data, low-passed to the band the analysis keeps (40 Hz for ERPs),
+  and interpolates a bad channel unless that would measurably raise the total error (`repair` `error`);
   the table shows these values and *Edit values…* changes them. Every epoch-rejection step also
   has `interpolate` (default 0, off): an epoch failed by at most that many channels keeps them,
   interpolated within the epoch, instead of being rejected; several values (e.g. `0 | 3`) are
@@ -166,7 +168,7 @@ runs on its own copy.
 - **Run search / Options… / Resume…** A progress window shows the pipelines done, the step running
   now, the time so far and the time left; *Stop* (or closing it) stops after the current step and ranks the pipelines already finished.
   Every command and score is printed in the Command Window and the result is stored in
-  `pipecompare_result`. Options: data unit, checkpoint folder, parallel. Below the results the
+  `pipecompare_result`. Options: data unit, checkpoint folder, parallel, fine-tune filter cutoffs, check ICA's random start (the deciding pipelines with ICA run again with ICA started in 2 other ways), signal check with own waveform. Below the results the
   panel says what the dialog's result window says: that the settings make no difference, what to
   try when no pipeline passed, how large a difference the data can show, when ICA did nothing
   useful or had too little data, when one channel caused most rejected epochs, and when filters applied before PipeCompare already change the known signal beyond a

@@ -99,7 +99,7 @@ checks the difference of the two. A difference between independent conditions (M
 minus standard) needs no such scoring: its SME is √(SME₁² + SME₂²), √2 times the root mean
 square over the two conditions, so the ranking is the same.
 
-## 2. Gain-corrected SME (the ranking objective)
+## 2. Gain-corrected SME (the noise part of the ranking objective)
 
 **Problem with raw SME.** SME is in µV, so it is not invariant to the scale of the data. A pipeline
 that multiplies signal and noise by *c* < 1 lowers SME by the factor *c* without measuring the
@@ -256,6 +256,20 @@ chosen one. In simulation (`test_statistics`) a candidate with a third of the ot
 chosen in more than 95 % of the draws, and among 5 candidates of equal true noise with 60 trials
 the one recommended on the sample was recommended in about half of them. [`pipecompare.eval.Rank`]
 
+**ICA's random start.** runica resets its own random state (`'rndreset','no'`), so a decomposition
+is reproducible but is one of many local optima; which one depends on the order in which runica
+draws the samples. Seed *s* > 0 gives runica the samples of the fitting copy in the order of a
+Mersenne-Twister permutation with seed *s* (the objective of infomax does not depend on the order,
+only its path does); the weights are applied to the data as before. The pipelines that decide the
+recommendation, *D* = {recommended, best, runner-up} (runner-up: the next by the recommendation
+rule within the kept set, or the next lowest objective when the kept set has one member), those
+with an ICA step, are run again from the starting data with seeds 1 … *S* (`icaSeeds`, 2 in the
+simple mode), every later step deciding again (components, thresholds, rejected epochs) with its
+own signal check. For each seed the ranking (steps 1–5, without cross-fitting) is made again with
+the candidates of *D* replaced, and the recommendation is compared with the search's
+(`icaSeeds.same`). This is a sensitivity check, not part of the ranking: the recommendation and
+the adopted pipeline remain the search's (seed 0). [`pipecompare.run.Executor`, icaSeedCheck]
+
 ## 4. Signal preservation: matched-decision injection
 
 A copy of the starting data that holds only a known signal is processed with the same operations
@@ -344,6 +358,67 @@ a pipeline that resamples or epochs before its last filter. [`Injection.filterCh
   undefined on a constant, and `pop_rejchan` normalises them over the channels tested, so such a
   channel is set aside before the measures and marked bad by the `badchannels` step. The data
   line names flat EEG channels before a run (first 60 s). [`pipecompare.run.Steps.flatChannels`]
+- **Bad channels by their own noise (measure `resid`).** `pop_rejchan`'s kurtosis and joint
+  probability are invariant to a channel's scale: kurtosis is a ratio of moments, and joint
+  probability bins each channel between its own minimum and maximum (`realproba`, 1000 bins), so
+  multiplying a channel by any factor changes neither. A channel that is only noisier (Gaussian
+  noise of its own, as with poor contact), or that lost its gain, therefore passes both. `resid`
+  measures, for each tested channel $i$ with covariance matrix $C$ over the tested channels, the SD
+  of what is left of it after its least-squares prediction from all the others,
+  $r_i = \sqrt{C_{ii}(1 - R_i^2)} = \sqrt{C_{ii} / (C_{ii}\,(C^{-1})_{ii})}$, computed for all
+  channels from one inverse of the correlation matrix. A channel is bad when the robust z of
+  $\log r_i$ (median and MAD over the channels, the MAD at least 0.1) is above the threshold. Shared
+  activity (volume conduction: brain rhythms, blinks, a nearby reference) is predicted by the
+  neighbours and does not count; noise of the channel's own is not predicted. Samples where any
+  channel is beyond 6 robust SDs of its own (blinks, movement) are left out of $C$, unless that is
+  over half of them; at most 2·10⁵ samples are used; epochs have their mean removed. The test is
+  skipped (and said) when the correlation matrix is singular (smallest eigenvalue below 10⁻⁶ of the
+  largest: average-referenced or interpolated channels, each predicted exactly), and needs at
+  least 8 channels. In simulations (64 and 32 channels, spatially smooth sources plus sensor
+  noise, strong occipital alpha, frontal blinks, a vertex reference), kurtosis + joint probability
+  found 0–12% of channels 1.5 to 5 times noisier than the rest, `resid` 75–100%, with 0–0.1 false
+  alarms per recording against 3–8 for kurtosis + joint probability, which flagged blink-laden
+  frontal channels. One missed channel three times noisier left 52% of the epochs under a 100 µV
+  limit. The simple mode and the panel detect with `kurt+prob+resid`.
+  [`pipecompare.run.Steps.residualZ`]
+- **Kurtosis and joint probability without the blinks.** Blinks make the frontal channels'
+  values heavy-tailed, so `pop_rejchan` marks them bad (in the simulations above, with frontal
+  blinks: 7.5 good channels per 64-channel recording, all frontal; with the blinks left out, none
+  frontal). The measures therefore run on the copy without the samples where an eye channel
+  (`Injection.eyeChannels`: EOG, else Fp1, Fp2, FPz) is beyond 5 robust SDs of its own (median
+  and MAD), with 200 ms on either side (epoched data: without those epochs), unless that is over
+  half of the data. A weak blink can stay under that limit in the eye channels while the
+  frontal channels show it clearly, and one blink left in is enough to make them heavy-tailed
+  again (simulated: 20-30% of the blinks missed, FPz then marked bad). So the blinks found give
+  the blink's scalp pattern $a$ (every channel regressed on the eye channel with the most of
+  them), and the matched spatial filter $w = C^{-1}a$, $C$ the channels' covariance away from
+  the blinks, gives its time course $w^\top x(t) / w^\top a$; samples of it beyond 5 robust SDs are
+  blinks too (simulated: all blinks found). A noisy channel weighs little in $w$, so a bad
+  frontal channel's own noise or spikes are not taken for blinks (simulated: a spiky FPz is
+  still marked bad). Spiky channels and line noise are found as before. `resid` leaves out such
+  samples itself. [`pipecompare.run.Steps.withoutBlinks`]
+- **Bad channels are found in the analysis band (`detectLowpass`).** The copy the bad channels are
+  found on is also low-passed: at 40 Hz for ERPs (the highest low-pass compared; its stop band
+  starts at 50 Hz), 5 Hz above the highest band for band power, none on epoched data, data already
+  low-passed at or below that edge, or an edge within 10% of the Nyquist frequency. Line noise on
+  one channel, which the pipeline's low-pass removes, otherwise makes that channel bad and
+  replaces it by its neighbours (the measured electrode included). [`pipecompare.simple.Presets.detectLowpass`]
+- **Which bad channels are interpolated (`repair` = `'error'`).** Interpolation is linear: with the
+  set *b* interpolated the data are *M*_b *X*, *M*_b EEGLAB's spherical spline, read off by
+  interpolating an identity matrix with `pop_interp` (`ChannelChoice.interpMatrix`; equal to
+  `pop_interp` on the data, `test_engine/testBadChannelsInterpolatedByTheirEffectOnTheError`).
+  Of the steps below, up to the epoch rejection, the re-referencing (a channel map *R*), epoching
+  and baseline removal (per channel, commuting with *M*_b) and the rejection are applied, when they
+  are the same in every pipeline below the step (else every bad channel is interpolated); the
+  filters between are replaced by the band of the detection copy, and ICA is left out, as it
+  differs between pipelines and is not linear. For each *b*: *R M*_b *X* epoched, the total error
+  at the rejection's best limit (`IcThreshold` scoring, sections 9c–9d), the gain from the known-signal
+  copy with the same *b*. Backward from all flagged channels, the channel whose being left gives the
+  lowest objective is left, one at a time; among the sets equivalent to the best (paired bootstrap,
+  equivalence margin), the one interpolating the most is chosen, so a flagged channel stays as it
+  is only when interpolating it measurably raises the error. More than 12 flagged channels: all
+  interpolated. Not re-made on the selecting half in the cross-fitting check (section 3), unlike
+  the choices inside the pipeline after ICA. [`pipecompare.eval.ChannelChoice`]
 - **Event types are matched exactly.** `pop_epoch` selects events with `strmatch(…, 'exact')`, so
   'S 1' and 's 1' are different types. The contract is validated the same way and names the
   near match.
@@ -642,7 +717,7 @@ latency with SD 50 ms), the weighted estimate stays within 3 standard errors of 
 data: the weights, from the noise over the whole epoch, do not count trials with a large P3
 measurably less.
 
-## 9g. ICA components chosen by their effect on the SME (forward selection)
+## 9g. ICA components chosen by their effect on the SME
 
 `icremove` with `threshold` = `sme` chooses the set R of components to remove by the objective
 instead of by ICLabel probability [`pipecompare.eval.IcThreshold.chooseBySme`].
@@ -653,19 +728,32 @@ signal check fails or too few trials are kept), choose R ⊆ C, where C is the s
 whose likeliest ICLabel class is not Brain (a component ICLabel takes for brain activity is never
 a candidate). ICLabel is used only to protect, not to decide.
 
-**Path.** The 2^|C| subsets cannot all be scored, so R is built by forward selection: R₀ = ∅, and
-R_{j+1} = R_j ∪ {*k*} with *k* ∈ C \ R_j minimising *J*(R_j ∪ {*k*}). Each evaluation is exact in the
-sense of section 9d: with P = A W X the back-projection of all components (`pop_subcomp`'s
-rebuild; X itself for R = ∅), removing R gives P − A_R S_R with S = W X the activations, so
-adding *k* subtracts the rank-one term A_{:,k} S_{k,:} from the current data; epoching and baseline
-removal commute with it, and the known-signal copy is updated the same way. The inner problem
-over *u* is solved exactly (section 9c). The path stops after 30 components (`MaxRemoved`), when no
-candidate gives a feasible set, or when *J*(R_j) > (1 + 2*m*) min_{i≤j} *J*(R_i) with *m* the
-equivalence margin (5 %): the path has passed its minimum by more than the margin covers. Forward
-selection is greedy, so the best set on the path need not be the best subset; what it guarantees
-is that every set on the path is scored exactly, that each step takes the component that lowers
-the objective most given those already removed (unlike a threshold, which orders components by
-probability), and that the threshold's own sets are not needed: both are compared in the ranking.
+**Path.** The 2^|C| subsets cannot all be scored, so the sets scored are nested: the first *j*
+components of an order of C. For a mean amplitude the order is by what each component does to
+the score alone. Its part of each trial's score *d*_k,i (below) is exact, as the score is linear
+in the components. Its own trial-to-trial variance there, as a share of the score's variance
+(summed over the measured components and averaged over the conditions), is divided by its share
+*s*_k of the known signal at the score (from the signal copy, at least a thousandth of the largest
+share). The noisiest components that carry the least signal come first. Each set is then scored
+exactly in the sense of section 9d. With P = A W X the back-projection of all components
+(`pop_subcomp`'s rebuild; X itself for R = ∅), removing R gives P − A_R S_R with S = W X the
+activations, so adding *k* subtracts the rank-one term A_{:,k} S_{k,:} from the current data.
+Epoching and baseline removal commute with it, and the known-signal copy is updated the same
+way. The inner problem over *u* is solved exactly (section 9c). The path stops after 30
+components (`MaxRemoved`), or when *J*(R_j) > (1 + 2*m*) min_{i≤j} *J*(R_i) with *m* the equivalence
+margin (5 %): the path has passed its minimum by more than the margin covers.
+
+*Why not forward selection* (adding each time the component that lowers *J* most, used before).
+With about 60 candidates (ICLabel calling most components Other) and 30-40 trials per condition,
+the greedy step picks components whose removal lowers the *sample* variance by chance, through
+chance covariances with the rest of the score. The cross-fitting of section 9e re-chooses only
+among the sets of the path, so it cannot see that. Simulated (fourth review, `icsme_path.py`,
+35 trials per condition): the error the greedy path reported was 38 % below its true error, while
+the cross-fitting showed 3 %, and its true error was 0.66 of removing nothing. With the order
+above, the reported error is 0.94 of the true one and the true error is 0.54 of removing nothing,
+for |C| + 1 evaluations instead of |C| · min(|C|, 30). Band power and
+contralateral-minus-ipsilateral measures, whose parts are not linear in the components or not
+computed, keep the forward selection.
 
 **Time-locked components are not candidates.** The SME counts every trial-to-trial variation as
 noise, real brain activity that varies from trial to trial included, so removing a brain component
@@ -675,15 +763,24 @@ path, for each candidate *k* and condition *c*, the component's part of each tri
 ROI and S̄ the window and baseline means of its activation in trial *i* (exact for a mean
 amplitude: the score is linear in the components). *k* is protected (`info.protected`) when in
 some condition |*t*| = |mean *d*| / (SD *d* / √*n*) > 3 and |mean *d*| > 0.5 SME of the scores:
-clearly time-locked, and large enough to change the measure. Components whose likeliest ICLabel
-class is Eye are not protected, as blinks can be time-locked. Mean amplitudes only;
+clearly time-locked, and large enough to change the measure. Eye components are not protected, as
+blinks can be time-locked: those whose likeliest ICLabel class is Eye, and those whose activation
+follows an eye channel (`Injection.eyeChannels`) far more closely than the other components' do.
+That is the largest |correlation| with one over the epochs above 0.4 (`EyeCorr`) and more than 3
+robust SDs (median, MAD) above the other components', as FASTER finds eye components. ICLabel
+often calls a blink component Other: simulated (`evoked_guard.py`), a blink component that
+ICLabel does not name passed the guard in 73 % of datasets at a 30 % blink rate. Along the path
+the guard also holds for the components removed together: a component is skipped
+(`info.protected`) when its part added to theirs (eye components left out) would pass it, so that
+a P3 spread over several weak components is not removed piece by piece. Mean amplitudes only;
 contralateral-minus-ipsilateral components and band power are not checked.
 
 **Choice.** As in section 9d: the sets on the path are compared with the same paired bootstrap and
 simultaneous max statistic, and among those shown equivalent to the best the one removing the
 fewest components is used. The components are flagged in `EEG.reject.gcompreject` (the command
-is recorded in `EEG.history`) and removed by `pop_subcomp`. Cost: at most |C| · min(|C|, 30)
-evaluations of the inner problem, against at most *K* + 1 for the threshold.
+is recorded in `EEG.history`) and removed by `pop_subcomp`. Cost: at most min(|C|, 30) + 1
+evaluations of the inner problem (forward selection: |C| · min(|C|, 30)), against at most *K* + 1
+for the threshold.
 
 **Scope.** As section 9d (per-trial scores; only epoching, baseline removal and an amplitude
 rejection that removes epochs between the removal and the rejection; the same steps after it in
@@ -754,6 +851,111 @@ the choice among those not distinguished from the best (highest minimum retentio
 recordings, then smallest largest amplitude error, then lowest objective) follow section 3. The
 uncertainty is that of these recordings' trials, not of sampling other participants: the choice is
 for this group's data, as the single-recording choice is for one recording's.
+
+## 15. Total error: noise and bias together
+
+[`pipecompare.eval.Rank` step 3b; `pipecompare.eval.Measure.blinks`, `Measure.eyeBias`;
+`pipecompare.eval.Injection.shapeSpreads`] The SME (section 1) measures how much a mean would vary
+from one set of trials to another. It does not see an error that moves every set the same way.
+The objective is therefore the root mean square error of each gain-corrected condition mean,
+
+  *J* = √(mean over measures and conditions of (SME/*g*)² + *b*²),
+
+with *b* = (*e* + |ȳ| *s*) / *g* the bias of that mean (columns `noise` = SME/*g* alone and `bias` =
+*b* alone; *J*² = noise² + bias²). It has two parts, each computed from the data and the
+pipeline's own processing.
+
+**What blinks add (*e*).** A blink (or other eye movement) time-locked to the stimulus, as after
+targets in an oddball or n-back task, falls in a share *p* of the trials and adds about *d* µV to
+their score at the measured electrodes. The mean moves by *p d*; the SME grows only by the spread
+*d*·√(*p*(1−*p*)) adds to the trials' spread, divided by √*N*. Simulated (40 trials per condition,
+SME 0.94 µV): with *p* = 0.3 and *d* = 3 µV the SME grows 3 % while the mean moves 0.9 µV, one
+SME; with *p* = 0.5, 3 % and 1.6 SME. A choice by SME alone keeps such trials (within the
+equivalence margin, the least aggressive pipeline is recommended), and epoch rejection does not
+test the EOG channels.
+
+The blink trials are found once, on the data as they are before any processing: for each
+mean-amplitude component, an epoch's eye activity is the largest, over the eye channels (EOG by
+type or name, else Fp1, Fp2, FPz; never a measured electrode), of |window mean − baseline mean|,
+the part of an eye artifact that reaches a score; it is a blink when its robust *z* (median and
+MAD over all trials) exceeds 3 (`Measure.BlinkZ`). Comparing the trials with each other fails
+when most of them have a blink, as in n-back tasks with a response on every trial: the median
+trial then has one (simulated, fourth review `eye_bias.py`: at 50 % blink trials the bias came out
+0.69 µV for a true 1.44 µV, at 70 % 0.17 µV for 2.0 µV). So in continuous data a trial is also a
+blink trial when a blink found sample by sample falls in its window or baseline: an eye channel
+minus its moving median over 1 s beyond 5 robust SDs over the samples (blinks fill far fewer
+samples than trials), with 50 ms on either side; eye movements the same on *h* below
+(`Measure.blinks`, `sampleHits`). Then, for each pipeline and condition, over the
+trials it keeps (with their weights *w*, when weighted), with *p* the blink trials' share of the
+weight and *m*_B, *m*_N the weighted mean scores of the blink and other trials,
+
+  ȳ = *m*_N + *p* (*m*_B − *m*_N),  *e* = *p* (*m*_B − *m*_N):
+
+what the blink trials add to the mean (a pipeline that removed the eye activity, by ICA or by
+rejecting those trials, has *e* ≈ 0). *e* is itself an estimate; its square is used with its
+variance taken off, *e*² − *p*² *s*² (1/*n*_B + 1/*n*_N), floored at 0 (*s*² the scores' variance), so a
+bias the data do not show counts about 0 (`test_statistics/testWhatBlinksAddToTheMean`). In the
+bootstrap (section 3) *e* is recomputed in every resample. A difference of the blink trials'
+mean that is real brain activity (a larger P3 in the trials with a blink) is counted as bias too;
+using the blink's size only to select the trials, not as a regressor, keeps frontal brain activity
+that correlates with the measured electrodes from being read as eye activity.
+
+**Eye movements and muscle.** Two more kinds of trials are found the same way (robust *z* > 3 over
+all trials, per component) and counted with the blinks (a trial with any of them is in B):
+- *eye movements*: |window mean − baseline mean| of *h* = left − right, the difference of two eye
+  channels on either side (EOG channels by position, EEGLAB's *Y* axis pointing left, |*Y*|/‖·‖ >
+  0.2; else by names ending in L and R; else F7 − F8, when neither is measured). A blink, about the
+  same on both sides, cancels in *h*; a horizontal movement, opposite on the two sides, doubles.
+  `Measure.blinks` reports it as `blinkInfo.horizontal`;
+- *muscle*: log of the largest, over the component's measured electrodes, SD of the first
+  difference *x*ₜ₊₁ − *x*ₜ in the window: a high-pass that the slow ERP hardly passes and EMG
+  (20–150 Hz) does.
+
+Since *e* = *p*(*m*_B − *m*_N) = ȳ − *m*_N, it is the distance of the mean from the mean of the trials
+with none of the three; trials flagged by chance carry no bias and only add to its variance, which
+is taken off. `blinkInfo.kindShare` gives the share of each kind.
+
+**What the signal's shape changes (*s*).** The gain *g* (section 2) is measured with one known
+shape (section 4). The real component's shape is not known, and a filter changes the gain of a
+broad or slow component more than that of a narrow one. Simulated with EEGLAB's default
+high-pass design, the window mean of a P3 at 300–600 ms after 0.5 Hz: −3.3 % for the bump, −3.4 %
+for a recording's own average (faded outside the window), −5.5 % for a P3 with a slow tail to
+900 ms; after 1 Hz: −20 %, −20 % and −28 %. So *s* is the largest relative change of the gain over a
+family of shapes: the template used and bumps as wide at half maximum as 0.5, 1 and 2 times the
+window (at least 50 ms) (`Injection.ShapeFactors`), the worst case over the family, a minimax.
+The bumps are whole, out to 4 SDs either side of the window's centre, even where that is
+outside the epoch. Cut at the epoch's edge, the widest bump would end in a step that a high-pass
+passes. In simulation (fourth review, `shape_spread.py`, 300–600 ms window, epoch −0.2–0.8 s)
+the cut bumps gave *s* = 9.1 % instead of 13.2 % at 1 Hz, and 0.9 % instead of 1.4 % at 0.5 Hz.
+Only the filters make the gain depend on the time course: re-referencing, interpolation and IC
+removal act on the scalp field, and rejection and weighting select trials. So *s* is computed
+with each pipeline's filters alone on a short copy of the signal, once per filter sequence; *s* = 0
+without filters, for latencies, band power and epoched data. *b* uses |ȳ| *s*, the change of the
+measured mean if the gain were off by *s*.
+
+**Inside the pipelines.** The rejection limit and the ICLabel threshold chosen from the data
+(sections 9c and 9d) and the components chosen by their effect on the noise (9g) minimize the
+same total error, with *e* (the shape part depends on the filters, not on these choices, so it is
+left out there); the selection check (section 3) makes them again on half of the trials with it.
+Fine-tuned cutoffs (9e) use the *s* of each pair of cutoffs.
+
+**Recommendation.** Among the pipelines not distinguished from the best, one whose bias is above
+half its noise (`Rank.BiasShare`) is recommended only when none below it is among them: keeping
+more trials is no reason to keep what they carry in.
+
+**Simulation.** `test_engine/testBlinksCountInTheTotalError`: blinks after 30 % of the targets;
+the estimated *e* is within 3 standard errors of what the blinks add in fact (the same data
+without them), rejecting the blink trials leaves almost none, and that pipeline is recommended.
+`test_engine/testEyeMovementsAndMuscleCountInTheBias`: leftward eye movements in 30 % of the targets
+and muscle bursts in 15 % of all trials, measured at F3: over 80 % of each are found, under 10 % of
+the other trials, and *e* is within 3 standard errors of what the eye movements add.
+`test_engine/testShapeSpreadGrowsWithTheHighPass`: *s* is 0 without a filter, below 2 % at 0.1 Hz,
+above 10 % at 1 Hz.
+
+**Limits.** Without an eye channel (EOG, or a frontal pole that is not measured) *e* is not
+estimated, and the result says so. Blinks in more than half of the trials defeat the robust *z*.
+Eye activity that does not reach the eye channels (small saccades) is not seen. The shape family
+covers widths, not every shape.
 
 ## References
 

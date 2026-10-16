@@ -203,20 +203,33 @@ classdef Steps
             if isfield(p, 'exclude') && ~isempty(p.exclude)   % e.g. EOG / reference channels are not tested
                 elec = find(~ismember(lower({EEG.chanlocs.labels}), lower(presentChannels(EEG, p.exclude, 'badchannels exclude'))));
             end
-            % measure: one pop_rejchan measure, or several joined by '+'
-            % (e.g. 'kurt+prob'): a channel is bad when any of them flags it
+            % measure: one measure, or several joined by '+' (e.g.
+            % 'kurt+prob+resid'): a channel is bad when any of them flags it.
+            % kurt, prob and spec are pop_rejchan's; resid is
+            % PipeCompare's (residualZ: noise the other channels do not
+            % explain), which finds what kurtosis and joint probability
+            % cannot see: both depend only on the shape of a channel's
+            % values, not their size, so a channel that is just noisier
+            % (poor contact) passes them.
             measures = strsplit(p.measure, '+');
             % Detect on a high-passed copy (slow drifts distort kurtosis
-            % and probability), interpolate or remove on the data as they are.
+            % and probability), and low-passed (detectLowpass, the band
+            % the analysis keeps: line noise alone that a later low-pass
+            % removes does not make a channel bad); interpolate or remove
+            % on the data as they are.
             hp = pipecompare.utils.fieldOr(p, 'detectHighpass', 0);
+            lp = pipecompare.utils.fieldOr(p, 'detectLowpass', 0);
             applied = 0; if nargin > 2 && isfield(ctx, 'highpass'), applied = ctx.highpass; end
-            copy = hp > 0 && hp > applied;
-            src = EEG; on = '';
-            if copy
-                fa = fftArgs(EEG, hp);
-                src = pop_eegfiltnew(EEG, 'locutoff', hp, 'plotfreqz', 0, fa{:});
-                on = sprintf(' on a %g Hz high-passed copy', hp);
+            doHp = hp > 0 && hp > applied;
+            doLp = lp > 0 && lp < EEG.srate / 2;
+            copy = doHp || doLp;
+            lpOnly = bandCopy(EEG, false, hp, doLp, lp);     % (the filters commute: low-pass first)
+            src = bandCopy(lpOnly, doHp, hp, false, lp); on = '';
+            if doHp, on = sprintf(' on a %g Hz high-passed', hp); end
+            if doLp
+                on = [pipecompare.utils.ternary(doHp, [on ','], ' on a') sprintf(' %g Hz low-passed', lp)];
             end
+            if copy, on = [on ' copy']; end
             % Flat channels (no signal) are bad whatever the measures say:
             % kurtosis and probability are undefined on a constant, and left
             % in, they would also spoil the normalisation over the others.
@@ -225,14 +238,52 @@ classdef Steps
             if ~isempty(flat)
                 pipecompare.utils.log('Flat channel(s) (no signal) marked bad: %s', strjoin({EEG.chanlocs(flat).labels}, ', '));
             end
+            % kurtosis and joint probability on a copy without the blinks:
+            % they make the frontal channels' values heavy-tailed, so
+            % those would be marked bad for what ICA is there to remove
+            noBlink = src; share = 0;
+            if any(~strcmp(measures, 'resid'))
+                if copy && EEG.trials == 1
+                    % left out of the low-passed data, then high-passed like
+                    % the copy: high-passing first would spread each blink's
+                    % slow part beyond the stretch left out (eegfiltnew
+                    % filters the stretches between boundaries on their
+                    % own), while low-passing after would leave what it
+                    % removes (line noise) at the edges of every stretch
+                    [noBlink, share, eyes] = pipecompare.run.Steps.withoutBlinks(src, lpOnly);
+                    if share > 0, noBlink = bandCopy(noBlink, doHp, hp, false, lp); else, noBlink = src; end
+                else
+                    [noBlink, share, eyes] = pipecompare.run.Steps.withoutBlinks(src);
+                end
+                if share > 0
+                    on = sprintf('%s; %.0f%% of the data with blinks left out for kurtosis and probability', on, 100 * share);
+                    pipecompare.utils.log('Bad channels: kurtosis and joint probability measured without the %.0f%% of the data with blinks (in %s).', ...
+                        100 * share, strjoin({src.chanlocs(eyes).labels}, ', '));
+                end
+            end
             bad = [];
             for m = measures
-                args = {'elec', elec, 'threshold', p.threshold, 'norm', 'on', 'measure', m{1}};
-                if strcmp(m{1}, 'spec'), args = [args {'freqrange', [1 min(50, EEG.srate/2 - 1)]}]; end
-                [EEGrem, b, ~, com] = pop_rejchan(src, args{:});
+                if strcmp(m{1}, 'resid')
+                    z = pipecompare.run.Steps.residualZ(src.data(elec, :, :));
+                    if isempty(z)
+                        pipecompare.utils.log(['Bad channels: the noise the other channels do not explain is not ', ...
+                            'tested (the channels are linearly dependent, e.g. already average-referenced or interpolated).']);
+                        continue
+                    end
+                    b = find(z > p.threshold);
+                    if ~isempty(b)
+                        pipecompare.utils.log('Bad channel(s) by their noise the other channels do not explain: %s', ...
+                            strjoin(arrayfun(@(k) sprintf('%s (z = %.1f)', EEG.chanlocs(elec(k)).labels, z(k)), b, ...
+                            'UniformOutput', false), ', '));
+                    end
+                else
+                    args = {'elec', elec, 'threshold', p.threshold, 'norm', 'on', 'measure', m{1}};
+                    if strcmp(m{1}, 'spec'), args = [args {'freqrange', [1 min(50, EEG.srate/2 - 1)]}]; end
+                    [EEGrem, b, ~, com] = pop_rejchan(noBlink, args{:});
+                end
                 bad = union(bad, b(:)');
             end
-            bad = elec(bad);   % pop_rejchan indexes the tested channels (it removes opt.elec(indelec) itself)
+            bad = elec(bad);   % both index the tested channels (pop_rejchan removes opt.elec(indelec) itself)
             on = [on pipecompare.utils.ternary(isempty(flat), '', sprintf('; flat channels [%s] bad', ...
                 strjoin({EEG.chanlocs(flat).labels}, ' ')))];
             bad = sort([bad flat]);
@@ -240,12 +291,12 @@ classdef Steps
             info.badChannels = labels; info.badIdx = bad;
             if strcmp(p.action, 'remove')
                 info.removed = labels;
-                if ~copy && isscalar(measures) && isempty(flat)
+                if ~copy && share == 0 && isscalar(measures) && ~strcmp(measures{1}, 'resid') && isempty(flat)
                     EEG = EEGrem;
                     coms = {com};
                     return;
                 end
-                coms = {sprintf('%% PipeCompare: pop_rejchan(measure %s, threshold %g, norm on, %d channels tested)%s -> bad channels [%s] removed', ...
+                coms = {sprintf('%% PipeCompare: bad-channel test (measure %s, threshold %g, norm on, %d channels tested)%s -> bad channels [%s] removed', ...
                     p.measure, p.threshold, numel(elec), on, strjoin(labels, ' '))};
                 if ~isempty(bad)
                     [EEG, com2] = pop_select(EEG, 'nochannel', bad);
@@ -253,14 +304,131 @@ classdef Steps
                 end
                 return;
             end
-            coms = {sprintf('%% PipeCompare: pop_rejchan(measure %s, threshold %g, norm on, %d channels tested)%s -> bad channels [%s] interpolated in place', ...
-                p.measure, p.threshold, numel(elec), on, strjoin(labels, ' '))};
-            info.interpolated = labels;
+            done = sprintf('[%s] interpolated in place', strjoin(labels, ' '));
+            if strcmp(pipecompare.utils.fieldOr(p, 'repair', 'all'), 'error') && ~isempty(bad)
+                % interpolated only where that does not measurably raise
+                % the total error (pipecompare.eval.ChannelChoice)
+                if nargin > 2 && isfield(ctx, 'chosenChannels')
+                    % re-running a pipeline: the channels the search interpolated
+                    keep = bad(ismember(lower(labels), lower(ctx.chosenChannels)));
+                elseif nargin > 2 && isfield(ctx, 'after') && isfield(ctx, 'contract') && pipecompare.eval.Threshold.applies(ctx.contract)
+                    [keep, info.channelChoice] = pipecompare.eval.ChannelChoice.choose(EEG, src, bad, ctx);
+                else
+                    keep = bad;
+                    pipecompare.utils.log(['Bad channels: every bad channel interpolated (whether interpolating one would ', ...
+                        'raise the total error needs mean amplitudes or band power and the steps that follow).']);
+                end
+                if numel(keep) < numel(bad)
+                    done = sprintf(['[%s]: [%s] interpolated in place, [%s] left as they are (interpolating them ', ...
+                        'would raise the total error)'], strjoin(labels, ' '), strjoin({EEG.chanlocs(keep).labels}, ' '), ...
+                        strjoin({EEG.chanlocs(setdiff(bad, keep)).labels}, ' '));
+                end
+                info.leftAsIs = {EEG.chanlocs(setdiff(bad, keep)).labels};
+                bad = keep; info.badIdx = bad;
+            end
+            coms = {sprintf('%% PipeCompare: bad-channel test (measure %s, threshold %g, norm on, %d channels tested)%s -> bad channels %s', ...
+                p.measure, p.threshold, numel(elec), on, done)};
+            info.interpolated = {EEG.chanlocs(bad).labels};
             if ~isempty(bad)
                 requireLocations(EEG.chanlocs(bad), 'badchannels');
                 EEG = pop_interp(EEG, bad, 'spherical');   % returns no command from the command line
                 coms{end+1} = sprintf('EEG = pop_interp(EEG, %s, ''spherical'');', mat2str(bad(:)'));
             end
+        end
+
+        function [T, share, eyes] = withoutBlinks(T, D)
+            % T without its blinks: the samples (continuous data) or epochs
+            % where an eye channel (Injection.eyeChannels: EOG, else Fp1,
+            % Fp2, FPz) is beyond 5 robust SDs of its own (median and MAD),
+            % continuous data with 200 ms on either side. With D (the same
+            % samples, e.g. T before filtering), those are left out of D
+            % instead. share: the share of the data left out; nothing is
+            % left out (share 0) without an eye channel, or when that would
+            % be over half the data.
+            %   A blink too weak to stand out in an eye channel's noise
+            %   is clear in the frontal channels, and one blink left in is
+            %   enough to make them heavy-tailed. So the blinks found in
+            %   the eye channels give the blink's scalp pattern a
+            %   (regression of every channel on the eye channel with most
+            %   of them), and the data weighted by C \ a, C their
+            %   covariance away from the blinks, give its time course: the
+            %   matched spatial filter, in which a noisy channel weighs
+            %   little, so a bad frontal channel's own noise or spikes are
+            %   not taken for blinks. Its samples beyond 5 robust SDs are
+            %   blinks too.
+            if nargin > 1, S = D; else, S = T; end
+            share = 0;
+            eyes = pipecompare.eval.Injection.eyeChannels(T.chanlocs);
+            if isempty(eyes), return; end
+            Y = reshape(T.data, T.nbchan, []);
+            H = beyondRobust(double(Y(eyes, :)), 5);
+            hit = any(H, 1);
+            w = round(0.2 * T.srate);
+            if any(hit)
+                [~, j] = max(sum(H, 2));
+                idx = find(hit); e = double(Y(eyes(j), idx)); a = zeros(T.nbchan, 1);
+                for b = 1:1e5:numel(idx)           % a block of samples at a time
+                    k = b:min(numel(idx), b + 1e5 - 1);
+                    a = a + double(Y(:, idx(k))) * e(k)';
+                end
+                a = a / (e * e');
+                away = ~hit;
+                if T.trials == 1, away = ~(conv(double(hit), ones(1, 2 * w + 1), 'same') > 0); end
+                C = blockCov(Y, away);
+                C = C + 1e-6 * max(trace(C), eps) / size(C, 1) * eye(size(C, 1));
+                f = C \ a;
+                hit = hit | beyondRobust(double(single(f') * Y) / (f' * a), 5);
+            end
+            if T.trials > 1
+                drop = find(any(reshape(hit, T.pnts, T.trials), 1));
+                if isempty(drop) || numel(drop) > T.trials / 2, return; end
+                share = numel(drop) / T.trials;
+                [~, T] = evalc('pop_select(S, ''notrial'', drop)');
+                return;
+            end
+            hit = conv(double(hit), ones(1, 2 * w + 1), 'same') > 0;
+            if ~any(hit) || mean(hit) > 0.5, return; end
+            d = diff([0 hit 0]);
+            T = pipecompare.utils.selectPoints(S, 'nopoint', [find(d == 1)' find(d == -1)' - 1]);
+            share = mean(hit);
+        end
+
+        function z = residualZ(X)
+            % For each row of X (channels x samples [x epochs]): how far its
+            % noise that the other rows do not explain stands out, as a
+            % robust z (median and MAD over the rows, MAD at least 0.1) of
+            % the log SD of what is left of it after its least-squares
+            % prediction from all the others (leave one out:
+            % SD^2 / (C^-1)_ii for the covariance C). Brain activity and
+            % artifacts reach neighbouring electrodes too (volume
+            % conduction), so the others predict most of a good channel;
+            % noise of its own (poor contact, a broken lead) they cannot.
+            % Size differences the others share (alpha, blinks, a nearby
+            % reference) are predicted, so they do not count. Samples where
+            % any row is beyond 6 robust SDs of its own (blinks, movement)
+            % are left out, unless that is over half of them. [] when the
+            % rows are linearly dependent (average-referenced or
+            % interpolated): every row is then predicted exactly. Fewer
+            % than 8 rows: no outlier can be told, z is all zeros. Epochs:
+            % each epoch's mean is removed first.
+            n = size(X, 1);
+            z = zeros(1, n);
+            if n < 8, return; end
+            if size(X, 3) > 1, X = X - mean(X, 2); end              % epochs: each one's offset removed
+            X = reshape(X, n, []);
+            X = double(X(:, 1:max(1, ceil(size(X, 2) / 2e5)):end));   % at most 2e5 samples
+            X = X - median(X, 2);
+            mad = 1.4826 * median(abs(X), 2);
+            keep = max(abs(X) ./ max(mad, eps), [], 1) < 6;
+            if mean(keep) >= 0.5, X = X(:, keep); end
+            X = X - mean(X, 2);
+            C = (X * X') / size(X, 2);
+            sd = sqrt(diag(C));
+            R = C ./ (sd * sd');
+            ev = eig((R + R') / 2);
+            if min(ev) < 1e-6 * max(ev), z = []; return; end
+            r = log(sd' ./ sqrt(diag(inv(R))'));   % the residual SD: sd * sqrt(1 - R^2)
+            z = (r - median(r)) / max(0.1, 1.4826 * median(abs(r - median(r))));
         end
 
         function flat = flatChannels(X)
@@ -305,7 +473,12 @@ classdef Steps
             applied = 0; if isfield(ctx, 'highpass'), applied = ctx.highpass; end
             fitHp = p.fitHighpass > 0 && p.fitHighpass > applied;
             clean = pipecompare.utils.fieldOr(p, 'fitClean', 1) > 0;
-            if fitHp || clean
+            % ctx.icaSeed > 0: runica sees the samples in another order
+            % (the check of how much the recommendation depends on where
+            % ICA starts; runica resets its own random state, so the order
+            % of the samples is what changes its path). Not adopted.
+            seed = pipecompare.utils.fieldOr(ctx, 'icaSeed', 0);
+            if fitHp || clean || seed > 0
                 % Fit on a copy: high-passed (stable decomposition) and/or
                 % without the stretches of extreme data (movement, bursts),
                 % which would otherwise claim components of their own; the
@@ -330,6 +503,12 @@ classdef Steps
                     end
                 end
                 if isempty(what), what = {'the data as they are (nothing extreme to leave out)'}; end
+                if seed > 0
+                    sz = size(tmp.data); x = reshape(tmp.data, sz(1), []);
+                    x = x(:, randperm(RandStream('mt19937ar', 'Seed', seed), size(x, 2)));
+                    tmp.data = reshape(x, sz); clear x
+                    what{end+1} = sprintf('its samples in a random order (seed %d)', seed);
+                end
                 tmp = runIca(tmp, opts);
                 EEG.icaweights = tmp.icaweights; EEG.icasphere = tmp.icasphere;
                 EEG.icachansind = tmp.icachansind; EEG.icawinv = []; EEG.icaact = [];
@@ -868,6 +1047,33 @@ if ~isempty(f) && contains(fileread(f), '[xi,yi] = meshgrid(xi,yi);')
         '(rotated scalp maps; eye components are mostly missed). Update ICLabel to 1.6 or later in ', ...
         'File > Manage EEGLAB extensions.']);
 end
+end
+
+function hit = beyondRobust(X, z)
+% the samples of each row of X beyond z robust SDs (median, MAD) of that row
+X = abs(X - median(X, 2));
+hit = X > z * max(1.4826 * median(X, 2), eps);
+end
+
+function C = blockCov(Y, keep)
+% the covariance of the columns of Y (channels x samples) where keep is
+% true, a block of samples at a time (no copy of the whole data)
+n = size(Y, 1); C = zeros(n); s = zeros(n, 1); m = 0;
+for b = 1:1e5:size(Y, 2)
+    k = b:min(size(Y, 2), b + 1e5 - 1);
+    X = double(Y(:, k(keep(k))));
+    C = C + X * X'; s = s + sum(X, 2); m = m + size(X, 2);
+end
+C = (C - s * s' / max(m, 1)) / max(m - 1, 1);
+end
+
+function T = bandCopy(T, doHp, hp, doLp, lp)
+% the copy bad channels are tested on: high-passed at hp and/or low-passed at lp
+if doHp
+    fa = fftArgs(T, hp);
+    T = pop_eegfiltnew(T, 'locutoff', hp, 'plotfreqz', 0, fa{:});
+end
+if doLp, T = pop_eegfiltnew(T, 'hicutoff', lp, 'plotfreqz', 0); end
 end
 
 function EEG = runIca(EEG, opts)

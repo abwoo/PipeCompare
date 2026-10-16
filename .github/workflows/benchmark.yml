@@ -1,0 +1,59 @@
+name: benchmark
+
+# The ground-truth benchmark (benchmarks/pipecompare_benchmark.m): simulated
+# recordings with a known P3, measured by the pipeline PipeCompare
+# recommends and by common fixed pipelines. Long (an ICA per pipeline and
+# recording, hours for 8 recordings), so it runs by hand only (Actions >
+# benchmark > Run workflow). The results are written after every recording
+# and kept even when the run stops early.
+
+on:
+  workflow_dispatch:
+    inputs:
+      recordings:
+        description: 'number of simulated recordings'
+        default: '8'
+
+jobs:
+  benchmark:
+    name: Ground-truth benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    env:
+      DISPLAY: ":99"
+      PIPECOMPARE_BENCH_N: ${{ github.event.inputs.recordings || '8' }}
+    steps:
+      - name: Checkout PipeCompare
+        uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+
+      - name: Checkout EEGLAB
+        run: git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
+
+      - name: Start a virtual display
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q xvfb
+          Xvfb :99 -screen 0 1920x1080x24 &
+
+      - name: Set up MATLAB
+        uses: matlab-actions/setup-matlab@v2
+        with:
+          release: latest
+          products: Signal_Processing_Toolbox
+
+      - name: Run the benchmark
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd, 'eeglab')); eeglab nogui;
+            cd PipeCompare; addpath(pwd); addpath(fullfile(pwd, 'benchmarks'));
+            mkdir('bench_out'); pipecompare_benchmark([], fullfile(pwd, 'bench_out'));
+
+      - name: Keep the results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark
+          path: PipeCompare/bench_out

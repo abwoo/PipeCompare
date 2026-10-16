@@ -119,16 +119,42 @@ pipeline, so that the comparison is about the settings that matter.
 1. **Channels removed earlier are put back** (only with the average reference). If you deleted EEG
    channels before PipeCompare, they are interpolated back first, so that the average is taken
    over the whole montage.
-2. **Bad channels are found and repaired.** A channel is marked bad when its signal is much
-   spikier (kurtosis) or much noisier (joint probability, e.g. a poorly connected electrode) than
-   the other channels, more than 5 standard deviations away. A **flat channel** (no signal, as when
+2. **Bad channels are found and repaired.** A channel is marked bad when, more than 5 standard
+   deviations away from the other channels, its signal is much spikier (kurtosis), its values are
+   unusually distributed (joint probability), or it carries **noise of its own** that the other
+   channels do not explain. The last test is PipeCompare's: brain activity and artifacts reach
+   neighbouring electrodes too, so the other channels predict most of a good channel (a
+   least-squares fit of each channel on all the others); a poorly connected or broken electrode
+   adds noise they cannot predict. Kurtosis and joint probability look only at the shape of a
+   channel's values, not their size, so a channel that is just two to five times noisier passes
+   them (in simulations they found almost none of these; the new test finds most of them, with few
+   few false alarms), and one such channel can cost half the epochs at a 100 µV rejection limit.
+   Size differences the channels share (strong alpha, blinks, a nearby reference) are predicted,
+   so they do not count, and the test needs no channel locations. Kurtosis and joint probability
+   are measured without the stretches with blinks (where an eye channel, or the blink's own
+   course read from all channels, is beyond 5 robust SDs, with 200 ms on either side): blinks make the frontal channels' values heavy-tailed, and in
+   simulations several good frontal channels per recording were otherwise marked bad, the
+   channels on which ICA sees the blinks best. It is left out (and said in the
+   Command Window) when the channels are linearly dependent, as after an average reference. A
+   **flat channel** (no signal, as when
    an electrode is disconnected: its spread is zero or under 1 % of the median spread of the
-   channels tested) is always bad; it is set aside before the two measures, which cannot be
+   channels tested) is always bad; it is set aside before the measures, which cannot be
    computed on a constant and would otherwise be thrown off for all the other channels too. The
    test looks at a copy of the data
-   high-passed at 1 Hz, so slow drifts are not mistaken for bad channels. Bad channels are then
+   high-passed at 1 Hz, so slow drifts are not mistaken for bad channels, and low-passed at 40 Hz
+   (for band power, 5 Hz above the highest band), the band the analysis keeps, so that line noise
+   alone, which the low-pass removes, does not make a channel bad. Bad channels are then
    interpolated from their neighbours (spherical interpolation), so the dataset keeps all its
-   channels. EOG, ECG and EMG channels (by channel type, or by name such as VEOG or ECG1) are never
+   channels, **unless interpolating one would make the measure worse**: PipeCompare computes the
+   total error (see [How a pipeline is chosen](#how-a-pipeline-is-chosen)) with each bad channel
+   interpolated or left as it is, through the reference, epochs, baseline and epoch rejection that
+   follow (ICA and the filters compared are left out of this check, the filters replaced by the
+   1–40 Hz band the channels were tested on), and leaves a bad channel as it is only when
+   interpolating it would raise the error measurably. This matters most for a measured electrode:
+   interpolating Pz from noisy neighbours brings their noise in and loses the P3 at Pz. The
+   Command Window and the result name the channels left as they are. In scripts this is the
+   badchannels option `'repair', 'error'` (`'all'`, the default outside the simple mode and the
+   panel, interpolates every bad channel). EOG, ECG and EMG channels (by channel type, or by name such as VEOG or ECG1) are never
    tested. A pipeline that interpolates more than 20 % of the channels is excluded.
 3. **Re-reference** (if you chose the average reference). It comes after the bad channels are
    repaired, so a bad channel cannot spread its noise into every other channel; non-EEG channels
@@ -523,10 +549,11 @@ on GitHub…**.
    only the filters to compare their cutoffs.
 
    Bad channels are detected once and ICA is fitted once, before the filters, so every filter
-   setting shares one decomposition. A channel is bad when its kurtosis (spiky) or joint
-   probability (noisy, e.g. poor contact) is more than 5 SD from the other channels', or when it is
-   flat (no signal). Both steps
-   look at a 1 Hz high-passed copy, so slow drifts do not mislead them; the data themselves are
+   setting shares one decomposition. A channel is bad when its kurtosis (spiky), its joint
+   probability (unusual values) or its noise the other channels do not explain (e.g. poor
+   contact) is more than 5 SD from the other channels', or when it is flat (no signal). Both steps
+   look at a 1 Hz high-passed copy (bad channels: also low-passed at 40 Hz), so slow drifts and
+   line noise do not mislead them; the data themselves are
    filtered only by the settings being compared. EOG, ECG
    and EMG channels (by type or by name, such as VEOG) are not tested as bad channels and do not
    count in epoch rejection. The dialog shows how many pipelines will run before you
@@ -570,7 +597,7 @@ The recommended pipeline is marked with `*`, followed by the best of the others.
 | Column | Meaning |
 |---|---|
 | checks | *passed*: the pipeline met every constraint; *excluded*: it broke one (the reason is under *Show all pipelines*); *error*: a step failed; *not run*: the search was stopped first |
-| noise (SME) | the standardized measurement error of your measure, divided by the share of a known signal the pipeline keeps. Lower is better: the averaged value is measured more precisely |
+| error (noise + bias) | how far your averaged measure is from the truth on average: the noise (the standardized measurement error, SME, divided by the share of a known signal the pipeline keeps) and the bias (what blinks add to the mean, and what the filters would change for another signal shape) together, √(noise² + bias²). Lower is better |
 | trials kept | the smallest share of trials kept in any condition |
 | signal change | how much the pipeline changed the amplitude of the known signal |
 | settings | the settings that differ between the pipelines |
@@ -588,7 +615,11 @@ the trials used to choose, so their luck is left out of that number too; the sen
 says how often the same pipeline would be recommended with the trials drawn again at random, for
 example *this pipeline is recommended 85% of the time: a stable choice* (70 % or more), or *45% of
 the time, No. 7 30% of the time: the data do not single out one pipeline clearly*; then the
-pipelines it names are about equally good on these data and either can be used. When the settings compared make no difference on
+pipelines it names are about equally good on these data and either can be used. When the
+pipelines that decide the recommendation have ICA, they are run again with ICA started in 2 other
+ways, and the result says *ICA's randomness does not change the choice*, or that another pipeline
+would be recommended and *this recommendation depends on ICA's randomness* (see step 8 of
+[How a pipeline is chosen](#how-a-pipeline-is-chosen)). When the settings compared make no difference on
 these data, the result says so. When no pipeline passes because most lost too many epochs to
 rejection, it names the channels most often over the rejection limit (likely bad channels to
 remove or interpolate before running again) and, for data that keep their recorded reference,
@@ -631,7 +662,7 @@ steps ran; select another row to see that pipeline's steps instead. Each line gi
 settings and what it decided on these data, for example:
 
 ```
-1. Bad channels (kurtosis or joint probability over 5 SD, found on a 1 Hz high-passed copy): O1, O2 interpolated (not tested: VEOG, HEOG)
+1. Bad channels (kurtosis or joint probability or noise the other channels do not explain over 5 SD, found on a 1-40 Hz band-passed copy): O1, O2 interpolated (not tested: VEOG, HEOG)
 2. Average reference (left out: VEOG, HEOG)
 3. ICA (extended runica), fitted on a 1 Hz high-passed copy and applied to the data (the fit leaves out stretches far noisier than the rest)
 4. High-pass filter 0.5 Hz
@@ -889,19 +920,25 @@ also run with the components chosen by what removing them does to the measure:
    ICLabel calls it *Other*: removing it alone would move a condition's average in the window by
    more than half its SME, with a t value above 3 across trials. The noise measure counts real
    brain activity that varies from trial to trial as noise, so without this a P3 component that
-   ICLabel did not recognise could be removed for lowering it. Components ICLabel calls *Eye* are
-   not kept this way, since blinks can be time-locked to the stimulus too. The steps of the
-   pipeline say how many were kept for this reason.
-2. Starting from removing nothing, the component whose removal gives the lowest SME is added to
-   the set, then the next one together with it, and so on (forward selection). Each set is scored
+   ICLabel did not recognise could be removed for lowering it. Eye components are not kept this
+   way, since blinks can be time-locked to the stimulus too: those ICLabel calls *Eye*, and those
+   whose activity follows an eye channel far more closely than the other components' (ICLabel
+   often calls a blink component *Other*). The components removed together may not move the
+   average this way either, so a P3 spread over several weak components is not removed piece by
+   piece. The steps of the pipeline say how many were kept for these reasons.
+2. The components are put in order by what each one does to the measure on its own: how much it
+   makes the score vary from trial to trial, divided by how much of the known signal it carries
+   there. The sets are the first one, the first two, and so on. (Adding each time the component
+   that lowers the SME most, as before, fits the chance of a few dozen trials: in simulations at
+   35 trials per condition its SME looked 38 % better than it was.) Each set is scored
    exactly as in [ICLabel threshold chosen from the data](#iclabel-threshold-chosen-from-the-data):
    the components are taken out of the epoched data directly (removal is linear), the rejection
    limit that follows is found at its best, the SME is divided by the signal gain, and a set that
    fails the signal check (for example because it removes the measured signal) or keeps too few
    trials does not count. This gives a path of sets, each one component larger, ordered by what
    the components do to the measure.
-3. The path stops after 30 components, when no larger set passes, or when the SME has risen more
-   than 10 % above the best on the path.
+3. The path stops after 30 components, or when the SME has risen more than 10 % above the best
+   on the path.
 4. Among the sets on the path, those whose SME is shown to be within 5 % of the best one's are
    equally good, and the one removing the **fewest** components is used, as for the threshold.
 5. The components are flagged (`EEG.reject.gcompreject`, recorded in `EEG.history`) and removed
@@ -1273,10 +1310,38 @@ and constraints and ranking options in `help pipecompare.eval.Rank`.
    high-pass for a broad P3. This saves the filtering of the whole recording and everything after
    it for those pipelines. It is done for ERP measures on continuous data, when no resampling or
    epoching comes before the last filter; `'filterCheck', false` turns it off.
-2. **Precision.** Feasible pipelines are scored by their SME, divided by the gain each pipeline
-   applies to the known signal. This makes the comparison one of signal-to-noise ratio, so a
-   pipeline cannot appear more precise just by attenuating everything (Zhang, Garrett & Luck,
-   2024).
+2. **Total error.** Feasible pipelines are scored by how far their measure is from the truth on
+   average: the noise and the bias together, √(noise² + bias²).
+   - The **noise** is the SME divided by the gain each pipeline applies to the known signal. This
+     makes the comparison one of signal-to-noise ratio, so a pipeline cannot appear more precise
+     just by attenuating everything (Zhang, Garrett & Luck, 2024).
+   - The **bias** is what moves the mean the same way in every set of trials, which the SME cannot
+     see. It has two parts. First, what blinks add: blinks time-locked to the stimulus (for
+     example after targets) fall in a share of the trials and move the mean much more than they
+     raise the SME. PipeCompare finds the trials with a blink in the eye channels of the data as
+     they are (EOG channels, else Fp1/Fp2/FPz when they are not measured: an epoch whose eye
+     activity in the window, relative to the baseline, is more than 3 robust SDs above the
+     others'). The same is done for two other artifacts that can be locked to the stimulus: eye
+     movements, in the difference of a left and a right eye channel (left and right EOG by
+     position or by names ending in L and R, e.g. EYEL/EYER; else F7 and F8), where a blink
+     cancels and a horizontal movement doubles; and muscle activity, the fast activity (the SD of
+     the sample-to-sample change) in the window at the measured electrodes. A trial with any of
+     the three counts. For each pipeline PipeCompare computes what those trials it keeps add to
+     its mean (their share times the difference of their mean from the other trials'). The
+     Command Window shows the share of trials with each kind. A pipeline that
+     removed the eye activity, by ICA or by rejecting those trials, adds about nothing. The
+     estimate's own noise is taken off its square, so a bias the data do not show counts about 0.
+     Second, what the signal's shape changes: the gain is measured with one known shape, and a
+     filter changes the gain of a broad, slow component more than that of a narrow one. So each
+     pipeline's filters are also run on bumps 0.5, 1 and 2 times as wide as the window, and the
+     largest change of the gain (the worst case) times the measured mean counts as bias.
+   - The rejection limit, ICLabel threshold and components chosen from the data minimize the same
+     total error (without the shape part, which they do not change). The results table shows the
+     total error (*error (noise + bias)*); the result says how much blinks, eye movements and muscle activity add in the recommended
+     pipeline, how much its filters could change the measure for another shape, or that there is
+     no eye channel to check blinks with. In the table of the ranking: `objective` (total error),
+     `noise`, `bias`, and per measure `eyeBias_…` (µV, the condition where it is largest) and
+     `shapeSpread_…`.
 3. **Uncertainty.** A paired bootstrap over trials, with simultaneous intervals across all pairs
    of candidates (White, 2000; Romano & Wolf, 2005), finds the set of pipelines that the data
    cannot distinguish from the best.
@@ -1295,12 +1360,27 @@ and constraints and ranking options in `help pipecompare.eval.Rank`.
    channels, ICA, rejected epochs) were made on all trials; only the choice between pipelines is
    held out.
 6. **Recommendation.** Within the set of step 3, PipeCompare recommends the least aggressive
-   pipeline: the one with the highest trial retention, then the least signal distortion.
+   pipeline: the one with the highest trial retention, then the least signal distortion. A
+   pipeline whose bias is more than half its noise is recommended only when no pipeline with less
+   bias is in that set: keeping more trials is no reason to keep the blinks they carry.
 7. **Stability.** In each bootstrap resample of step 3, steps 3 and 6 are done again on the
    resampled values (with the same critical value), and PipeCompare counts how often each
    pipeline would be recommended (the bootstrap selection frequency; Efron, 2014). The table has
    it as `chosenShare`; the result reports it for the recommended pipeline. A low share means the
    data do not single that pipeline out.
+8. **ICA's random start.** ICA (runica) starts from a fixed random state, so the same data
+   always give the same components, but another start would give somewhat different ones, and
+   with them other components removed. The pipelines that decide the recommendation (the
+   recommended one, the best one, and the next one the rule of step 6 would pick, or the next
+   best when no other is in the set of step 3), those that have ICA, are run again twice, with
+   ICA seeing the samples in a different random order (seeds 1 and 2); every step after it
+   decides again on its own. With each seed the ranking is made again (those pipelines with
+   their new values, the others as they were) and the recommendation compared. The Command
+   Window shows how much their total error changed. On in the simple mode; in the advanced panel
+   tick *Options… > Check ICA's random start*; in scripts pass `'icaSeeds', 2` to
+   `pipecompare.PipeCompare.optimize`. The result is in `pipecompare_result.icaSeeds` (`ids`,
+   `objective` with the search's value first, `recommended`, `same`). It costs up to six more
+   pipeline runs.
 
 The ICLabel threshold and the epoch-rejection limit of the *Standard* recipe (and, with that option,
 the ICA components chosen by their effect on the noise) are chosen inside each pipeline, before
@@ -1321,7 +1401,7 @@ descriptive and not used in the ranking. The full derivations are in
 
 ## Outputs
 
-- A ranked table of all pipelines: status, objective (gain-corrected SME), simultaneous interval
+- A ranked table of all pipelines: status, objective (total error: gain-corrected SME and bias), simultaneous interval
   of its difference from the best, trial retention, interpolation, signal-check results, and the
   reason for each exclusion.
 - The recommended pipeline and why it was chosen.
@@ -1383,6 +1463,25 @@ including those that open windows (on a virtual display); tests that need a tool
 install, such as parallel execution (Parallel Computing Toolbox), are skipped there. Steps that
 require clicking in EEGLAB's own dialogs cannot be automated and are listed in
 [tests/MANUAL_GUI_CHECK.md](tests/MANUAL_GUI_CHECK.md).
+
+**Ground-truth benchmark.** `benchmarks/pipecompare_benchmark.m` asks whether the pipeline
+PipeCompare recommends measures the P3 more accurately than common fixed pipelines. It simulates
+recordings (`benchmarks/bench_synth.m`: 32 channels, cortical background activity, alpha, drifts,
+line noise, random blinks and blinks time-locked to the targets inside the P3 window, temporal
+muscle bursts, movement artifacts and a bad channel) with a known P3, then measures the P3 (Pz,
+300-600 ms) of targets and standards with the pipeline `pop_pipecompare` recommends, a minimal
+pipeline (0.1-30 Hz, average reference, rejection at 100 µV) and a common one (the same with
+bad-channel interpolation and ICA with ICLabel). It reports, per pipeline, the bias and the root
+mean square error of each condition and of their difference against the P3 actually in the data,
+the trials kept, and where the recommendation ranks by actual error among all the pipelines
+PipeCompare compared. It takes hours (an ICA per pipeline and recording), so on GitHub it runs
+by hand only (Actions > *benchmark* > *Run workflow*; the results, written after every recording,
+are kept as an artifact), or locally:
+
+```matlab
+eeglab nogui; addpath(fullfile(pwd, 'benchmarks'));
+out = pipecompare_benchmark(8);           % 8 recordings; results also in tempdir
+```
 
 Two optional checks use your own data, which is never committed: set the environment variable
 `PIPECOMPARE_REAL_SET` to a `.set` file, or run `tests/realdata_validation.m`.

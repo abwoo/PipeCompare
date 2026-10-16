@@ -5,6 +5,59 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- ICA components chosen by their effect on the SME (`'sme'`): the sets are now the first one, two,
+  ... components in the order of how much each makes the score vary from trial to trial over how
+  much of the known signal it carries, instead of adding each time the one that lowers the SME
+  most. That greedy search fitted the chance of a few dozen trials (in simulation at 35 trials per
+  condition its SME looked 38 % better than it was, and the selection check did not see it); the
+  new order is also better in truth and needs far fewer evaluations. A component whose activity
+  follows an eye channel is no longer kept as time-locked brain activity when ICLabel calls it
+  *Other*, and the components removed together may not move a condition's mean clearly either.
+- Trials with a blink or eye movement are also found sample by sample in continuous data, so the
+  bias is not missed when most trials have a blink (n-back).
+- Blinks too weak to stand out in the eye channels are found through all channels (a matched
+  spatial filter) before kurtosis and probability, so frontal channels are not marked bad for
+  them. The filter-shape part of the bias uses whole bumps, not ones cut at the epoch's edges.
+- The benchmark runs by hand only and keeps its results after every recording.
+
+- Bad channels: a bad channel is left as it is when interpolating it would measurably raise the
+  total error (computed through the reference, epochs, baseline and epoch rejection that follow),
+  typically a measured electrode with noisy neighbours (badchannels `'repair', 'error'`; on in the
+  simple mode and for steps added in the panel). The result names the channels left as they are.
+
+- The bias in the total error also counts eye movements (left minus right eye channel, where a
+  blink cancels) and muscle activity (fast activity at the measured electrodes) in the window,
+  not only blinks. The Command Window shows the share of trials with each.
+
+- ICA's random start: the pipelines that decide the recommendation, when they have ICA, run again
+  with ICA started in other ways (the samples in another order), and the result says whether the
+  recommendation stays the same. On in the simple mode (2 seeds); *Options… > Check ICA's random
+  start* in the panel; `'icaSeeds', n` in scripts; result in `pipecompare_result.icaSeeds`.
+
+- Ground-truth benchmark (`benchmarks/pipecompare_benchmark.m`, workflow *benchmark*): simulated
+  recordings with a known P3 and realistic artifacts, measured by the pipeline PipeCompare
+  recommends and by a minimal and a common fixed pipeline; bias and RMSE against the true P3.
+- Bad channels: a third test, noise the other channels do not explain (measure `resid`): a
+  least-squares fit of each channel on all the others, bad when what is left of it stands out
+  (robust z over 5). Kurtosis and joint probability depend only on the shape of a channel's
+  values, not their size, so they missed channels that are just noisier (poor contact) or lost
+  their gain; one such channel could cost half the epochs in epoch rejection. The simple mode and
+  the panel detect with `kurt+prob+resid`. Bad channels are also found on a copy low-passed to the
+  band the analysis keeps (`detectLowpass`, 40 Hz for ERPs), so line noise alone no longer makes a
+  channel bad. Kurtosis and joint probability are measured without the stretches with blinks,
+  which otherwise made good frontal channels bad. Method: docs/METHODS.md, section 5.
+- Pipelines are ranked by their total error, √(noise² + bias²), instead of the noise alone. The
+  noise is the gain-corrected SME as before. The bias is what moves the mean the same way in
+  every set of trials, which the SME cannot see: what the trials with a blink add to each
+  condition's mean (blink trials found in the eye channels of the data as they are; for each
+  pipeline, their share of the trials it keeps times the difference of their mean from the
+  others', with the estimate's own noise taken off), and how much the pipeline's filters would
+  change the measure if the signal had another shape (bumps 0.5, 1 and 2 windows wide; the worst
+  case). The rejection limit, ICLabel threshold and components chosen from the data minimize the
+  same total error, a pipeline whose bias is above half its noise is recommended only when no
+  less biased one is as good, and the result says how much blinks add in the recommended
+  pipeline (or that no eye channel let them be checked). Ranking table: `noise`, `bias`,
+  `eyeBias_…`, `shapeSpread_…`. Method: docs/METHODS.md, section 15.
 - One pipeline for a group of recordings (`pipecompare.Group.run`, `pipecompare.Group.writeScript`):
   every recording is compared as `pop_pipecompare` does; a pipeline counts when it passes on
   every recording, ranked by the root mean square of its gain-corrected SME over the recordings,

@@ -52,11 +52,13 @@ classdef Catalog
                     d.params = P('cutoff', 20, {10, 20, 30}, false, 'burst criterion (SD)');
                 case 'badchannels'
                     d.label = 'Bad-channel detection'; d.dialog = 'pop_rejchan';
-                    d.params = [P('measure', 'kurt', {'kurt','prob'}, false, 'pop_rejchan measure (kurt, prob or spec; several joined by + flag a channel when any does)'), ...
+                    d.params = [P('measure', 'kurt', {'kurt','prob'}, false, 'measure: kurt, prob or spec (pop_rejchan) or resid (noise the other channels do not explain); several joined by + flag a channel when any does'), ...
                         P('threshold', 5, {3, 5}, false, 'z threshold'), ...
                         P('exclude', {}, {}, false, 'channels not tested (e.g. EOG, reference electrodes)'), ...
                         P('detectHighpass', 0, {}, false, 'detect on a copy high-passed at this edge (Hz), interpolate on the data as is; 0 = detect on the data as is'), ...
-                        P('action', 'interpolate', {}, false, '''interpolate'' in place or ''remove'' (restore later)')];
+                        P('detectLowpass', 0, {}, false, 'detect on a copy also low-passed at this edge (Hz), e.g. the band the analysis keeps; 0 = no low-pass'), ...
+                        P('action', 'interpolate', {}, false, '''interpolate'' in place or ''remove'' (restore later)'), ...
+                        P('repair', 'all', {}, false, '''all'': interpolate every bad channel; ''error'': leave one as it is when interpolating it would measurably raise the total error (pipecompare.eval.ChannelChoice)')];
                 case 'channels'
                     d.label = 'Named channels: remove or interpolate'; d.dialog = 'pop_select';
                     d.params = [P('labels', {}, {}, false, 'channel labels you name (e.g. known-bad O1, O2)'), ...
@@ -322,10 +324,16 @@ switch type
     case 'asr', if pos('cutoff'), reason = 'asr cutoff must be a positive number (SD)'; end
     case 'badchannels'
         if pos('threshold'), reason = 'badchannels threshold must be a positive number';
-        elseif isfield(p, 'measure') && ~(ischar(p.measure) && all(ismember(strsplit(p.measure, '+'), {'kurt','prob','spec'})))
-            reason = 'badchannels measure must be kurt, prob or spec, or several joined by + (e.g. kurt+prob)';
+        elseif isfield(p, 'measure') && ~(ischar(p.measure) && all(ismember(strsplit(p.measure, '+'), {'kurt','prob','spec','resid'})))
+            reason = 'badchannels measure must be kurt, prob, spec or resid, or several joined by + (e.g. kurt+prob+resid)';
         elseif isfield(p, 'detectHighpass') && ~(isnumeric(p.detectHighpass) && isscalar(p.detectHighpass) && p.detectHighpass >= 0)
-            reason = 'badchannels detectHighpass must be >= 0 (0 = detect on the data as is)'; end
+            reason = 'badchannels detectHighpass must be >= 0 (0 = detect on the data as is)';
+        elseif isfield(p, 'detectLowpass') && ~(isnumeric(p.detectLowpass) && isscalar(p.detectLowpass) && p.detectLowpass >= 0)
+            reason = 'badchannels detectLowpass must be >= 0 (0 = no low-pass)';
+        elseif isfield(p, 'repair') && ~(ischar(p.repair) && any(strcmp(p.repair, {'all', 'error'})))
+            reason = 'badchannels repair must be all or error';
+        elseif strcmp(pipecompare.utils.fieldOr(p, 'repair', 'all'), 'error') && isfield(p, 'action') && ~strcmp(p.action, 'interpolate')
+            reason = 'badchannels repair ''error'' needs action interpolate'; end
     case 'reject_threshold'
         auto = isfield(p, 'uv') && ischar(p.uv) && strcmp(p.uv, 'auto');
         if auto && pipecompare.utils.fieldOr(p, 'interpolate', 0) > 0

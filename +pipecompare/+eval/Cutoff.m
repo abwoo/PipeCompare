@@ -55,7 +55,8 @@ classdef Cutoff
             info = struct('cutoffs', own, 'objectiveBase', NaN, 'objectiveBest', NaN, 'pairs', 0, 'feasible', 0, ...
                 'reproduced', NaN, 'grid', [], 'objectives', [], 'note', '');
             gBase = double(base.gain(:)');
-            info.objectiveBase = pipecompare.eval.Rank.pointObjective(base.m, ref, opts, gBase);
+            spBase = pipecompare.utils.fieldOr(base, 'spread', []);
+            info.objectiveBase = pipecompare.eval.Rank.pointObjective(base.m, ref, opts, gBase, spBase);
             % the measured electrodes, the components already removed
             E = D;
             if ~isempty(dec.comps), [~, E] = evalc('pop_subcomp(E, dec.comps, 0)'); end
@@ -88,6 +89,7 @@ classdef Cutoff
             for r = 1:size(pairs, 1), P{r} = insts(pairs(r, :)); end
             leaves = struct('path', P);
             [why, sig] = pipecompare.eval.Injection.filterCheck(env.S, contract, env.truth, leaves, opts);
+            sp = pipecompare.eval.Injection.shapeSpreads(env.S, contract, env.truth, leaves);   % the total error's shape part
             ib = find(all(abs(pairs - own) <= 1e-12 * max(1, abs(own)), 2), 1);
             assert(~isempty(sig{ib}), 'PipeCompare:Cutoff', 'The filters alone could not be checked on the known signal.');
             gF0 = double(sig{ib}.gain(:)');
@@ -126,7 +128,8 @@ classdef Cutoff
                 if ~isempty(dec.rejIdx), [~, T] = evalc('pop_rejepoch(T, dec.rejIdx, 0)'); end
                 if isfield(dec, 'weights') && ~isempty(dec.weights), T.etc.pipecompare.trialWeights = dec.weights; end
                 m = pipecompare.eval.Measure.candidate(T, contract, ref, opts);
-                obj(r) = pipecompare.eval.Rank.pointObjective(m, ref, opts, g);
+                spr = sp{r}; if isempty(spBase), spr = []; end   % as the pipeline's own objective
+                obj(r) = pipecompare.eval.Rank.pointObjective(m, ref, opts, g, spr);
             end
             info.feasible = sum(isfinite(obj));
             info.reproduced = obj(ib);

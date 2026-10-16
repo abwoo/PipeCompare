@@ -34,6 +34,10 @@ classdef Executor
     %                   grid with its decisions held fixed
     %                   (pipecompare.eval.Cutoff), and the pipeline with the
     %                   best ones is run and ranked with the others
+    %     icaSeeds      0 (default; 2 in the simple mode): how many times
+    %                   the pipelines that decide the recommendation are
+    %                   run again with ICA started differently (icaSeedCheck);
+    %                   result.icaSeeds says whether the recommendation stays
     %     signalTemplate 'bump' (default) | 'data' (the simple mode's
     %                   default): the time course of the known signal of the
     %                   signal check, a bump centred in each window or this
@@ -52,7 +56,9 @@ classdef Executor
         function result = run(plan, contract, opts)
             if nargin < 3, opts = struct(); end
             opts = pipecompare.utils.withDefaults(opts, struct('dryRun', false, 'injectUv', 5, 'filterCheck', true, ...
-                'refineCutoffs', false, 'signalTemplate', 'bump', 'dataUnit', 'uV', 'checkpoint', '', 'parallel', false, 'verbose', 'normal', 'progress', []));
+                'refineCutoffs', false, 'icaSeeds', 0, 'signalTemplate', 'bump', 'dataUnit', 'uV', 'checkpoint', '', 'parallel', false, 'verbose', 'normal', 'progress', []));
+            assert(isnumeric(opts.icaSeeds) && isscalar(opts.icaSeeds) && opts.icaSeeds >= 0 && opts.icaSeeds == round(opts.icaSeeds), ...
+                'PipeCompare:Options', 'icaSeeds must be a whole number >= 0.');
             assert(any(strcmp(opts.signalTemplate, {'bump', 'data'})), 'PipeCompare:Options', ...
                 'signalTemplate must be ''bump'' or ''data''.');
             [EEG, live] = pipecompare.live.Session.current();
@@ -127,6 +133,30 @@ classdef Executor
             [S, env.truth] = pipecompare.eval.Injection.prepare(root, contract, ref, opts);
             pipecompare.utils.log(['Signal check: a known %g uV signal is carried through every candidate with the ', ...
                 'same decisions (matched-decision injection).'], opts.injectUv);
+            % how much each pipeline's filters make the gain depend on the
+            % signal's shape (part of the bias of the total error)
+            try
+                env.spread = pipecompare.eval.Injection.shapeSpreads(S, contract, env.truth, leaves);
+            catch ME
+                env.spread = {};
+                pipecompare.utils.log('Signal shapes: not checked (%s); the bias leaves out what the filters do to other shapes.', ME.message);
+            end
+            bi = pipecompare.utils.fieldOr(ref, 'blinkInfo', struct('channels', {{}}, 'share', []));
+            if ~isempty(pipecompare.utils.fieldOr(bi, 'kindShare', []))
+                for j = find(isfinite(bi.share))
+                    pipecompare.utils.log(['Artifacts in the %s window (what the trials with them add to each mean counts ', ...
+                        'in the total error): blinks %s, eye movements %s, muscle %s; %.0f%% of the trials have one.'], ...
+                        contract.components(j).name, ...
+                        pipecompare.utils.ternary(isempty(bi.channels), 'not checked (no eye channel)', ...
+                            sprintf('%.0f%% (%s)', 100 * bi.kindShare(j, 1), strjoin(bi.channels, ', '))), ...
+                        pipecompare.utils.ternary(isempty(bi.horizontal), 'not checked (no left-right pair)', ...
+                            sprintf('%.0f%% (%s)', 100 * bi.kindShare(j, 2), bi.horizontal)), ...
+                        sprintf('%.0f%%', 100 * bi.kindShare(j, 3)), 100 * bi.share(j));
+                end
+            end
+            if strcmp(contract.analysis, 'erp') && isempty(bi.channels)
+                pipecompare.utils.log('Blinks: no eye channel (EOG, or Fp1/Fp2/FPz) that is not measured, so what blinks add is not estimated.');
+            end
             result.signalTemplate = [];
             if isfield(env.truth, 'shape') && ~isempty(env.truth.shape)
                 result.signalTemplate = env.truth.shape.info;
@@ -206,6 +236,11 @@ classdef Executor
             if pipecompare.utils.fieldOr(opts, 'refineCutoffs', false) && isempty(notRun)
                 [result, allc, added] = refineCutoffs(result, env, root, S, ctx0, acc0, allc, R);
                 if added, R = pipecompare.eval.Rank.run(allc, ref, opts); end
+            end
+            result.icaSeeds = [];
+            if pipecompare.utils.fieldOr(opts, 'icaSeeds', 0) > 0 && isempty(notRun)
+                env.leaves = result.leaves;   % with a pipeline added by fine-tuning the cutoffs
+                result.icaSeeds = icaSeedCheck(env, root, S, ctx0, acc0, allc, R, ref, opts);
             end
             result.cands = allc;
             result.ranking = R;
@@ -442,6 +477,10 @@ classdef Executor
                         in.params.threshold = result.cands(idx).steps{k}.thresholdChosen;
                     end
                     cx = ctx;
+                    if isRepairChoice(in) && isfield(result, 'cands') && numel(result.cands) >= idx && numel(result.cands(idx).steps) >= k
+                        % the bad channels the search interpolated on these same data
+                        cx.chosenChannels = result.cands(idx).steps{k}.interpolated;
+                    end
                     if strcmp(in.type, 'icremove') && isequal(in.params.threshold, 'sme') && isfield(result, 'cands') && ...
                             numel(result.cands) >= idx && numel(result.cands(idx).steps) >= k
                         % the components the search chose on these same data
@@ -480,13 +519,15 @@ classdef Executor
             EEG = pipecompare.run.Executor.prepareRoot(EEG, contract, struct('dataUnit', state.unitGuess));
             ctx = struct('contract', contract, 'highpass', rootHighpass(state));
             chosen = @(f) cellfun(@(p) isfield(p, f) && ischar(p.(f)), steps(:, 2));
-            if any(chosen('uv') | chosen('threshold'))
+            repair = cellfun(@(t, p) strcmp(t, 'badchannels') && strcmp(pipecompare.utils.fieldOr(p, 'repair', 'all'), 'error'), ...
+                steps(:, 1), steps(:, 2));
+            if any(chosen('uv') | chosen('threshold') | repair)
                 % a limit or threshold chosen from the data is judged against these data's own trials
                 ctx.ref = pipecompare.eval.Measure.reference(EEG, contract);
             end
             S = []; truth = [];
-            if any(chosen('threshold'))
-                % an ICLabel threshold chosen from the data uses the signal check
+            if any(chosen('threshold') | repair)
+                % an ICLabel threshold or bad channels chosen from the data use the signal check
                 [S, truth] = pipecompare.eval.Injection.prepare(EEG, contract, ctx.ref, opts);
             end
             insts = arrayfun(@(k) struct('type', steps{k, 1}, 'params', steps{k, 2}), 1:size(steps, 1), 'UniformOutput', false);
@@ -495,6 +536,8 @@ classdef Executor
                 cx = ctx;
                 if strcmp(in.type, 'icremove') && ischar(in.params.threshold)
                     cx.after = insts(k+1:end); cx.signal = struct('S', S, 'truth', truth);
+                elseif isRepairChoice(in)
+                    cx.after = linearAfter(insts(k+1:end)); cx.signal = struct('S', S, 'truth', truth);
                 end
                 [EEG, coms, info] = pipecompare.run.Steps.run(in, EEG, cx);
                 for q = 1:numel(coms), EEG = eeg_hist(EEG, coms{q}); end
@@ -779,12 +822,13 @@ function f = stepFacts(in, info)
 % it chose among (curves), with which the ranking's selection check makes
 % the choice again on half of the trials (Rank.crossfit); for a rejection,
 % how far the mean score of the epochs kept is from that of all of them
-% (keptShift, Presets.keptShiftText).
+% (keptShift, Presets.keptShiftText); for bad channels chosen by the total
+% error, those left as they are (leftAsIs).
 f = struct('type', in.type, 'params', in.params, 'interpolated', {{}}, 'removed', {{}}, ...
     'icsRemoved', NaN, 'icsTotal', NaN, 'rejected', NaN, 'epochsBefore', NaN, 'epochsInterpolated', NaN, ...
     'icsBrain', NaN, 'icsOther', NaN, 'otherMedian', NaN, 'icaPoints', NaN, 'uvChosen', NaN, 'thresholdChosen', NaN, 'icsConsidered', NaN, 'icsProtected', NaN, ...
-    'comps', [], 'rejIdx', [], 'cutoffRefined', false, 'weightRatio', NaN, 'trialWeights', [], 'curves', [], 'keptShift', []);
-for n = {'interpolated', 'removed'}
+    'comps', [], 'rejIdx', [], 'cutoffRefined', false, 'weightRatio', NaN, 'trialWeights', [], 'curves', [], 'keptShift', [], 'leftAsIs', {{}});
+for n = {'interpolated', 'removed', 'leftAsIs'}
     if isfield(info, n{1}), f.(n{1}) = cellstr(info.(n{1})); end
 end
 for n = {'icsRemoved', 'icsTotal', 'rejected', 'epochsBefore', 'epochsInterpolated', 'icsBrain', 'icsOther', 'otherMedian', 'icaPoints', 'uvChosen', 'thresholdChosen', 'icsConsidered', 'icsProtected', ...
@@ -815,9 +859,22 @@ function cx = choiceContext(env, node, ctx, S)
 % steps that follow must be the same in every pipeline below it.
 cx = ctx;
 in = env.tree(node).inst;
-if ~(strcmp(in.type, 'icremove') && ischar(in.params.threshold)), return; end
 d = env.tree(node).depth;
 under = leavesUnder(env.tree, node);
+if isRepairChoice(in)
+    % bad channels interpolated by their effect on the total error
+    % (ChannelChoice): the linear steps up to the rejection, when they are
+    % the same in every pipeline below (otherwise all are interpolated)
+    after = linearAfter(env.leaves(under(1)).path(d+1:end));
+    if all(arrayfun(@(li) isequal(plainSteps(linearAfter(env.leaves(li).path(d+1:end))), plainSteps(after)), under))
+        cx.after = after; cx.signal = struct('S', S, 'truth', env.truth);
+    else
+        pipecompare.utils.log(['Bad channels: the pipelines below differ in the reference, epochs or rejection, so the ', ...
+            'channels to interpolate are not chosen by the total error.']);
+    end
+    return;
+end
+if ~(strcmp(in.type, 'icremove') && ischar(in.params.threshold)), return; end
 % the steps it is chosen for: up to the epoch rejection that follows (the
 % steps after that do not change the choice)
 upto = @(path) path(1:min([numel(path) find(cellfun(@(x) strcmp(x.type, 'reject_threshold'), path), 1)]));
@@ -829,6 +886,36 @@ assert(same, 'PipeCompare:IcThreshold', ['An ICLabel threshold chosen from the d
     'after it in separate runs, or set the thresholds (e.g. 0.7 | 0.8 | 0.9).']);
 cx.after = after;
 cx.signal = struct('S', S, 'truth', env.truth);
+end
+
+function tf = isRepairChoice(in)
+% bad channels interpolated by their effect on the total error
+tf = strcmp(in.type, 'badchannels') && strcmp(pipecompare.utils.fieldOr(in.params, 'repair', 'all'), 'error');
+end
+
+function after = linearAfter(path)
+% the steps ChannelChoice applies: re-referencing, epoching and baseline
+% removal up to the epoch rejection, and that rejection
+k = find(cellfun(@(x) strcmp(x.type, 'reject_threshold'), path), 1);
+if ~isempty(k), path = path(1:k); end
+after = path(cellfun(@(x) any(strcmp(x.type, {'reref', 'epoch', 'baseline', 'reject_threshold'})), path));
+end
+
+function p = plainSteps(path)
+p = cellfun(@(x) {x.type, x.params}, path, 'UniformOutput', false);
+end
+
+function cx = pathContext(path, q, cx, S, truth)
+% What a choice made from the data in step q of one pipeline needs: the
+% steps after it and the signal-check copy (as choiceContext for the tree)
+in = path{q};
+if strcmp(in.type, 'icremove') && ischar(in.params.threshold)
+    after = path(q+1:end);
+    after = after(1:min([numel(after) find(cellfun(@(x) strcmp(x.type, 'reject_threshold'), after), 1)]));
+    cx.after = after; cx.signal = struct('S', S, 'truth', truth);
+elseif isRepairChoice(in)
+    cx.after = linearAfter(path(q+1:end)); cx.signal = struct('S', S, 'truth', truth);
+end
 end
 
 function [E2, coms, info] = runStep(in, E, ctx, verbose)
@@ -861,6 +948,7 @@ try
     if ~isempty(tcom), c.coms{end+1} = tcom; end
     if ~isempty(S)
         c.signal = pipecompare.eval.Injection.compare(S, env.contract, env.truth, env.leaves(li).path);
+        if isfield(env, 'spread') && numel(env.spread) >= li, c.signal.shapeSpread = env.spread{li}; end
     end
     c.status = 'ok';
 catch ME
@@ -938,14 +1026,17 @@ try
             E = eeg_checkset(E);
             coms = d.coms; info = struct('ica', d);
         else
-            [E, coms, info] = runStep(in, E, ctx, env.opts.verbose);
+            cx = ctx;
+            if isRepairChoice(in), cx.chosenChannels = c.steps{k}.interpolated; end   % the channels the search interpolated
+            [E, coms, info] = runStep(in, E, cx, env.opts.verbose);
         end
         for q = 1:numel(coms), E = eeg_hist(E, coms{q}); end
         [S, unmatched] = replayCopy(in, S, info, ctx);
         [ctx, acc] = advance(in, ctx, acc, info, coms, unmatched, 0);
     end
     cenv = struct('contract', env.contract, 'ref', env.ref, 'rank', env.opts, 'S', S0, 'truth', env.truth, 'grid', {cuts});
-    [cut, cinfo] = pipecompare.eval.Cutoff.search(E, rest, dec, struct('m', c.m, 'gain', c.signal.gain), cenv);
+    [cut, cinfo] = pipecompare.eval.Cutoff.search(E, rest, dec, struct('m', c.m, 'gain', c.signal.gain, ...
+        'spread', pipecompare.utils.fieldOr(c.signal, 'shapeSpread', [])), cenv);
 catch ME
     pipecompare.utils.log('Filter cutoffs not fine-tuned: %s', ME.message);
     return;
@@ -968,6 +1059,11 @@ end
 li = numel(env.leaves) + 1;
 leaf = struct('path', {path2}, 'key', key2, 'order', env.leaves(ib).order, 'stratum', env.leaves(ib).stratum);
 env.leaves(li) = leaf;
+try
+    sp = pipecompare.eval.Injection.shapeSpreads(S0, env.contract, env.truth, leaf); env.spread{li} = sp{1};
+catch
+    env.spread{li} = [];   % the shape part of its bias left out
+end
 try
     for k = first:numel(path2)
         in = path2{k};
@@ -995,6 +1091,79 @@ cand.notes{end+1} = sprintf(['filter cutoffs fine-tuned from these data, startin
 result.leaves(li) = leaf; result.labels{li} = key2;
 allc(li, 1) = cand;
 added = true;
+end
+
+function out = icaSeedCheck(env, root, S, ctx, acc, allc, R, ref, opts)
+% How much the recommendation depends on where ICA starts. runica starts
+% from a fixed random state, so another start is another order of the
+% samples it sees (Steps.ica, ctx.icaSeed). The pipelines that decide the
+% recommendation (the recommended one, the best one and the next in the
+% recommendation's order, or the next best when no other is in the set
+% not distinguished from the best), those with an ICA step, run again
+% with seeds 1..opts.icaSeeds, every step taking its own decisions; with
+% each seed the ranking is made again with them (the others as they
+% are, no cross-fitting) and the recommendation compared. out: [] when
+% not checked; else seeds, ids (re-run), objective (ids x 1+seeds, the
+% first column the search's), recommended (1+seeds), same (true when
+% every seed recommends the same pipeline).
+out = [];
+if ~isscalar(R.byStratum), return; end
+b = R.byStratum; T = R.table; k = b.recommended;
+rest = setdiff(b.set(:)', k, 'stable');
+if isempty(rest)
+    feas = find(strcmp(T.status, 'feasible'))'; feas(feas == k) = [];
+    [~, o] = sort(T.objective(feas)); rest = feas(o(1:min(1, end)));
+else
+    key = [-T.minRetention(rest), T.ampError(rest), T.objective(rest)];
+    [~, o] = sortrows(round(key, 10)); rest = rest(o(1));
+end
+ids = unique([k b.best rest], 'stable');
+hasIca = @(li) any(cellfun(@(i) strcmp(i.type, 'ica'), env.leaves(li).path));
+ids = ids(arrayfun(hasIca, ids));
+if isempty(ids), return; end
+n = opts.icaSeeds;
+pipecompare.utils.log(['ICA check: pipeline(s) %s run again with ICA started in %d other way(s), ', ...
+    'to see whether the recommendation depends on it.'], strjoin(arrayfun(@num2str, ids, 'UniformOutput', false), ', '), n);
+obj = [T.objective(ids) nan(numel(ids), n)]; rec = [k nan(1, n)];
+ro = opts; ro.nSplits = 0;
+for seed = 1:n
+    c2 = allc;
+    for j = 1:numel(ids)
+        li = ids(j); path = env.leaves(li).path; E = root; S2 = S; cx0 = ctx; a = acc;
+        try
+            for q = 1:numel(path)
+                in = path{q};
+                if tick(env, 0, in), return; end
+                cx = cx0;
+                if strcmp(in.type, 'ica'), cx.icaSeed = seed; end
+                cx = pathContext(path, q, cx, S2, env.truth);
+                [E, coms, info] = runStep(in, E, cx, env.opts.verbose);
+                [S2, unmatched] = replayCopy(in, S2, info, cx0);
+                [cx0, a] = advance(in, cx0, a, info, coms, unmatched, 0);
+            end
+            c = evaluateLeaf(env, li, E, S2, a);
+        catch ME
+            pipecompare.utils.log('ICA check: pipeline %d failed with seed %d (%s); not checked.', li, seed, ME.message);
+            out = []; return;
+        end
+        c2(li) = c;
+    end
+    R2 = pipecompare.eval.Rank.run(c2, ref, ro);
+    obj(:, seed + 1) = R2.table.objective(ids);
+    if ~isempty(R2.recommended), rec(seed + 1) = R2.recommended; end
+end
+out = struct('seeds', 1:n, 'ids', ids(:)', 'objective', obj, 'recommended', rec, 'same', all(rec == k));
+ch = max(abs(obj(:, 2:end) ./ obj(:, 1) - 1), [], 2);
+if out.same
+    pipecompare.utils.log(['ICA check: with ICA started in %d other way(s), the same pipeline (%d) is recommended; ', ...
+        'the total error of the pipelines run again changes by at most %.0f%%.'], n, k, 100 * max(ch));
+else
+    alt = unique(rec(rec ~= k & isfinite(rec)));
+    alt = strjoin(arrayfun(@(x) sprintf('pipeline %d', x), alt, 'UniformOutput', false), ', ');
+    if isempty(alt), alt = 'no pipeline'; end
+    pipecompare.utils.log(['ICA check: with ICA started in another way, %s would be recommended instead of %d: ', ...
+        'this recommendation depends on where ICA starts.'], alt, k);
+end
 end
 
 function stop = tick(env, n, in)

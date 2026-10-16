@@ -316,7 +316,7 @@ try
     q.enumerate(st, c); verifyFail(tc, 'expected PipeCompare:NoLegalPipeline');
 catch ME
     verifyEqual(tc, ME.identifier, 'PipeCompare:NoLegalPipeline');
-    verifyTrue(tc, contains(ME.message, 'kurt, prob or spec'));
+    verifyTrue(tc, contains(ME.message, 'kurt, prob, spec or resid'));
 end
 end
 

@@ -44,28 +44,35 @@ classdef IcThreshold
     %   their effect on the objective instead of their ICLabel probability.
     %   cand: the components that may be removed (those whose likeliest
     %   ICLabel class is not Brain: a component ICLabel takes for brain
-    %   activity is never removed). Starting from removing nothing, the
-    %   component whose removal gives the lowest objective is added, one at
-    %   a time (forward selection), each set evaluated exactly as above:
-    %   the data without those components (linear, so computed from the
-    %   activations directly), the rejection that follows at its best
-    %   limit, the gain and the signal check from the known-signal copy (a
-    %   set that fails it cannot be chosen). This gives nested sets ordered
-    %   by what each component does to the measure, not by what it looks
-    %   like. The search stops after MaxRemoved components, when no further
-    %   set passes, or when the objective has risen more than twice
-    %   equivalenceMargin above the best on the path. Among the sets on the
-    %   path, the one with the fewest components among those shown
-    %   equivalent to the best is chosen, as above. info.order: the
-    %   components in the order they were added.
+    %   activity is never removed). The sets are nested: the first j
+    %   components in the order of what each does to a mean-amplitude score
+    %   alone, its own trial-to-trial variance there over its share of the
+    %   known signal (marginal statistics: a forward selection over the
+    %   objective fits the chance covariances of a few dozen trials, and
+    %   the cross-fitting cannot see that). Band power and contralateral
+    %   minus ipsilateral measures keep the forward selection (the
+    %   component whose removal gives the lowest objective added one at a
+    %   time). Each set is evaluated exactly as above: the data without
+    %   those components (linear, so computed from the activations
+    %   directly), the rejection that follows at its best limit, the gain
+    %   and the signal check from the known-signal copy (a set that fails
+    %   it cannot be chosen). The path stops after MaxRemoved components,
+    %   or when the objective has risen more than twice equivalenceMargin
+    %   above the best on the path. Among the sets on the path, the one
+    %   with the fewest components among those shown equivalent to the
+    %   best is chosen, as above. info.order: the components in the order
+    %   they were added.
     %   Components that carry time-locked activity into a measured window
     %   are not candidates (info.protected): removing one alone would move
     %   a condition's mean score by more than EvokedShare times its SME,
     %   with |t| > EvokedT against the component's own trial-to-trial
-    %   spread. The SME counts real trial-to-trial brain activity as noise,
-    %   so without this a brain component that ICLabel does not recognise
-    %   could be removed for lowering it. Components whose likeliest
-    %   ICLabel class is Eye are exempt (blinks can be time-locked).
+    %   spread; along the path, nor is one that would do so together with
+    %   those removed. The SME counts real trial-to-trial brain activity as
+    %   noise, so without this a brain component that ICLabel does not
+    %   recognise could be removed for lowering it. Eye components are
+    %   exempt (blinks can be time-locked): ICLabel's Eye, and those whose
+    %   activation follows an eye channel far more than the others'
+    %   (evokedGuard).
     %
     %   Both: info.curves holds the scores of every set (fewest components
     %   first), with which Rank.crossfit makes the choice again on half of
@@ -76,6 +83,7 @@ classdef IcThreshold
         MaxRemoved = 30        % 'sme': at most this many components removed
         EvokedT = 3            % 'sme': a component this clearly time-locked ...
         EvokedShare = 0.5      % ... and moving a condition's mean by this many SMEs is kept
+        EyeCorr = 0.4          % 'sme': an eye component follows an eye channel at least this closely
     end
 
     methods (Static)
@@ -98,32 +106,69 @@ classdef IcThreshold
             if ~isempty(rej), chans = pipecompare.run.Steps.testedChannels(Ep, rej.params); end
             % components that carry time-locked activity into a measured
             % window are not candidates (the SME counts real trial-to-trial
-            % brain activity as noise; ICLabel's Eye components excepted)
+            % brain activity as noise; eye components excepted)
             cand = cand(:)';
-            ev = evokedGuard(EEG, Ep, P, contract, cand);
+            pt = scoreParts(Ep, P, contract, cand);
+            ev = evokedGuard(EEG, Ep, P, pt, cand);
             protected = cand(ev.protect);
-            cand = cand(~ev.protect);
-            % the path: nothing removed, then one component more at a time
+            keepIdx = find(~ev.protect);
+            cand = cand(keepIdx);
             [f, u, why, X, M, C] = scoreSet(Ep, Sp, rej, chans, contract, ref, opts, sig);
             sets = {zeros(1, 0)}; why = {why}; X = {X}; M = {M}; C = {C};
             cur = zeros(1, 0); base = P.PX; baseS = []; if ~isempty(PS), baseS = PS.PX; end
-            for step = 1:min(numel(cand), pipecompare.eval.IcThreshold.MaxRemoved)
-                left = setdiff(cand, cur, 'stable');
-                fb = Inf; kb = 0; out = {};
-                for c = left
-                    Ek = withData(Ep, P, base - P.A(:, c) * P.S(c, :));
-                    Sk = [];
-                    if ~isempty(PS), Sk = withData(Sp, PS, baseS - PS.A(:, c) * PS.S(c, :)); end
-                    [fc, uc, wc, Xc, Mc, Cc] = scoreSet(Ek, Sk, rej, chans, contract, ref, opts, sig);
-                    if fc < fb, fb = fc; kb = c; out = {uc, wc, Xc, Mc, Cc}; end
+            if ~isempty(pt)
+                % the path: the components in the order of what each does to
+                % the score alone, its own trial-to-trial variance there over
+                % its share of the known signal (marginal statistics, so the
+                % order is not fitted to the chance covariances of a few
+                % trials as a forward selection over the objective is); the
+                % sets are the first j of them
+                ratio = pathOrder(pt, Sp, PS, contract, cand, keepIdx);
+                [~, ord] = sort(ratio, 'descend');
+                D = arrayfun(@(q) zeros(1, size(q.d, 2)), pt, 'UniformOutput', false);
+                for oi = ord(1:min(numel(ord), pipecompare.eval.IcThreshold.MaxRemoved))
+                    c = cand(oi); i = keepIdx(oi);
+                    if ~ev.eye(i)
+                        % the components removed together may not move a
+                        % condition's mean clearly either
+                        Dn = arrayfun(@(jj) D{jj} + pt(jj).d(i, :), 1:numel(pt), 'UniformOutput', false);
+                        if any(arrayfun(@(jj) isEvoked(Dn{jj}, pt(jj)), 1:numel(pt)))
+                            protected(end+1) = c; %#ok<AGROW>
+                            continue
+                        end
+                        D = Dn;
+                    end
+                    base = base - P.A(:, c) * P.S(c, :);
+                    if ~isempty(PS), baseS = baseS - PS.A(:, c) * PS.S(c, :); end
+                    Sk = []; if ~isempty(PS), Sk = withData(Sp, PS, baseS); end
+                    [fc, uc, wc, Xc, Mc, Cc] = scoreSet(withData(Ep, P, base), Sk, rej, chans, contract, ref, opts, sig);
+                    cur(end+1) = c; %#ok<AGROW>
+                    sets{end+1} = cur; f(end+1) = fc; u(end+1) = uc; %#ok<AGROW>
+                    why{end+1} = wc; X{end+1} = Xc; M{end+1} = Mc; C{end+1} = Cc; %#ok<AGROW>
+                    if isfinite(fc) && fc > (1 + 2 * opts.equivalenceMargin) * min(f), break; end   % well past the best
                 end
-                if kb == 0, break; end                       % no further set passes
-                cur(end+1) = kb; %#ok<AGROW>
-                base = base - P.A(:, kb) * P.S(kb, :);
-                if ~isempty(PS), baseS = baseS - PS.A(:, kb) * PS.S(kb, :); end
-                sets{end+1} = cur; f(end+1) = fb; u(end+1) = out{1}; %#ok<AGROW>
-                why{end+1} = out{2}; X{end+1} = out{3}; M{end+1} = out{4}; C{end+1} = out{5}; %#ok<AGROW>
-                if fb > (1 + 2 * opts.equivalenceMargin) * min(f), break; end   % well past the best
+            else
+                % band power, or a contralateral minus ipsilateral measure: the
+                % component whose removal gives the lowest objective is added,
+                % one at a time (forward selection)
+                for step = 1:min(numel(cand), pipecompare.eval.IcThreshold.MaxRemoved)
+                    left = setdiff(cand, cur, 'stable');
+                    fb = Inf; kb = 0; out = {};
+                    for c = left
+                        Ek = withData(Ep, P, base - P.A(:, c) * P.S(c, :));
+                        Sk = [];
+                        if ~isempty(PS), Sk = withData(Sp, PS, baseS - PS.A(:, c) * PS.S(c, :)); end
+                        [fc, uc, wc, Xc, Mc, Cc] = scoreSet(Ek, Sk, rej, chans, contract, ref, opts, sig);
+                        if fc < fb, fb = fc; kb = c; out = {uc, wc, Xc, Mc, Cc}; end
+                    end
+                    if kb == 0, break; end                       % no further set passes
+                    cur(end+1) = kb; %#ok<AGROW>
+                    base = base - P.A(:, kb) * P.S(kb, :);
+                    if ~isempty(PS), baseS = baseS - PS.A(:, kb) * PS.S(kb, :); end
+                    sets{end+1} = cur; f(end+1) = fb; u(end+1) = out{1}; %#ok<AGROW>
+                    why{end+1} = out{2}; X{end+1} = out{3}; M{end+1} = out{4}; C{end+1} = out{5}; %#ok<AGROW>
+                    if fb > (1 + 2 * opts.equivalenceMargin) * min(f), break; end   % well past the best
+                end
             end
             K = numel(sets);
             info = struct('sets', K, 'considered', numel(cand), 'feasible', sum(isfinite(f)), ...
@@ -138,7 +183,7 @@ classdef IcThreshold
                 best = F(find(f(F) == min(f(F)), 1));     % ties: fewer components
                 Bq = zeros(numel(F), opts.nBoot);
                 for i = 1:numel(F)
-                    Bq(i, :) = pipecompare.eval.Threshold.bootstrap(X{F(i)}, M{F(i)}, u(F(i)), opts, ref);
+                    Bq(i, :) = pipecompare.eval.Threshold.bootstrap(X{F(i)}, M{F(i)}, u(F(i)), opts, ref, C{F(i)});
                 end
                 [keep, equiv] = pipecompare.eval.Rank.confidenceSet(f(F)', Bq, find(F == best), ...
                     opts.alpha, opts.equivalenceMargin);
@@ -153,6 +198,13 @@ classdef IcThreshold
                 'components could be removed, %d kept because they carry time-locked activity into the measured ', ...
                 'window, %d sets on the path, %d equally good).'], numel(comps), numel(sets{best}), ...
                 numel(cand), size(EEG.icaweights, 1), numel(protected), K, info.equallyGood);
+        end
+
+        function [f, u, why, X, M, C] = score(Ek, Sk, rej, chans, contract, ref, opts, sig)
+            % One set's objective at the best limit of the rejection that
+            % follows, and what the bootstrap needs (scoreSet below), for
+            % the other choices made the same way (ChannelChoice).
+            [f, u, why, X, M, C] = scoreSet(Ek, Sk, rej, chans, contract, ref, opts, sig);
         end
 
         function [t, info] = choose(EEG, q, ctx)
@@ -201,7 +253,7 @@ classdef IcThreshold
                 best = F(find(f(F) == min(f(F)), 1));     % ties: fewer components
                 Bq = zeros(numel(F), opts.nBoot);
                 for i = 1:numel(F)
-                    Bq(i, :) = pipecompare.eval.Threshold.bootstrap(X{F(i)}, M{F(i)}, u(F(i)), opts, ref);
+                    Bq(i, :) = pipecompare.eval.Threshold.bootstrap(X{F(i)}, M{F(i)}, u(F(i)), opts, ref, C{F(i)});
                 end
                 [keep, equiv] = pipecompare.eval.Rank.confidenceSet(f(F)', Bq, find(F == best), ...
                     opts.alpha, opts.equivalenceMargin);
@@ -220,32 +272,22 @@ classdef IcThreshold
     end
 end
 
-function ev = evokedGuard(EEG, Ep, P, contract, cand)
-% For each candidate component and each condition: what removing it alone
-% does to the condition's mean score of each mean-amplitude component (the
-% component's part of the score, linear: its ROI weight times its
-% activation's window mean, baseline removed), as a t value against its
-% own trial-to-trial spread and as a share of the score's standard error
-% (SME). Protected (not removed by 'sme'): |t| > EvokedT and shift >
-% EvokedShare SME in some condition, i.e. clearly time-locked and large
-% enough to change the measure; components whose likeliest ICLabel class
-% is Eye are not protected (blinks can be time-locked to the stimulus).
-% Band power and contralateral minus ipsilateral components are not
-% checked.
-nK = numel(cand);
-ev = struct('protect', false(1, nK), 't', zeros(1, nK), 'shift', zeros(1, nK));
+function pt = scoreParts(Ep, P, contract, cand)
+% For each mean-amplitude component of the measure (contralateral minus
+% ipsilateral ones and band power not: pt = [] when there is none), the
+% part of each trial's score that each candidate component carries: d(i,
+% trial) = its mean ROI weight times its activation's window mean,
+% baseline removed (linear: the score is the sum of these parts over all
+% components, plus the channels ICA leaves out); with the scores, the
+% trials' conditions and what is needed to compute the same on another
+% copy (part).
+pt = struct('d', {}, 'cond', {}, 'sc', {}, 'rows', {}, 'w', {}, 'bl', {}, 'j', {});
 if ~strcmp(contract.analysis, 'erp') || isempty(contract.components), return; end
 T = pipecompare.eval.Measure.trials(Ep, contract);
 times = Ep.xmin + (0:Ep.pnts-1) / Ep.srate;
 labs = lower({Ep.chanlocs.labels});
 [~, rowOf] = ismember(1:Ep.nbchan, P.ch);                     % data channel -> row of A
-isEye = false(1, nK);
-if isfield(EEG.etc, 'ic_classification') && isfield(EEG.etc.ic_classification, 'ICLabel')
-    L = EEG.etc.ic_classification.ICLabel;
-    [~, top] = max(L.classifications, [], 2);
-    isEye = strcmp(cellstr(L.classes(top(cand))), 'Eye'); isEye = isEye(:)';
-end
-bl = [];
+bl = false(size(times));
 if ~isempty(contract.baseline)
     bl = times >= contract.baseline(1) - 1e-9 & times <= contract.baseline(2) + 1e-9;
 end
@@ -253,29 +295,112 @@ for j = 1:numel(contract.components)
     comp = contract.components(j);
     if contract.isLateral(j) || ~strcmp(comp.measure, 'mean'), continue; end
     roi = find(ismember(labs, lower(comp.roi)));
-    roi = roi(rowOf(roi) > 0);
-    if isempty(roi), continue; end
+    rows = rowOf(roi(rowOf(roi) > 0));
+    if isempty(rows), continue; end
     w = times >= comp.window(1) - 1e-9 & times <= comp.window(2) + 1e-9;
-    sc = T.data{j};                                              % the scores (trials)
-    for i = 1:nK
-        k = cand(i);
-        Sk = reshape(P.S(k, :), Ep.pnts, Ep.trials);
-        a = mean(Sk(w, :), 1);
-        if ~isempty(bl) && any(bl), a = a - mean(Sk(bl, :), 1); end
-        d = mean(P.A(rowOf(roi), k)) * a(T.epoch);               % the component's part of each trial's score
-        for c = unique(T.cond(:))'
-            r = T.cond == c; n = sum(r);
-            if n < 3, continue; end
-            dm = mean(d(r)); sd = std(d(r)); sme = std(sc(r)) / sqrt(n);
-            t = dm / max(sd / sqrt(n), eps); sh = abs(dm) / max(sme, eps);
-            if abs(t) > abs(ev.t(i)), ev.t(i) = t; end
-            ev.shift(i) = max(ev.shift(i), sh);
-            if abs(t) > pipecompare.eval.IcThreshold.EvokedT && sh > pipecompare.eval.IcThreshold.EvokedShare && ~isEye(i)
-                ev.protect(i) = true;
-            end
-        end
+    q = struct('d', [], 'cond', T.cond(:)', 'sc', T.data{j}(:)', 'rows', rows, 'w', w, 'bl', bl, 'j', j);
+    a = part(P, cand, q, Ep.pnts, Ep.trials);
+    q.d = a(:, T.epoch);
+    pt(end+1) = q; %#ok<AGROW>
+end
+end
+
+function a = part(P, cand, q, pnts, trials)
+% each component's part of each epoch's score (components x epochs)
+a = zeros(numel(cand), trials);
+for i = 1:numel(cand)
+    Sk = reshape(P.S(cand(i), :), pnts, trials);
+    v = mean(Sk(q.w, :), 1);
+    if any(q.bl), v = v - mean(Sk(q.bl, :), 1); end
+    a(i, :) = mean(P.A(q.rows, cand(i))) * v;
+end
+end
+
+function tf = isEvoked(d, q)
+% d (a part of each trial's score) moves a condition's mean clearly: |t| >
+% EvokedT against its own trial-to-trial spread and by more than
+% EvokedShare times the condition's SME
+[t, sh] = evokedStats(d, q);
+tf = any(abs(t) > pipecompare.eval.IcThreshold.EvokedT & sh > pipecompare.eval.IcThreshold.EvokedShare);
+end
+
+function [t, sh] = evokedStats(d, q)
+cs = unique(q.cond); t = zeros(size(cs)); sh = t;
+for c = 1:numel(cs)
+    r = q.cond == cs(c); n = sum(r);
+    if n < 3, continue; end
+    dm = mean(d(r));
+    t(c) = dm / max(std(d(r)) / sqrt(n), eps);
+    sh(c) = abs(dm) / max(std(q.sc(r)) / sqrt(n), eps);
+end
+end
+
+function ratio = pathOrder(pt, Sp, PS, contract, cand, keepIdx)
+% The order of the path: each component's own trial-to-trial variance at
+% the score (a share of the score's variance, summed over the measured
+% components and averaged over the conditions) over its share of the known
+% signal there (from the signal copy; at least a thousandth of the largest
+% share, so a component carrying none comes first by its variance alone)
+v = zeros(1, numel(cand)); sg = zeros(1, numel(cand));
+for q = pt
+    cs = unique(q.cond);
+    for c = 1:numel(cs)
+        r = q.cond == cs(c);
+        v = v + var(q.d(keepIdx, r), 0, 2)' / max(var(q.sc(r)), eps) / numel(cs);
+    end
+    if ~isempty(PS)
+        aS = mean(part(PS, cand, q, Sp.pnts, Sp.trials), 2)';
+        g = sum(mean(part(PS, 1:size(PS.S, 1), q, Sp.pnts, Sp.trials), 2));
+        if abs(g) > eps, sg = sg + max(aS / g, 0); end
     end
 end
+if any(sg > 0), ratio = v ./ max(sg, 1e-3 * max(sg)); else, ratio = v; end
+end
+
+function ev = evokedGuard(EEG, Ep, P, pt, cand)
+% For each candidate component and each condition: what removing it alone
+% does to the condition's mean score of each mean-amplitude component (its
+% part of the score, scoreParts), as a t value against its own
+% trial-to-trial spread and as a share of the score's standard error
+% (SME). Protected (not removed by 'sme'): |t| > EvokedT and shift >
+% EvokedShare SME in some condition, i.e. clearly time-locked and large
+% enough to change the measure. Eye components are not protected (blinks
+% can be time-locked to the stimulus): those whose likeliest ICLabel class
+% is Eye, and those whose activation follows an eye channel
+% (Injection.eyeChannels) far more than the other components' do: the
+% largest |correlation| with one, over the epochs, above EyeCorr and more
+% than 3 robust SDs (median, MAD) above the other components' (as FASTER
+% finds eye components); ICLabel often calls a blink component Other.
+% Band power and contralateral minus ipsilateral components are not
+% checked.
+nK = numel(cand);
+ev = struct('protect', false(1, nK), 't', zeros(1, nK), 'shift', zeros(1, nK), 'eye', false(1, nK));
+if isfield(EEG.etc, 'ic_classification') && isfield(EEG.etc.ic_classification, 'ICLabel')
+    L = EEG.etc.ic_classification.ICLabel;
+    [~, top] = max(L.classifications, [], 2);
+    ev.eye = reshape(strcmp(cellstr(L.classes(top(cand))), 'Eye'), 1, []);
+end
+eyes = pipecompare.eval.Injection.eyeChannels(Ep.chanlocs);
+if ~isempty(eyes)
+    Y = double(reshape(Ep.data(eyes, :, :), numel(eyes), []));
+    Sz = zscoreRows(P.S); Y = zscoreRows(Y);
+    r = max(abs(Sz * Y' / max(size(Y, 2) - 1, 1)), [], 2)';  % every component
+    z = (r - median(r)) / max(1.4826 * median(abs(r - median(r))), eps);
+    ev.eye = ev.eye | (r(cand) > pipecompare.eval.IcThreshold.EyeCorr & z(cand) > 3);
+end
+for q = pt
+    for i = 1:nK
+        [t, sh] = evokedStats(q.d(i, :), q);
+        [~, b] = max(abs(t));
+        if ~isempty(b) && abs(t(b)) > abs(ev.t(i)), ev.t(i) = t(b); end
+        ev.shift(i) = max([ev.shift(i) sh]);
+        if ~ev.eye(i) && isEvoked(q.d(i, :), q), ev.protect(i) = true; end
+    end
+end
+end
+
+function X = zscoreRows(X)
+X = X - mean(X, 2); X = X ./ max(std(X, 0, 2), eps);
 end
 
 function P = projection(EEG, X)
