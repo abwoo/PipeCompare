@@ -401,7 +401,8 @@ classdef Panel < handle
                 if strcmp(type, 'badchannels')
                     try, c = obj.contract(); catch, c = struct('analysis', 'erp'); end
                     lp = pipecompare.simple.Presets.detectLowpass(pipecompare.live.DataState.fromEEG(EEG), c);
-                    args = [{'measure', 'kurt+prob+resid', 'threshold', 5, 'repair', 'error', 'detectHighpass', double(EEG.trials == 1), ...
+                    args = [{'measure', 'kurt+prob+resid', 'threshold', 5, 'repair', 'error', 'stretches', EEG.trials == 1, ...
+                        'detectHighpass', double(EEG.trials == 1), ...
                         'detectLowpass', lp} args];
                 end
             end

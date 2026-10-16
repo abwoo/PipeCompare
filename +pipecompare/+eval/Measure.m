@@ -553,8 +553,10 @@ function H = sampleHits(E, isEye, isL, isR, contract)
 % where an eye channel, or the left minus the right channel, minus its
 % moving median over 1 s (slow drifts out) is beyond 5 robust SDs (median
 % and MAD over the samples: blinks fill far fewer samples than trials),
-% with 50 ms on either side. Epoched like the data: one row per kind
-% (blinks; eye movements when there is a pair). [] without eye channels.
+% or in the active state of a two-state HMM fitted to it
+% (pipecompare.eval.Hmm.events: weak blinks too), with 50 ms on either
+% side. Epoched like the data: one row per kind (blinks; eye movements
+% when there is a pair). [] without eye channels.
 H = [];
 if ~any(isEye), return; end
 rows = {double(E.data(isEye, :))};
@@ -563,7 +565,8 @@ w = round(0.05 * E.srate); M = zeros(numel(rows), E.pnts);
 for k = 1:numel(rows)
     Y = rows{k} - movmedian(rows{k}, round(E.srate), 2);
     Y = abs(Y - median(Y, 2));
-    M(k, :) = conv(double(any(Y > 5 * max(1.4826 * median(Y, 2), eps), 1)), ones(1, 2 * w + 1), 'same') > 0;
+    on = any(Y > 5 * max(1.4826 * median(Y, 2), eps), 1) | pipecompare.eval.Hmm.events(rows{k}, E.srate);
+    M(k, :) = conv(double(on), ones(1, 2 * w + 1), 'same') > 0;
 end
 H = E; H.data = single(M); H.nbchan = size(M, 1);
 H.chanlocs = struct('labels', arrayfun(@(k) sprintf('hit%d', k), 1:H.nbchan, 'UniformOutput', false));

@@ -488,6 +488,14 @@ classdef Presets
                         end
                         t = [t '): ' listText(pipecompare.utils.ternary(isempty(f.removed), f.interpolated, f.removed), ...
                             pipecompare.utils.ternary(isempty(f.removed), 'interpolated', 'removed'), 'none found')];
+                        part = pipecompare.utils.fieldOr(f, 'stretches', []);
+                        if ~isempty(part)
+                            fs = pipecompare.utils.fieldOr(pipecompare.utils.fieldOr(result, 'state', struct()), 'srate', NaN);
+                            if isnan(fs), when = @(q) sprintf('samples %d-%d', q.samples);
+                            else, when = @(q) sprintf('%.0f-%.0f s', (q.samples - [1 0]) / fs); end
+                            t = sprintf('%s; bad for part of the recording, interpolated there only: %s', t, strjoin(arrayfun(@(q) ...
+                                sprintf('%s (%s)', q.channel, when(q)), part, 'UniformOutput', false), ', '));
+                        end
                         left = pipecompare.utils.fieldOr(f, 'leftAsIs', {});
                         if ~isempty(left)
                             t = sprintf('%s; %s left as they are (interpolating them would raise the error)', t, strjoin(left, ', '));
@@ -1055,7 +1063,7 @@ classdef Presets
                 % before an average reference
                 if has('badchannels') || strcmp(reference, 'average')
                     plan = plan.add('badchannels', 'measure', 'kurt+prob+resid', 'threshold', 5, 'repair', 'error', ...
-                        'detectHighpass', double(continuous), ...
+                        'stretches', continuous, 'detectHighpass', double(continuous), ...
                         'detectLowpass', pipecompare.simple.Presets.detectLowpass(state, contract), exclusion{:});
                 end
                 plan = addReference(plan, reference, exclude);

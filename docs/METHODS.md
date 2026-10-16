@@ -421,7 +421,8 @@ a pipeline that resamples or epochs before its last filter. [`Injection.filterCh
   blinks: 7.5 good channels per 64-channel recording, all frontal; with the blinks left out, none
   frontal). The measures therefore run on the copy without the samples where an eye channel
   (`Injection.eyeChannels`: EOG, else Fp1, Fp2, FPz) is beyond 5 robust SDs of its own (median
-  and MAD), with 200 ms on either side (epoched data: without those epochs), unless that is over
+  and MAD), or in a blink found by the eye channels' hidden Markov model (section 9i; continuous
+  data), with 200 ms on either side (epoched data: without those epochs), unless that is over
   half of the data. A weak blink can stay under that limit in the eye channels while the
   frontal channels show it clearly, and one blink left in is enough to make them heavy-tailed
   again (simulated: 20-30% of the blinks missed, FPz then marked bad). So the blinks found give
@@ -852,7 +853,8 @@ EEG channels *t* (all scalp EEG except *e*), the step replaces *X*_t by *X*_t �
   *B* = *C*_te *C*_ee⁺,
 
 the least-squares coefficients (pseudo-inverse: two eye channels can be nearly collinear). *C* is
-the covariance over the samples where some eye channel is beyond 4 robust SDs (median, 1.4826 ×
+the covariance over the samples where some eye channel is beyond 4 robust SDs or in a blink of
+the hidden Markov model (section 9i) (median, 1.4826 ×
 MAD) of its median, dilated by ±100 ms; with fewer than one second of such samples, over all
 samples. Before *C* is formed the time-locked average of the epochs (the contract's epoch window
 around each condition's events; on epoched data the average epoch) is subtracted from every
@@ -870,6 +872,52 @@ it is recommended only when its total error is lower. In the simulation of the p
 (`sims-2026-10-16c/eog_regression.py`, blinks time-locked in 40 % of 35 trials, 8 % of them reaching Pz) the RMS error of
 the P3 mean amplitude at Pz fell from 2.37 to 0.92 µV. It is not combined with cutoff fine-tuning
 (section 9e). On in the simple mode (`eogCheck`).
+
+## 9i. Two-state hidden Markov models: blinks, and channels bad for part of the recording
+
+[`pipecompare.eval.Hmm`] A sequence *y*_1…*y*_T is modelled as emitted by a hidden state
+*s*_t ∈ {quiet, active}, a Markov chain with transition matrix *A* and initial probabilities π,
+and *y*_t | *s*_t = *k* ~ N(μ_k, σ_k²). The parameters (*A*, π, μ, σ) are the maximum-likelihood
+estimates by EM (Baum-Welch: scaled forward-backward recursions for the state probabilities γ_t
+and the expected transitions ξ, then the closed-form updates; started at μ = the median and 99th
+percentile of *y*, at most 30 iterations, until the log-likelihood gains less than 10⁻⁶ of
+itself). The states are the Viterbi path, the exact maximizer of P(*s*_1…*s*_T | *y*) by dynamic
+programming. The active state is the one with the higher mean. The model always splits a
+sequence into two states, also one without any events, so a stretch of active samples counts only
+when it passes a test of its own (below); everything else stays quiet. [`Hmm.segment`]
+
+**Blinks and eye movements** [`Hmm.events`; used by `Steps.withoutBlinks`, `Steps.eogRegress`,
+`Measure.sampleHits`, each united with its fixed rule]. *y*: for each eye channel (or left minus
+right pair), the channel minus its moving median over 1 s, a moving mean over 1/16 s, every
+⌊f_s/25⌋-th sample, the robust z (median, 1.4826 × MAD) of its absolute deviation from the
+median; the largest over the channels. A stretch counts when its largest *y* is at least 3.5
+(`Hmm.PeakZ`) and it lasts at least 100 ms (`Hmm.MinSeconds`). Summing the evidence of all of a
+blink's samples finds blinks that never pass 5 robust SDs in one sample. Simulated (Python,
+`sims-2026-10-16d/eye_hmm_port.py` and a replica of the MATLAB code; noise SD 10 µV, 15 blinks
+a minute of 15–200 µV, half sines of 250–400 ms): with 1/f noise, blinks of 15–30 µV found 64 %
+(fixed rule 11 %), 30–50 µV 100 % (83 %); with AR(1) noise, 28 % (3 %); about 2 stretches a
+minute marked in data without blinks (the test `testHmmFindsWeakBlinks` checks these).
+
+**Channels bad for part of the recording** [`Steps.badStretches`, `Steps.interpStretches`;
+badchannels option `stretches`, on in the simple mode and the panel for continuous data]. For
+the tested channels not bad as a whole, with *P* the inverse of their covariance (on the
+detection copy, extreme samples left out, as for `resid`), the residual of channel *i* from its
+least-squares prediction by the others is (*P x*)_i / *P*_ii. In 1 s windows *w*, *L*_iw =
+log SD of that residual, minus the median over the channels in that window (what they share:
+movement). Each channel's sequence is centred on its 20th percentile plus the median channel's
+gap between its 20th percentile and median, and scaled by the median channel's MAD (at least
+0.05), so a channel noisier for most of the recording is still measured against its quiet part.
+A stretch counts when it lasts at least 10 windows (`Steps.MinWindows`) and its mean is at least
+3 (`Steps.StretchZ`). The channel is then interpolated in that stretch only, by EEGLAB's spherical
+spline from the channels not bad there (the rows of `eeg_interp` read off an identity, as in
+`repair` `'error'`); a fixed linear map once the stretches are known, so the signal-check copy
+replays it exactly and a saved script repeats it (`Steps.interpStretches`). Not done on epoched
+data, with fewer than 8 channels or 30 windows, or when the channels are linearly dependent.
+Simulated (`sims-2026-10-16d/bad_stretch_hmm.py`: 32 channels, 20 min, window log SDs with spread
+0.12, Pz *k* = 1.5–3 times noisier over the last 10–50 %): every bad window found, none marked in
+the rest (0.3 % of windows in recordings without a bad stretch); Pz's noise relative to a clean
+recording 1.02–1.10, against 1.06–1.64 with the whole-recording test alone (interpolated
+stretches taken as 1.2 times as noisy). The simulation's windows are more regular than real data.
 
 ## 10. Montage check (before a run)
 
@@ -983,7 +1031,8 @@ trial then has one (simulated, fourth review `eye_bias.py`: at 50 % blink trials
 0.69 µV for a true 1.44 µV, at 70 % 0.17 µV for 2.0 µV). So in continuous data a trial is also a
 blink trial when a blink found sample by sample falls in its window or baseline: an eye channel
 minus its moving median over 1 s beyond 5 robust SDs over the samples (blinks fill far fewer
-samples than trials), with 50 ms on either side; eye movements the same on *h* below
+samples than trials), or in a blink found by the hidden Markov model of section 9i, with 50 ms on
+either side; eye movements the same on *h* below
 (`Measure.blinks`, `sampleHits`). Then, for each pipeline and condition, over the
 trials it keeps (with their weights *w*, when weighted), with *p* the blink trials' share of the
 weight and *m*_B, *m*_N the weighted mean scores of the blink and other trials,

@@ -700,6 +700,41 @@ verifyEmpty(tc, info.badChannels);
 verifyTrue(tc, contains(txt, 'linearly dependent'), txt);
 end
 
+function testChannelBadForPartOfTheRecording(tc)
+% stretches: P8 gets noise of its own (30 uV) in the last 20 s of 150 s
+% only. As a whole it is not bad, but the two-state HMM of its noise the
+% other channels do not explain finds that stretch, and only there is it
+% interpolated (the rest of P8 and every other channel as they were); the
+% same recording without it has no stretch. The signal-check copy gets the
+% same interpolation, and the saved command does it again.
+EEG0 = nqc_synth(struct('seconds', 150, 'nPerCond', 20));
+EEG = EEG0; lab = {EEG.chanlocs.labels}; k = find(strcmp(lab, 'P8'));
+from = round(130 * EEG.srate) + 1;
+rng(4); EEG.data(k, from:end) = EEG.data(k, from:end) + single(30 * randn(1, EEG.pnts - from + 1));
+p = struct('measure', 'resid', 'threshold', 5, 'exclude', {{'EOG1', 'EOG2'}}, 'detectHighpass', 1, ...
+    'detectLowpass', 40, 'action', 'interpolate', 'stretches', true);
+[E, coms, info] = pipecompare.run.Steps.badChannels(EEG, p, struct('highpass', 0));
+verifyEmpty(tc, info.badChannels);
+verifyNumElements(tc, info.stretches, 1);
+verifyEqual(tc, info.stretches.channel, 'P8');
+verifyEqual(tc, info.stretches.samples(1) / EEG.srate, 130, 'AbsTol', 3);
+verifyEqual(tc, info.stretches.samples(2), EEG.pnts);
+in = info.stretches.samples(1):info.stretches.samples(2);
+verifyEqual(tc, E.data(k, 1:in(1) - 1), EEG.data(k, 1:in(1) - 1));
+verifyLessThan(tc, std(diff(double(E.data(k, in)))), 0.5 * std(diff(double(EEG.data(k, in)))));   % its own noise gone
+verifyEqual(tc, E.data(setdiff(1:EEG.nbchan, k), :), EEG.data(setdiff(1:EEG.nbchan, k), :));
+verifyTrue(tc, contains(coms{end}, 'pipecompare.run.Steps.interpStretches(EEG, struct(''channel'', {''P8''}'), coms{end});
+verifyEqual(tc, pipecompare.run.Steps.interpStretches(EEG, info.stretches).data, E.data);
+step = struct('type', 'badchannels', 'params', p, 'key', 'badchannels', 'slot', 'badchannels', 'label', 'bad');
+S = EEG; S.data = single(randn(size(EEG.data)));
+info.badIdx = [];
+S2 = pipecompare.run.Steps.replayDecision(step, S, info, struct());
+verifyEqual(tc, S2.data, pipecompare.run.Steps.interpStretches(S, info.stretches).data);
+verifyNotEqual(tc, S2.data(k, in), S.data(k, in));
+[~, ~, info0] = pipecompare.run.Steps.badChannels(EEG0, p, struct('highpass', 0));
+verifyEmpty(tc, info0.stretches);
+end
+
 function testBadChannelsInterpolatedByTheirEffectOnTheError(tc)
 % repair 'error': a bad channel is left as it is only when interpolating
 % it would measurably raise the total error. P8, just noisier, is
