@@ -23,7 +23,7 @@ classdef PipeCompare
     %   See pipecompare.plan.Plan, pipecompare.eval.Contract, pipecompare.eval.Rank.
 
     properties (Constant)
-        Version = '0.9.4'
+        Version = '0.9.5'
         Url = 'https://github.com/abwoo/PipeCompare'   % the repository (Help menus)
     end
 
