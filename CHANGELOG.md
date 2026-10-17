@@ -3,7 +3,7 @@
 All notable changes. Versions follow `PipeCompare.Version` (`NeuroQC.Version` up to 0.7.1); each
 release has a git tag `vX.Y.Z`.
 
-## Unreleased
+## 0.9.5 (2026-10-17)
 
 - Benchmark: whether the reported error tells the truth. For every pipeline compared, actual
   error against reported error (SME and blink bias, over the signal gain), overall and with and
