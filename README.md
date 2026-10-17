@@ -135,7 +135,9 @@ pipeline, so that the comparison is about the settings that matter.
    Size differences the channels share (strong alpha, blinks, a nearby reference) are predicted,
    so they do not count, and the test needs no channel locations. Kurtosis and joint probability
    are measured without the stretches with blinks (where an eye channel, or the blink's own
-   course read from all channels, is beyond 5 robust SDs, with 200 ms on either side): blinks make the frontal channels' values heavy-tailed, and in
+   course read from all channels, is beyond 5 robust SDs, or where a hidden Markov model of the
+   eye channels puts a blink, see [Blinks and bad stretches found by a hidden Markov
+   model](#blinks-and-bad-stretches-found-by-a-hidden-markov-model); 200 ms on either side): blinks make the frontal channels' values heavy-tailed, and in
    simulations several good frontal channels per recording were otherwise marked bad, the
    channels on which ICA sees the blinks best. It is left out (and said in the
    Command Window) when the channels are linearly dependent, as after an average reference. A
@@ -157,7 +159,12 @@ pipeline, so that the comparison is about the settings that matter.
    interpolating Pz from noisy neighbours brings their noise in and loses the P3 at Pz. The
    Command Window and the result name the channels left as they are. In scripts this is the
    badchannels option `'repair', 'error'` (`'all'`, the default outside the simple mode and the
-   panel, interpolates every bad channel). EOG, ECG and EMG channels (by channel type, or by name such as VEOG or ECG1) are never
+   panel, interpolates every bad channel). On continuous data a channel can also be **bad for
+   only part of the recording** (an electrode that came loose after 20 minutes): such stretches,
+   10 s or longer, are found by a hidden Markov model of each channel's noise the others do not
+   explain and interpolated there only (see [Blinks and bad stretches found by a hidden Markov
+   model](#blinks-and-bad-stretches-found-by-a-hidden-markov-model); badchannels option
+   `'stretches', true`, on in the simple mode and the panel). EOG, ECG and EMG channels (by channel type, or by name such as VEOG or ECG1) are never
    tested. A pipeline that interpolates more than 20 % of the channels is excluded.
 3. **Re-reference** (if you chose the average reference). It comes after the bad channels are
    repaired, so a bad channel cannot spread its noise into every other channel; non-EEG channels
@@ -270,7 +277,10 @@ Along the way PipeCompare also takes care of the following, so you do not have t
   data, channel locations, ICA decomposition, reference, sampling rate) and parses `EEG.history`,
   so earlier processing is taken into account.
 - **ERP and band-power measures.** Mean amplitude, peak amplitude and peak latency for event-related
-  data. Log band power for continuous recordings such as resting state.
+  data. Log band power for continuous recordings such as resting state, estimated with multitaper
+  spectra (3 Slepian tapers per segment, fewer for a band narrower than 4 Hz in 1 s segments),
+  which in simulation lowers the error of the band power by about a quarter compared with one
+  Hann taper.
 - **Presets for common analyses.** ERP CORE parameters (Kappenman et al., 2021) for N170, MMN,
   N2pc, N400, P3, LRP and ERN, and standard delta, theta, alpha and beta bands.
 - **User-defined search space.** Choose the steps and their order, fix some values and let others
@@ -302,6 +312,10 @@ Along the way PipeCompare also takes care of the following, so you do not have t
   window (or `pipecompare.Group.run`) compares the pipelines on every recording and recommends the
   one that is best for the group as a whole, and also each recording's own pipeline, estimated
   together with the others (two-level empirical Bayes).
+- **Hidden Markov models instead of fixed thresholds.** Blinks, and channels bad for only part of
+  the recording, are found by two-state hidden Markov models fitted to each recording (EM and
+  Viterbi), which find weak blinks a fixed threshold misses and interpolate a channel only where
+  it is bad.
 - **Eye channels regressed out when ICA cannot remove the blinks.** The recommended pipeline is
   also tried with the EOG channels regressed out of the EEG, fitted on the eye activity without the
   ERP, and kept only when its total error is lower.
@@ -569,7 +583,8 @@ on GitHub…**.
    Bad channels are detected once and ICA is fitted once, before the filters, so every filter
    setting shares one decomposition. A channel is bad when its kurtosis (spiky), its joint
    probability (unusual values) or its noise the other channels do not explain (e.g. poor
-   contact) is more than 5 SD from the other channels', or when it is flat (no signal). Both steps
+   contact) is more than 5 SD from the other channels', or when it is flat (no signal); a channel
+   bad for only part of the recording is interpolated in that part only. Both steps
    look at a 1 Hz high-passed copy (bad channels: also low-passed at 40 Hz), so slow drifts and
    line noise do not mislead them; the data themselves are
    filtered only by the settings being compared. EOG, ECG
@@ -825,8 +840,9 @@ How the regression works:
    remove brain activity with them. Without an eye channel of its own, the step is not tried, and
    the Command Window says so.
 2. How much of each eye channel reaches each EEG channel is fitted by least squares, only on the
-   samples where an eye channel is beyond 4 robust standard deviations of its median (and 100 ms
-   on each side), where blinks and eye movements dominate. With less than 1 s of such samples, all
+   samples where an eye channel is beyond 4 robust standard deviations of its median, or where
+   the hidden Markov model of the eye channels finds a blink (and 100 ms on each side), where
+   blinks and eye movements dominate. With less than 1 s of such samples, all
    samples are used.
 3. Before fitting, the average of the epochs around each condition's events is taken out of every
    channel. The ERP reaches the eye channels too; without this the fit would remove part of it.
@@ -838,6 +854,44 @@ line, `EEG = pipecompare.run.Steps.eogRegress(EEG, {...}, {...}, [...]);`. It is
 mode; in the advanced panel tick *Options… > Try regressing the eyes out*; in scripts pass
 `'eogCheck', true` to `pipecompare.PipeCompare.optimize`. Its filter cutoffs are not fine-tuned
 afterwards. The step can also be added to a plan as `eogregress`.
+
+### Blinks and bad stretches found by a hidden Markov model
+
+Two things PipeCompare needs to know are a matter of *when*: when the eyes blink or move (to
+estimate what blinks add to each pipeline's result, to fit the EOG regression, and to leave the
+blinks out when looking for bad channels), and when a channel is bad (an electrode can come
+loose halfway through). A fixed rule (beyond so many standard deviations, plus a margin) misses
+what is weak in any one sample but clear over a stretch. So both are found by a **two-state
+hidden Markov model**: the data are taken to switch between a quiet and an active state, how
+large each state's values are and how long each state usually lasts are learned from the
+recording itself (the EM, or Baum-Welch, algorithm), and the most probable sequence of states is
+found exactly (the Viterbi algorithm, by dynamic programming).
+
+**Blinks and eye movements.** Each eye channel (and the left minus right pair) minus its moving
+median over 1 s, smoothed over 1/16 s and taken at about 25 Hz; the largest over the channels of
+how far its size is from usual (robust z). A stretch in the active state counts as a blink when it
+reaches 3.5 robust SDs and lasts 100 ms or more; without that, the model would split the noise of
+a recording without blinks into two states. The samples found this way are added to those the
+fixed rule finds (beyond 5 robust SDs), so nothing the rule found is lost. In simulations (eye
+channel noise 10 µV, blinks of 15 to 200 µV), blinks of 15–30 µV were found 64 % of the time
+instead of 11 % (with slower noise, 28 % instead of 3 %), those of 30–50 µV all instead of
+83 %, at about 2 extra short stretches a minute in a recording without blinks.
+
+**Channels bad for part of the recording.** For each channel, its noise the other channels do
+not explain (as in the bad-channel test) is measured in 1 s windows, and what all channels share
+in a window (a movement) is taken out. On that sequence the model finds the stretches in which
+the channel is noisier than usual. A stretch counts when it lasts 10 s or more and its noise is
+on average 3 robust SDs above the channel's usual level (measured on the channel's quieter part,
+so a channel bad for most of the recording is still measured against its good part). The
+channel is then interpolated (spherical, from the channels not bad there) in that stretch only;
+the rest of it is left as it was. The step line says, for example, *bad for part of the
+recording, interpolated there only: P8 (1210-1500 s)*, and a saved script repeats it with
+`pipecompare.run.Steps.interpStretches`. In a simulation (32 channels, 20 minutes, Pz from some
+time on 1.5 to 3 times noisier), the whole-recording test found such a channel only when it was
+bad for half the recording at 3 times the noise; the model found every bad stretch, and the
+noise at Pz came to 1.02–1.10 times that of a clean recording, instead of 1.06–1.64 with the whole-recording test alone (interpolation assumed 1.2 times as noisy as a clean channel). It
+needs continuous data, 8 channels or more and 30 s or more, and channels that are not linearly
+dependent (it runs before the average reference).
 
 ### Peak-to-peak rejection
 
@@ -1552,7 +1606,13 @@ pipeline (0.1-30 Hz, average reference, rejection at 100 µV) and a common one (
 bad-channel interpolation and ICA with ICLabel). It reports, per pipeline, the bias and the root
 mean square error of each condition and of their difference against the P3 actually in the data,
 the trials kept, and where the recommendation ranks by actual error among all the pipelines
-PipeCompare compared. It takes hours (an ICA per pipeline and recording), so on GitHub it runs
+PipeCompare compared. It also checks that PipeCompare's own error estimate tells the truth: for
+every pipeline compared, the actual error of each condition's P3 (corrected by the signal check's
+gain) against the error PipeCompare reports for it (SME and what blinks add, divided by the gain).
+The ratio of the two (root mean squares over recordings; 1 = right, below 1 = the error is
+understated) is given for all pipelines, and with and without each step learned from the data
+(EOG regression, ICA components chosen by SME, ICA, trial weights, stretches interpolated), so a
+step that makes the SME too small is seen (`calibration.csv`, `benchmark_summary.txt`). It takes hours (an ICA per pipeline and recording), so on GitHub it runs
 by hand only (Actions > *benchmark* > *Run workflow*; the results, written after every recording,
 are kept as an artifact), or locally:
 

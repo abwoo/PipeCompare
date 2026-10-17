@@ -5,6 +5,20 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- Benchmark: whether the reported error tells the truth. For every pipeline compared, actual
+  error against reported error (SME and blink bias, over the signal gain), overall and with and
+  without each step learned from the data (`calibration.csv`).
+- Band power is estimated with multitaper spectra (3 Slepian tapers, fewer for a narrow band)
+  instead of one Hann taper (`Measure.bandScores`, `Measure.tapers`). Simulation: the error of a
+  band power over 40 one-second segments 28 % lower.
+- Blinks and eye movements are also found by a two-state hidden Markov model of the eye channels
+  (EM and Viterbi, `pipecompare.eval.Hmm`), united with the fixed 4-5 SD rules wherever blinks are
+  looked for (what blinks add to the error, the EOG regression's fit, bad channels without the
+  blinks). Simulation: blinks of 15-30 uV found 64 % of the time instead of 11 %.
+- Channels bad for only part of a continuous recording: found by a two-state hidden Markov model
+  of each channel's noise the others do not explain (1 s windows, stretches of 10 s or more) and
+  interpolated there only. badchannels option `stretches` (on in the simple mode and the panel);
+  step `Steps.interpStretches` in saved scripts.
 - Eye channels regressed out (EOG regression) when ICA cannot remove the blinks: after the
   ranking, the recommended pipeline is run again with the dedicated eye channels regressed out of
   the EEG (fitted on the samples dominated by the eyes, with the time-locked average taken out

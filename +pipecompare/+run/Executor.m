@@ -836,17 +836,18 @@ function f = stepFacts(in, info)
 % the choice again on half of the trials (Rank.crossfit); for a rejection,
 % how far the mean score of the epochs kept is from that of all of them
 % (keptShift, Presets.keptShiftText); for bad channels chosen by the total
-% error, those left as they are (leftAsIs); for the eye channels regressed
+% error, those left as they are (leftAsIs), and those bad for part of the
+% recording (stretches: channel, samples); for the eye channels regressed
 % out, the channels and coefficients (eog).
 f = struct('type', in.type, 'params', in.params, 'interpolated', {{}}, 'removed', {{}}, ...
     'icsRemoved', NaN, 'icsTotal', NaN, 'rejected', NaN, 'epochsBefore', NaN, 'epochsInterpolated', NaN, ...
     'icsBrain', NaN, 'icsOther', NaN, 'otherMedian', NaN, 'icaPoints', NaN, 'uvChosen', NaN, 'thresholdChosen', NaN, 'icsConsidered', NaN, 'icsProtected', NaN, ...
-    'comps', [], 'rejIdx', [], 'cutoffRefined', false, 'weightRatio', NaN, 'trialWeights', [], 'curves', [], 'keptShift', [], 'leftAsIs', {{}}, 'eog', []);
+    'comps', [], 'rejIdx', [], 'cutoffRefined', false, 'weightRatio', NaN, 'trialWeights', [], 'curves', [], 'keptShift', [], 'leftAsIs', {{}}, 'eog', [], 'stretches', []);
 for n = {'interpolated', 'removed', 'leftAsIs'}
     if isfield(info, n{1}), f.(n{1}) = cellstr(info.(n{1})); end
 end
 for n = {'icsRemoved', 'icsTotal', 'rejected', 'epochsBefore', 'epochsInterpolated', 'icsBrain', 'icsOther', 'otherMedian', 'icaPoints', 'uvChosen', 'thresholdChosen', 'icsConsidered', 'icsProtected', ...
-        'comps', 'rejIdx', 'cutoffRefined', 'weightRatio', 'trialWeights', 'curves', 'keptShift', 'eog'}
+        'comps', 'rejIdx', 'cutoffRefined', 'weightRatio', 'trialWeights', 'curves', 'keptShift', 'eog', 'stretches'}
     if isfield(info, n{1}), f.(n{1}) = info.(n{1}); end
 end
 end

@@ -370,6 +370,69 @@ Y = [1 2; 1.1 NaN; 0.9 2.2]; th = pipecompare.Group.twoLevel(Y, 0.01 * Y .^ 2);
 verifyTrue(tc, isnan(th(2, 2)) && all(isfinite(th(~isnan(Y)))));   % a pipeline not passing on a recording
 end
 
+function testMultitaperBandPower(tc)
+% Band power with Slepian tapers: the right level for a sinusoid and for
+% white noise, half the spread over segments of an alpha rhythm compared
+% with one Hann taper, and fewer tapers for a narrow band.
+rs = RandStream('mt19937ar', 'Seed', 23);
+fs = 250; M = @pipecompare.eval.Measure.bandScores;
+lastwarn('');
+for c = {{250, [8 13], 3}, {250, [4 7], 2}, {250, [4 6], 1}, {2000, [8 12], 3}}
+    [n, band, K] = c{1}{:};
+    H = pipecompare.eval.Measure.tapers(n, fs, band);
+    verifyEqual(tc, size(H), [n K]);
+    verifyEqual(tc, H' * H, eye(K), 'AbsTol', 1e-8);              % orthonormal
+end
+verifyEmpty(tc, lastwarn);                                       % the eigenvectors converged
+n = 500; t = (0:n-1) / fs; f = (0:n-1) * fs / n; nb = sum(f >= 8 & f <= 12);
+x = 20 * sin(2 * pi * 10 * t + 0.7);
+verifyEqual(tc, 10 ^ M(x, fs, [8 12]) * nb * fs / n, 20 ^ 2 / 2, 'RelTol', 0.01);   % the sine's power
+w = M(reshape(5 * randn(rs, 1, n * 1000), 1, n, 1000), fs, [8 12]);
+verifyEqual(tc, mean(10 .^ w), 2 * 25 / fs, 'RelTol', 0.03);       % white noise: 2 sigma^2 / fs
+% alpha (resonance at 10 Hz) plus white noise, 1 s segments
+n = 250; r = 0.97; th = 2 * pi * 10 / fs; X = zeros(1, n, 200);
+for k = 1:200
+    a = filter(1, [1 -2 * r * cos(th) r ^ 2], randn(rs, 1, n + 500)); a = a(501:end);
+    X(1, :, k) = 10 * a / std(a) + 3 * randn(rs, 1, n);
+end
+hn = 0.5 - 0.5 * cos(2 * pi * (0:n-1)' / (n - 1));
+fb = (0:n-1) * fs / n; sel = fb >= 8 & fb <= 13;
+F = fft(permute(X, [2 1 3]) .* hn, [], 1);
+hann = reshape(log10(mean(2 * abs(F(sel, :, :)) .^ 2 / (fs * sum(hn .^ 2)), 1)), [], 1);
+ratio = std(M(X, fs, [8 13])) / std(hann);
+fprintf('Band power spread, multitaper / Hann: %.2f\n', ratio);
+verifyLessThan(tc, ratio, 0.7);
+end
+
+function testHmmFindsWeakBlinks(tc)
+% Eye channel: slow noise (SD 10) and 150 blinks of 15-200 uV (half sines,
+% 250-400 ms). Each blink's samples add their evidence in the two-state HMM
+% (Hmm.events), so blinks of 15-30 uV that rarely reach 5 robust SDs in a
+% sample are found far more often (simulated in Python with this noise:
+% 28 % against 3 %; with 1/f noise 64 % against 11 %), and
+% without blinks it marks few stretches (about 2 a minute). The EM fit and
+% Viterbi path recover a clean two-state sequence.
+rs = RandStream('mt19937ar', 'Seed', 21); fs = 250; n = fs * 600;
+ar = @(v) (v - mean(v)) / std(v); noise = @() 10 * ar(filter(1, [1 -0.97], randn(rs, 1, n)));
+x = noise(); on = sort(randperm(rs, floor((n - 2 * fs) / (0.6 * fs)), 150)) * round(0.6 * fs);
+amp = exp(log(15) + (log(200) - log(15)) * rand(rs, 1, 150)); len = round(fs * (0.25 + 0.15 * rand(rs, 1, 150)));
+for k = 1:150, x(on(k) + (0:len(k)-1)) = x(on(k) + (0:len(k)-1)) + amp(k) * sin(pi * (0:len(k)-1) / len(k)); end
+r = x - movmedian(x, fs); a = abs(r - median(r)); rule = a > 5 * 1.4826 * median(a);
+hmm = pipecompare.eval.Hmm.events(x, fs) | rule;
+found = @(h) arrayfun(@(k) any(h(on(k) + (0:len(k)-1))), 1:150);
+weak = amp < 30; fr = found(rule); fh = found(hmm);
+fprintf('weak blinks found: rule %.0f%%, HMM %.0f%%\n', 100 * mean(fr(weak)), 100 * mean(fh(weak)));
+verifyGreaterThan(tc, mean(fh(weak)), mean(fr(weak)) + 0.15);
+verifyGreaterThanOrEqual(tc, mean(fh(amp > 50)), 0.99);
+z = pipecompare.eval.Hmm.events(noise(), fs);
+verifyLessThan(tc, sum(diff([0 z]) == 1) / 10, 4);                  % stretches a minute without blinks
+truth = [false(1, 300) true(1, 50) false(1, 300) true(1, 50) false(1, 300)];
+s = 5 * truth + 0.5 * randn(rs, 1, 1000);
+[act, m] = pipecompare.eval.Hmm.segment(s, 2, 5);
+verifyGreaterThan(tc, mean(act == truth), 0.98);
+verifyEqual(tc, m.mu, [0 5], 'AbsTol', 0.2);
+end
+
 function testSelectionFrequencyOfTheRecommendation(tc)
 % A pipeline clearly better than the others is recommended in nearly
 % every resample of the trials. Among pipelines with the same true noise

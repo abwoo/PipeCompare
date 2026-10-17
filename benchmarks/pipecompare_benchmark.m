@@ -24,15 +24,24 @@ function out = pipecompare_benchmark(nRec, outDir)
 %   recordings, for each condition and for their difference, and the
 %   trials kept. Also, among all the pipelines PipeCompare compared, where
 %   its recommendation ranks by the actual error of the difference.
+%   And whether PipeCompare's own error estimate tells the truth: for every
+%   pipeline it compared, the actual error of each condition's P3 (the
+%   estimate divided by the signal check's gain, minus the true P3)
+%   against the error it reports, sqrt(SME^2 + eye bias^2) / gain; their
+%   ratio (root mean squares over recordings and conditions; 1 = right,
+%   below 1 = the error is understated), for all pipelines and for those
+%   with and without each step learned from the data (EOG regression,
+%   ICA components chosen by SME, ICA, trial weights, stretches).
 %   outDir (default tempdir): benchmark.csv (one row per recording and
-%   pipeline) and benchmark_summary.txt.
+%   pipeline), calibration.csv (one row per recording, compared pipeline
+%   and condition) and benchmark_summary.txt.
 if nargin < 1 || isempty(nRec)
     nRec = str2double(getenv('PIPECOMPARE_BENCH_N'));
     if isnan(nRec), nRec = 8; end
 end
 if nargin < 2 || isempty(outDir), outDir = tempdir; end
 names = {'PipeCompare', 'minimal', 'common'};
-rows = {};
+rows = {}; calib = {};
 rankOfPick = nan(1, nRec);
 for s = 1:nRec
     [EEG, truth] = bench_synth(s);
@@ -49,6 +58,7 @@ for s = 1:nRec
         feas = find(strcmp(r.ranking.table.status, 'feasible'))';
         err = arrayfun(@(j) abs(diff(estimateOf(r, j)) - diff(want)), feas);
         rankOfPick(s) = sum(err < abs(diff(est(1, :)) - diff(want))) + 1;
+        calib = [calib; calibrationRows(r, feas, want, s)]; %#ok<AGROW>
         fprintf('[benchmark] recording %d: recommended %s; its difference error ranks %d of %d compared pipelines\n', ...
             s, label{1}, rankOfPick(s), numel(feas));
     end
@@ -72,12 +82,12 @@ for s = 1:nRec
         rows(end+1, :) = {s, names{i}, label{i}, want(1), want(2), est(i, 1), est(i, 2), e(1), e(2), e(1) - e(2), kept(i), ...
             strjoin(truth.badLabels, ' '), truth.lockedBlinkShare}; %#ok<AGROW>
     end
-    [T, txt] = writeResults(rows, rankOfPick, s, outDir, names);   % after every recording: kept if the run stops early
+    [T, txt] = writeResults(rows, rankOfPick, s, outDir, names, calib);   % after every recording: kept if the run stops early
 end
 out = struct('table', T, 'summary', txt, 'rankOfPick', rankOfPick);
 end
 
-function [T, txt] = writeResults(rows, rankOfPick, nDone, outDir, names)
+function [T, txt] = writeResults(rows, rankOfPick, nDone, outDir, names, calib)
 % benchmark.csv and benchmark_summary.txt for the recordings done so far
 T = cell2table(rows, 'VariableNames', {'recording', 'pipeline', 'steps', 'trueTarget', 'trueStandard', ...
     'target', 'standard', 'errTarget', 'errStandard', 'errDifference', 'kept', 'badChannel', 'lockedBlinkShare'});
@@ -92,9 +102,49 @@ for i = 1:3
 end
 lines{end+1} = sprintf(['PipeCompare''s recommendation by the actual error of the difference, among the pipelines it ', ...
     'compared: rank %s (1 = the most accurate)'], mat2str(rankOfPick(1:nDone)));
+if ~isempty(calib)
+    C = cell2table(calib, 'VariableNames', {'recording', 'steps', 'condition', 'actualError', 'reportedError', 'sme', 'eyeBias', 'gain'});
+    writetable(C, fullfile(outDir, 'calibration.csv'));
+    lines{end+1} = sprintf(['Does the reported error tell the truth? actual / reported error (root mean squares; ', ...
+        '1 = right, below 1 = understated), over %d recordings:'], nDone);
+    lines = [lines calibrationLines(C)];
+end
 txt = strjoin(lines, newline);
 fprintf('%s\n', txt);
 fid = fopen(fullfile(outDir, 'benchmark_summary.txt'), 'w'); fprintf(fid, '%s\n', txt); fclose(fid);
+end
+
+function rows = calibrationRows(r, feas, want, s)
+% per compared pipeline and condition: the actual error of its P3 corrected
+% by its signal gain, and the error PipeCompare reports for it
+rows = {};
+T = r.ranking.table; vars = T.Properties.VariableNames;
+gv = vars(startsWith(vars, 'gain_'));
+for j = feas
+    if ~isfield(r.cands(j), 'm') || isempty(r.cands(j).m), continue; end
+    o = r.cands(j).m.objectives(1);
+    g = 1; if ~isempty(gv), g = T.(gv{1})(j); end
+    if ~(isfinite(g) && g > 0), continue; end
+    for c = 1:numel(want)
+        rows(end+1, :) = {s, r.labels{j}, c, o.estimate(c) / g - want(c), ...
+            sqrt(o.sme(c) ^ 2 + o.eyeBias(c) ^ 2) / g, o.sme(c), o.eyeBias(c), g}; %#ok<AGROW>
+    end
+end
+end
+
+function lines = calibrationLines(C)
+% the ratio for all pipelines, and with and without each learned step
+ratio = @(R) sqrt(mean(R.actualError .^ 2, 'omitnan') / mean(R.reportedError .^ 2, 'omitnan'));
+lines = {sprintf('  %-34s %5.2f  (%d)', 'all compared pipelines', ratio(C), height(C))};
+steps = {'EOG regression', 'eogregress'; 'ICA components chosen by SME', 'threshold=sme'; ...
+    'ICA', 'icremove'; 'trial weights', 'weight_trials'; 'stretches interpolated', 'stretches=true'};
+for k = 1:size(steps, 1)
+    has = contains(C.steps, steps{k, 2});
+    t = sprintf('  %-34s', steps{k, 1});
+    if any(has), t = [t sprintf(' %5.2f  (%d)', ratio(C(has, :)), sum(has))]; else, t = [t '     -']; end
+    if any(~has), t = [t sprintf('   without: %5.2f  (%d)', ratio(C(~has, :)), sum(~has))]; end
+    lines{end+1} = t; %#ok<AGROW>
+end
 end
 
 function want = trueP3(truth, c, fs)

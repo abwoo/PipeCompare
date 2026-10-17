@@ -22,6 +22,11 @@ classdef Steps
     %   reported as not decision-matched. Weighting epochs replays the
     %   weights of the real data.
 
+    properties (Constant)
+        MinWindows = 10   % a stretch of a channel bad for part of the recording lasts 10 s or more (badStretches)
+        StretchZ = 3      % and its noise is on average 3 robust SDs above the channel's usual level
+    end
+
     methods (Static)
         function [EEG, coms, info] = run(inst, EEG, ctx)
             p = inst.params;
@@ -162,6 +167,9 @@ classdef Steps
                         if ~isempty(info.badIdx), EEG = pop_select(EEG, 'nochannel', info.badIdx); end
                     elseif ~isempty(info.badIdx)
                         EEG = pop_interp(EEG, info.badIdx, 'spherical');
+                    end
+                    if isfield(info, 'stretches') && ~isempty(info.stretches)
+                        EEG = pipecompare.run.Steps.interpStretches(EEG, info.stretches);
                     end
                 case 'channels'
                     if ~isempty(info.listedIdx)
@@ -351,6 +359,106 @@ classdef Steps
                 EEG = pop_interp(EEG, bad, 'spherical');   % returns no command from the command line
                 coms{end+1} = sprintf('EEG = pop_interp(EEG, %s, ''spherical'');', mat2str(bad(:)'));
             end
+            if pipecompare.utils.fieldOr(p, 'stretches', false) && EEG.trials == 1
+                % channels bad for only part of the recording: found on the
+                % same copy among the channels not found bad as a whole, and
+                % interpolated in those stretches only
+                good = setdiff(elec, find(ismember({EEG.chanlocs.labels}, labels)), 'stable');
+                st = pipecompare.run.Steps.badStretches(src.data(good, :), EEG.srate);
+                st = struct('channel', arrayfun(@(r) EEG.chanlocs(good(r)).labels, [st.row], 'UniformOutput', false), ...
+                    'samples', {st.samples});
+                if ~isempty(st)
+                    requireLocations(EEG.chanlocs(ismember({EEG.chanlocs.labels}, {st.channel})), 'badchannels');
+                    EEG = pipecompare.run.Steps.interpStretches(EEG, st);
+                    coms{end+1} = stretchCommand(st);
+                    pipecompare.utils.log('Channels bad for part of the recording, interpolated there only: %s', ...
+                        strjoin(arrayfun(@(q) sprintf('%s %.0f-%.0f s', q.channel, (q.samples - [1 0]) / EEG.srate), st, ...
+                        'UniformOutput', false), ', '));
+                end
+                info.stretches = st;
+            end
+        end
+
+        function st = badStretches(X, srate)
+            % Channels (rows of X, continuous, srate Hz) bad for only part of
+            % the recording. Each channel's noise the others do not explain
+            % (its residual from their least-squares prediction, as in
+            % residualZ: (P x)_i / P_ii for P the inverse covariance) has its
+            % log SD taken in 1 s windows; what all channels share in a
+            % window (movement, a change of reference) is taken out (the
+            % median over the channels). On that sequence a two-state HMM
+            % (pipecompare.eval.Hmm.segment: EM, Viterbi) finds the stretches
+            % in its higher state; one counts when it lasts MinWindows (10 s)
+            % or more and its mean is StretchZ (3) robust SDs above the
+            % channel's usual level. That level: the channel's 20th
+            % percentile plus the median channel's gap between its 20th
+            % percentile and its median, and the spread the median
+            % channel's MAD, so a channel bad for most of the recording is
+            % still measured against its good part. st: row (of X) and
+            % samples ([first last]) of each stretch; none with fewer than 8
+            % channels, 30 windows, or linearly dependent channels.
+            st = struct('row', {}, 'samples', {});
+            [nc, n] = size(X); w = round(srate); nw = floor(n / w);
+            if nc < 8 || nw < 30, return; end
+            Xs = double(X(:, 1:max(1, ceil(n / 2e5)):end)); Xs = Xs - median(Xs, 2);
+            mad = 1.4826 * median(abs(Xs), 2);
+            keep = max(abs(Xs) ./ max(mad, eps), [], 1) < 6;
+            if mean(keep) >= 0.5, Xs = Xs(:, keep); end
+            Xs = Xs - mean(Xs, 2);
+            C = (Xs * Xs') / size(Xs, 2);
+            if rcond(C) < 1e-10
+                pipecompare.utils.log(['Bad channels: stretches of bad channels not looked for (the channels are ', ...
+                    'linearly dependent, e.g. already average-referenced or interpolated).']);
+                return;
+            end
+            P = inv(C); Wr = P ./ diag(P);
+            L = zeros(nc, nw);
+            for k = 1:nw
+                L(:, k) = log(std(Wr * double(X(:, (k - 1) * w + (1:w))), 0, 2) + eps);
+            end
+            L = L - median(L, 1);
+            q20 = zeros(nc, 1); gap = zeros(nc, 1); sc = zeros(nc, 1);
+            for c = 1:nc
+                v = sort(L(c, :)); q20(c) = v(ceil(0.2 * nw)); m = median(v);
+                gap(c) = m - q20(c); sc(c) = 1.4826 * median(abs(v - m));
+            end
+            scale = max(0.05, median(sc));
+            for c = 1:nc
+                y = (L(c, :) - q20(c) - median(gap)) / scale;
+                on = pipecompare.eval.Hmm.segment(y, -inf, pipecompare.run.Steps.MinWindows);
+                d = diff([0 on 0]); s = find(d == 1); e = find(d == -1) - 1;
+                for q = 1:numel(s)
+                    if mean(y(s(q):e(q))) >= pipecompare.run.Steps.StretchZ
+                        last = e(q) * w; if e(q) == nw, last = n; end
+                        st(end + 1) = struct('row', c, 'samples', [(s(q) - 1) * w + 1, last]); %#ok<AGROW>
+                    end
+                end
+            end
+        end
+
+        function EEG = interpStretches(EEG, st)
+            % The channels st(k).channel (labels) interpolated (spherical, as
+            % pop_interp) in the samples st(k).samples ([first last]) only,
+            % from the channels not bad there; continuous data. A fixed
+            % linear operation once the stretches are known, so the signal
+            % check replays it exactly.
+            if isempty(st), return; end
+            [~, ch] = ismember(lower({st.channel}), lower({EEG.chanlocs.labels}));
+            S = reshape([st.samples], 2, [])';
+            edges = unique([S(:, 1); S(:, 2) + 1; 1; EEG.pnts + 1])';
+            done = containers.Map('KeyType', 'char', 'ValueType', 'any');
+            for k = 1:numel(edges) - 1
+                a = edges(k); b = edges(k + 1) - 1;
+                bad = unique(ch(S(:, 1)' <= a & S(:, 2)' >= b));
+                if isempty(bad) || a > b, continue; end
+                key = mat2str(bad);
+                if ~isKey(done, key), done(key) = interpWeights(EEG, bad); end
+                W = done(key);
+                for q = a:1e5:b
+                    cols = q:min(b, q + 1e5 - 1);
+                    EEG.data(bad, cols) = cast(W * double(EEG.data(:, cols)), 'like', EEG.data);
+                end
+            end
         end
 
         function [T, share, eyes] = withoutBlinks(T, D)
@@ -379,10 +487,13 @@ classdef Steps
             if isempty(eyes), return; end
             Y = reshape(T.data, T.nbchan, []);
             H = beyondRobust(double(Y(eyes, :)), 5);
+            if T.trials == 1   % weak blinks too: the HMM of the eye channels (Hmm.events)
+                H(end + 1, :) = pipecompare.eval.Hmm.events(Y(eyes, :), T.srate);
+            end
             hit = any(H, 1);
             w = round(0.2 * T.srate);
             if any(hit)
-                [~, j] = max(sum(H, 2));
+                [~, j] = max(sum(H(1:numel(eyes), :), 2));
                 idx = find(hit); e = double(Y(eyes(j), idx)); a = zeros(T.nbchan, 1);
                 for b = 1:1e5:numel(idx)           % a block of samples at a time
                     k = b:min(numel(idx), b + 1e5 - 1);
@@ -765,7 +876,9 @@ classdef Steps
             % EEG.data(t, :) - B * EEG.data(e, :), B (targets x eyes) the
             % least-squares fit of the EEG channels on the eye channels.
             % The fit uses only the samples where an eye channel is beyond 4
-            % robust SD of its median (+-100 ms), where the eyes dominate,
+            % robust SD of its median or in the active state of the eye
+            % channels' HMM (pipecompare.eval.Hmm.events) (+-100 ms), where
+            % the eyes dominate,
             % and the average of the epochs around each event type of
             % groups (cells of event types; epoch [t0 t1] s) is taken out
             % of both first, so that what is time-locked (the ERP, also seen
@@ -815,7 +928,9 @@ classdef Steps
             end
             z = abs(E - median(E, 2)) ./ (1.4826 * median(abs(E - median(E, 2)), 2) + eps);
             half = round(0.1 * EEG.srate);
-            sel = conv(double(any(z > 4, 1)), ones(1, 2 * half + 1), 'same') > 0;
+            on = any(z > 4, 1);
+            if EEG.trials == 1, on = on | pipecompare.eval.Hmm.events(E, EEG.srate); end   % weak blinks too
+            sel = conv(double(on), ones(1, 2 * half + 1), 'same') > 0;
             if sum(sel) < EEG.srate, sel = true(1, n); end   % less than 1 s of eye activity: all samples
             clear E z
             % B from the cross-products over those samples (blocks: memory)
@@ -1041,6 +1156,13 @@ function f = rejField(type)
 % the EEG.reject field a rejection step marks
 f = struct('reject_threshold', 'rejthresh', 'reject_jointprob', 'rejjp', 'reject_kurtosis', 'rejkurt');
 f = f.(type);
+end
+
+function c = stretchCommand(st)
+% the command that interpolates the channels st in their stretches
+samples = arrayfun(@(q) mat2str(q.samples), st, 'UniformOutput', false);
+c = sprintf(['EEG = pipecompare.run.Steps.interpStretches(EEG, struct(''channel'', %s, ''samples'', {%s})); ', ...
+    '%% PipeCompare: channels bad for part of the recording interpolated there only'], strCells({st.channel}), strjoin(samples, ' '));
 end
 
 function t = strCells(c)

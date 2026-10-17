@@ -27,8 +27,8 @@ classdef Contract
     %       continuous data are cut into consecutive 2 s segments (EEGLAB's
     %       eeg_regepochs on PipeCompare's copy, events 'pipecompare_seg' with their
     %       urevents, so a segment is the same segment in every candidate);
-    %       score = log10 of the band power per segment (ROI mean, Hann
-    %       taper), precision = SD / sqrt(number of segments).
+    %       score = log10 of the band power per segment (ROI mean,
+    %       multitaper), precision = SD / sqrt(number of segments).
     %   With 'conditions' and 'epoch' instead of 'segment', the band power
     %   of each epoch is scored (event-related band power).
     %
