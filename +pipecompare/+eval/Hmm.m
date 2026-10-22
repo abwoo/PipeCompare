@@ -10,29 +10,39 @@ classdef Hmm
             % the higher mean). A stretch of active samples counts only when
             % y reaches peak in it and it is minLen samples or longer, so
             % that the noise of data without any events is not split into
-            % two states. m: the fitted model (mu, sd, A, pi).
+            % two states. m: the fitted model (mu, sd, A, pi, valid, reason).
             y = double(y(:)');
             n = numel(y);
             active = false(1, n);
-            m = struct('mu', [], 'sd', [], 'A', [], 'pi', []);
+            m = struct('mu', [], 'sd', [], 'A', [], 'pi', [], 'valid', false, 'reason', 'insufficient finite samples');
             if n < 10 || ~any(isfinite(y)), return; end
             y(~isfinite(y)) = median(y(isfinite(y)));
             q = sort(y);
             mu = [q(ceil(0.5 * n)) q(ceil(0.99 * n))];
             sd = [std(y) / 2 std(y)] + eps;
             A = [0.98 0.02; 0.1 0.9]; p0 = [0.9 0.1];
+            if any(~isfinite(sd)), m.reason = 'nonfinite initial scale'; return; end
             ll = -inf;
             for it = 1:30
                 [g1, xi, llNew] = forwardBackward(y, A, mu, sd, p0);
+                if ~isfinite(llNew) || any(~isfinite(g1)) || any(~isfinite(xi(:)))
+                    m.reason = 'nonfinite forward-backward fit'; return;
+                end
                 g2 = 1 - g1;
-                A = xi ./ max(sum(xi, 2), eps);
+                % Positive transition probabilities also protect a state
+                % with negligible occupancy from becoming a zero row.
+                xi = xi + 1e-12;
+                A = xi ./ sum(xi, 2);
                 mu = [sum(g1 .* y) / max(sum(g1), eps), sum(g2 .* y) / max(sum(g2), eps)];
                 sd = sqrt([sum(g1 .* (y - mu(1)).^2) / max(sum(g1), eps), sum(g2 .* (y - mu(2)).^2) / max(sum(g2), eps)]) + 1e-6;
                 p0 = [g1(1) g2(1)] + 1e-6; p0 = p0 / sum(p0);
                 if llNew - ll < 1e-6 * abs(llNew), break; end
                 ll = llNew;
             end
-            m = struct('mu', mu, 'sd', sd, 'A', A, 'pi', p0);
+            if any(~isfinite([mu sd A(:)' p0])) || any(sd <= 0)
+                m.reason = 'nonfinite fitted parameters'; return;
+            end
+            m = struct('mu', mu, 'sd', sd, 'A', A, 'pi', p0, 'valid', true, 'reason', '');
             [~, hi] = max(mu);
             active = viterbi(y, A, mu, sd, p0) == hi;
             d = diff([0 active 0]); s = find(d == 1); e = find(d == -1) - 1;
@@ -41,7 +51,7 @@ classdef Hmm
             end
         end
 
-        function hit = events(X, srate)
+        function [hit, model] = events(X, srate)
             % Blinks and eye movements in the rows of X (eye channels, or a
             % left minus right pair; continuous, srate Hz), found by a two-
             % state HMM: each row minus its moving median over 1 s, smoothed
@@ -53,6 +63,7 @@ classdef Hmm
             % samples (logical row).
             n = size(X, 2);
             hit = false(1, n);
+            model = struct('mu',[],'sd',[],'A',[],'pi',[],'valid',false,'reason','insufficient finite samples');
             if isempty(X) || n < 2 * srate, return; end
             d = max(1, floor(srate / 25));
             Z = zeros(size(X, 1), numel(1:d:n));
@@ -63,7 +74,7 @@ classdef Hmm
                 a = abs(s - median(s));
                 Z(k, :) = a / max(1.4826 * median(a), eps);
             end
-            on = pipecompare.eval.Hmm.segment(max(Z, [], 1), pipecompare.eval.Hmm.PeakZ, ...
+            [on, model] = pipecompare.eval.Hmm.segment(max(Z, [], 1), pipecompare.eval.Hmm.PeakZ, ...
                 max(1, round(pipecompare.eval.Hmm.MinSeconds * srate / d)));
             hit = repelem(on, d); hit = hit(1:n);
         end
@@ -79,9 +90,11 @@ function [g1, xi, ll] = forwardBackward(y, A, mu, sd, p0)
 % Scaled forward-backward for two states: g1 the probability of state 1 at
 % each sample, xi the expected transitions, ll the log-likelihood.
 n = numel(y);
-L1 = exp(-0.5 * ((y - mu(1)) / sd(1)).^2) / sd(1);
-L2 = exp(-0.5 * ((y - mu(2)) / sd(2)).^2) / sd(2);
-s = max(L1, L2) + realmin; L1 = L1 ./ s; L2 = L2 ./ s;
+L1 = -0.5 * ((y - mu(1)) / sd(1)).^2 - log(sd(1));
+L2 = -0.5 * ((y - mu(2)) / sd(2)).^2 - log(sd(2));
+% Scale BEFORE exponentiation: dividing two already-underflowed Gaussian
+% densities by realmin leaves both zero and poisons the entire EM fit.
+s = max(L1, L2); L1 = exp(L1 - s); L2 = exp(L2 - s);
 a1 = zeros(1, n); a2 = zeros(1, n); c = zeros(1, n);
 v1 = p0(1) * L1(1); v2 = p0(2) * L2(1); c(1) = v1 + v2; a1(1) = v1 / c(1); a2(1) = v2 / c(1);
 A11 = A(1, 1); A12 = A(1, 2); A21 = A(2, 1); A22 = A(2, 2);
@@ -102,7 +115,7 @@ for t = n-1:-1:1
     g1(t) = a1(t) * b1 / (a1(t) * b1 + a2(t) * b2);
 end
 xi = [x11 x12; x21 x22];
-ll = sum(log(c)) + sum(log(s));
+ll = sum(log(c)) + sum(s);
 end
 
 function path = viterbi(y, A, mu, sd, p0)
@@ -124,3 +137,4 @@ for t = n:-1:2
     if path(t) == 1, path(t-1) = 1 + from1(t); else, path(t-1) = 1 + from2(t); end
 end
 end
+

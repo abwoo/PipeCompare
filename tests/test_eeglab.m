@@ -920,7 +920,7 @@ verifyTrue(tc, contains(app.PlanTable.Data{3, 3}, 'consecutive 2 s segments'));
 app.run(false);
 verifyEqual(tc, size(app.ResultTable.Data, 1), 2);
 r = evalin('base', 'pipecompare_result');
-verifyEqual(tc, r.ranking.units, {'log10(uV^2)'});
+verifyEqual(tc, r.ranking.units, {'log10(uV^2/Hz)'});
 verifyTrue(tc, r.ref.segmented);
 verifyEqual(tc, r.ranking.table.status{contains(r.labels, 'cutoff=9')}, 'rejected');   % 9 Hz low-pass cuts the band
 app.AnalysisDrop.Value = 'erp'; app.analysisChanged();            % back to ERP: what was typed is kept
@@ -994,3 +994,4 @@ function EEG = runScript(EEG, NQC_TXT__)
 % run script() output on EEG, as a user would paste it
 eval(NQC_TXT__);
 end
+

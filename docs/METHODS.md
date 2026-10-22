@@ -41,7 +41,7 @@ amplitude over the ROI channels and the window after baseline correction.
 4. **What is measured.**
    - The contract defines the measures: mean amplitude, peak amplitude or peak latency per
      component.
-   - No experimental effect is used, so choosing a pipeline cannot inflate the effect you test later.
+   - No condition difference or p-value is optimized. Adaptive choices still require downstream validation.
    - The data quality of each measure is its standardized measurement error (SME): analytic for
      means, bootstrapped for peaks and latencies (Luck et al., 2021). SME falls when noise is removed
      and rises when trials are lost, so it prices the rejection trade-off.
@@ -209,11 +209,12 @@ not used for it. For each of *S* random splits (`nSplits`, default 20), the refe
 every condition are divided into halves *A* and *B*. The objectives on each half are computed as
 the half-samples of the peak bootstrap: on the *m* trials of the half, rescaled by √(*m*/*N*),
 since SME ∝ 1/√*n*. The candidate best on *A* is scored on *B*, and the candidate best on *B* on
-*A*. The mean of these 2*S* held-out scores is an estimate, not flattered by the selection, of
-the objective of the pipeline chosen by minimum objective; reported against the apparent best
-objective on all trials, as `crossfit.overstatement = honest / apparent − 1`. A choice made on
-half the trials is somewhat worse than one made on all of them, so the overstatement is, if
-anything, too large. For segments of one recording (band power), consecutive segments are
+*A*. The mean of these 2*S* scores is a **conditional selection diagnostic**, reported against
+the apparent best objective as `crossfit.overstatement = honest / apparent − 1`. `honest` is a
+legacy field name. Preprocessing, candidate eligibility, signal checks and factorial shrinkage
+were fitted on all trials; this does not validate the complete pipeline on independent data.
+The result explicitly carries `scope = 'conditional-selection'` and `fullyHeldOut = false`.
+For segments of one recording (band power), consecutive segments are
 dependent, so the halves are the earlier and the later half (*S* = 1).
 
 *Nested.* A candidate also makes choices from the objective itself: a rejection limit (section
@@ -492,19 +493,23 @@ identified by its urevent in every candidate, exactly as an ERP trial is, and a 
 candidate rejects is missing (NaN) in that candidate. *T* must hold at least two cycles of the
 lowest band edge (*T* ≥ 2/*f*₁), and band edges must lie below Nyquist.
 
-**Score and SME.** Per segment, the score is log₁₀ of the mean power in the band. The power is the
+**Score and SME.** Per segment, the score is log₁₀ of the mean PSD in the band (uV²/Hz), rather
+than the integral of power over the band. The PSD is the
 one-sided multitaper power spectral density (Thomson, 1982): the segment is multiplied by each of
 *K* discrete prolate spheroidal (Slepian) tapers, the orthonormal windows whose power is most
 concentrated within ±*W* Hz of each frequency (Slepian, 1978; computed as the eigenvectors of the
 tridiagonal matrix of Percival and Walden, 1993), and the *K* periodograms are averaged, then
 averaged over the band's bins and the ROI channels. The time-bandwidth product is *NW* = *WT* = 2
 (*K* = 3 tapers), lowered for a band narrower than 4/*T* Hz so that the smoothing (2*W*) stays
-within the band (*NW* = 1.5 gives 2 tapers, *NW* = 1 a single one). One taper's periodogram has
+within the band when its width permits (*NW* = 1.5 gives 2 tapers, *NW* = 1 a single one).
+The minimum smoothing width is 2/*T* Hz: narrower bands are unresolved and warn during contract
+validation. `tapers` and `bandScores` expose effective resolution as a second output.
+One taper's periodogram has
 only two degrees of freedom per bin; averaging *K* nearly independent ones lowers the spread of
 the score over segments. In simulation (an alpha rhythm in white noise, 1 s segments, 8-13 Hz) the
 spread was half that of a single Hann taper (`test_statistics`), and with segments that also differ
 in their true alpha power, the error of the mean log power over 40 segments was 28 % lower
-(0.028 instead of 0.039). The SME is SD/√*n* over segments, as for a mean amplitude (section 1). With
+(0.028 instead of 0.039). Consecutive segments use a dependence-aware mean SE, described below. With
 `conditions` and `epoch` instead of `segment`, each epoch's band power is scored (event-related
 band power).
 
@@ -522,10 +527,14 @@ tested at its centre.
 
 **Dependent segments: moving-block bootstrap.** Consecutive segments of one recording are not
 independent, because state and noise change slowly. Resampling them one by one treats them as
-independent and understates how much an SME difference varies. In a simulation with AR(1) segment
-scores (φ = 0.6, 120 segments, two candidates with the same true noise), the false "worse" rate
-was 11.3 % with independent resampling and 5.3 % with blocks (`test_statistics`). The comparison
-of section 3 therefore resamples segments in blocks of *l* = round(*n*^{1/3}) consecutive segments.
+independent and understates uncertainty. The point SE now uses the Bartlett HAC estimate of the
+mean: with weighted residuals *z*_t = *w*_t(*x*_t − μ̂), sum Σ*z*_t² plus
+2 Σ_(h=1)^L (1 − h/(L+1)) Σ_t *z*_t*z*_(t+h), multiply by *n*/(*n*−1), then take the square root
+and divide by Σ*w*. *L* = floor(√*T*), where *T* counts original segment positions and *n* counts
+positive-weight observations. Rejected/missing positions have zero influence and retain their
+time positions. The automatic limit path uses the same SE. The comparison of section 3 resamples
+segments in blocks of *l* = round(*n*^{1/3}) consecutive segments and recomputes the HAC estimate
+in each resampled sequence; frequency counts alone would lose its temporal order.
 This is the moving-block bootstrap (Künsch, 1989), with the block-length order of Hall, Horowitz
 and Jing (1995). ERP trials, which are separated by inter-trial intervals and time-locked to
 different events, are resampled one by one as before.
@@ -895,6 +904,9 @@ itself). The states are the Viterbi path, the exact maximizer of P(*s*_1…*s*_T
 programming. The active state is the one with the higher mean. The model always splits a
 sequence into two states, also one without any events, so a stretch of active samples counts only
 when it passes a test of its own (below); everything else stays quiet. [`Hmm.segment`]
+Emission log densities are normalized before exponentiation, avoiding underflow from isolated
+extreme samples. A nonfinite fit returns an inactive mask with `model.valid = false` and a
+reason, rather than decoding invalid parameters. Existing fixed detection rules remain in use.
 
 **Blinks and eye movements** [`Hmm.events`; used by `Steps.withoutBlinks`, `Steps.eogRegress`,
 `Measure.sampleHits`, each united with its fixed rule]. *y*: for each eye channel (or left minus
@@ -923,6 +935,8 @@ spline from the channels not bad there (the rows of `eeg_interp` read off an ide
 `repair` `'error'`); a fixed linear map once the stretches are known, so the signal-check copy
 replays it exactly and a saved script repeats it (`Steps.interpStretches`). Not done on epoched
 data, with fewer than 8 channels or 30 windows, or when the channels are linearly dependent.
+The second output of `badStretches` reports whether detection was assessed and why it was skipped;
+the step retains this as `stretchCheck`. Unassessed does not mean no bad stretches were present.
 Simulated (`sims-2026-10-16d/bad_stretch_hmm.py`: 32 channels, 20 min, window log SDs with spread
 0.12, Pz *k* = 1.5–3 times noisier over the last 10–50 %): every bad window found, none marked in
 the rest (0.3 % of windows in recordings without a bad stretch); Pz's noise relative to a clean
@@ -991,6 +1005,9 @@ the choice among those not distinguished from the best (highest minimum retentio
 recordings, then smallest largest amplitude error, then lowest objective) follow section 3. The
 uncertainty is that of these recordings' trials, not of sampling other participants: the choice is
 for this group's data, as the single-recording choice is for one recording's.
+Each recording uses a distinct reproducible bootstrap seed (`G.bootstrapSeeds`), paired only
+across candidates within it. Unique recording names retain their stream under input reordering;
+duplicate names are disambiguated by occurrence.
 
 **Each recording's own pipeline (two-level empirical Bayes).** [`pipecompare.Group.twoLevel`] Let
 *Y*_{s,k} = *J*_{s,k} for the pipelines passing on *s* (others missing) and *V*_{s,k} the variance of
@@ -1063,6 +1080,10 @@ bootstrap (section 3) *e* is recomputed in every resample. A difference of the b
 mean that is real brain activity (a larger P3 in the trials with a blink) is counted as bias too;
 using the blink's size only to select the trials, not as a regressor, keeps frontal brain activity
 that correlates with the measured electrodes from being read as eye activity.
+When every retained trial has a detected artifact, the artifact-free comparison is absent:
+`eyeBias` and `eyeBiasSq` are NaN, `eyeBiasAssessed` is false, and the candidate cannot pass the
+ranking with a fictitious zero bias. With no detected artifact, the estimate is zero conditional
+on the detection rule. See [validation scope and experiments](VALIDATION.md).
 
 **Eye movements and muscle.** Two more kinds of trials are found the same way (robust *z* > 3 over
 all trials, per component) and counted with the blinks (a trial with any of them is in B):
@@ -1186,3 +1207,4 @@ covers widths, not every shape.
   data – a practical approach. *Journal of Neuroscience Methods, 250*, 34–46.
 - Zhang, G., Garrett, D. R., & Luck, S. J. (2024). Optimal filters for ERP research I: A general
   approach for selecting filter settings. *Psychophysiology, 61*(6), e14531.
+

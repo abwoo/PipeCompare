@@ -172,7 +172,7 @@ classdef Measure
             end
         end
 
-        function [bias, sq] = eyeBias(x, b, K)
+        function [bias, sq, assessed] = eyeBias(x, b, K)
             % What the blink trials add to a weighted mean score. x: scores
             % (n x 1, NaN = absent), b: blink trials (n x 1 logical), K:
             % weights (n x L: a column per mean, e.g. the trials kept at a
@@ -189,8 +189,10 @@ classdef Measure
             % simulation with 70% blink trials and no real effect it added a
             % third to the total error on average and pushed the choices
             % towards rejecting blink trials; with soft thresholding about
-            % 1%. 0 when no kept trial (or every kept trial) has a blink:
-            % nothing to compare. 1 x L.
+            % 1%. Zero when no kept trial has a detected artifact. NaN
+            % when every kept trial has one, or no trial remains: there is
+            % no artifact-free comparison and the bias is unidentifiable.
+            % assessed says which weighted means have an estimate. 1 x L.
             ok = ~isnan(x); x(~ok) = 0; b = double(b(:) & ok(:)); o = double(ok(:)) - b;
             K = double(K) .* double(ok(:));
             nB = b' * K; nN = o' * K; n = nB + nN;
@@ -202,8 +204,10 @@ classdef Measure
             bias = p .* (sB ./ nB - sN ./ nN);
             se = p .* sqrt(v .* (1 ./ nB + 1 ./ nN));
             sq = max(abs(bias) - pipecompare.eval.Measure.BiasZ * se, 0) .^ 2;
-            none = ~(nB > 0 & nN > 0);
-            bias(none) = 0; sq(none) = 0;
+            clean = nB == 0 & nN > 0;
+            assessed = nN > 0;
+            bias(clean) = 0; sq(clean) = 0;
+            bias(~assessed) = NaN; sq(~assessed) = NaN;
         end
 
         function m = candidate(EEG, contract, ref, opts)
@@ -226,7 +230,8 @@ classdef Measure
                 m.retention(c) = m.kept(c) / ref.n(c);
             end
             objs = repmat(struct('name', '', 'unit', '', 'kind', '', 'polarity', '', 'times', [], ...
-                'X', {{}}, 'w', {{}}, 'estimate', [], 'sme', [], 'agg', NaN, 'eyeBias', [], 'eyeBiasSq', []), 1, nO);
+                'X', {{}}, 'w', {{}}, 'estimate', [], 'sme', [], 'agg', NaN, 'eyeBias', [], 'eyeBiasSq', [], ...
+                'eyeBiasAssessed', [], 'segmented', false), 1, nO);
             blink = pipecompare.utils.fieldOr(ref, 'blink', {});
             % the epochs' weights (weight_trials), by the trial's urevent
             wRow = [];
@@ -240,11 +245,15 @@ classdef Measure
                 o = objs(k);
                 o.name = ref.objectives{k}; o.unit = ref.units{k};
                 [o.kind, o.polarity] = objKind(contract, k);
+                o.segmented = pipecompare.utils.fieldOr(ref, 'segmented', false);
                 o.times = T.times{k};
                 o.X = cell(1, nC); o.estimate = nan(1, nC); o.sme = nan(1, nC);
                 % what blinks add to each condition's mean (Measure.eyeBias;
                 % 0 without eye channels, for peak measures and band power)
                 o.eyeBias = zeros(1, nC); o.eyeBiasSq = zeros(1, nC);
+                if strcmp(o.kind, 'scalar') && numel(blink) >= k && ~isempty(blink{k})
+                    o.eyeBiasAssessed = false(1, nC);
+                end
                 if ~isempty(wRow), o.w = cell(1, nC); end
                 for c = 1:nC
                     X = nan(ref.n(c), size(T.data{k}, 2));
@@ -257,7 +266,7 @@ classdef Measure
                     [o.estimate(c), o.sme(c)] = pipecompare.eval.Measure.estimate(o, X, opts, k * 1000 + c, w);
                     if strcmp(o.kind, 'scalar') && numel(blink) >= k && ~isempty(blink{k})
                         K = ones(ref.n(c), 1); if ~isempty(w), K = w; K(isnan(K)) = 0; end
-                        [o.eyeBias(c), o.eyeBiasSq(c)] = pipecompare.eval.Measure.eyeBias(X(:, 1), blink{k}{c}, K);
+                        [o.eyeBias(c), o.eyeBiasSq(c), o.eyeBiasAssessed(c)] = pipecompare.eval.Measure.eyeBias(X(:, 1), blink{k}{c}, K);
                     end
                 end
                 o.agg = sqrt(mean(o.sme .^ 2));
@@ -269,13 +278,13 @@ classdef Measure
             end
         end
 
-        function s = bandScores(X, fs, band)
+        function [s, resolution] = bandScores(X, fs, band)
             % X: ROI channels x samples x trials. Per trial: log10 of the mean
             % power in the band (multitaper: the one-sided power spectral
             % density averaged over the tapers of Measure.tapers, the band's
             % bins and the ROI channels).
             [~, n, nt] = size(X);
-            H = pipecompare.eval.Measure.tapers(n, fs, band);
+            [H, resolution] = pipecompare.eval.Measure.tapers(n, fs, band);
             f = (0:n-1) * fs / n;
             sel = f >= band(1) & f <= band(2);
             assert(any(sel), 'PipeCompare:Measure', 'The window is too short to resolve the band [%g %g] Hz.', band(1), band(2));
@@ -288,7 +297,7 @@ classdef Measure
             s = reshape(log10(mean(mean(P / size(H, 2), 1), 2)), nt, 1);
         end
 
-        function H = tapers(n, fs, band)
+        function [H, resolution] = tapers(n, fs, band)
             % Discrete prolate spheroidal (Slepian) tapers for n samples at fs
             % Hz: the orthonormal windows whose power is most concentrated
             % within +-W Hz (eigenvectors of Percival and Walden's
@@ -300,7 +309,9 @@ classdef Measure
             if isempty(cache), cache = containers.Map('KeyType', 'char', 'ValueType', 'any'); end
             NW = max(1, min(2, (band(2) - band(1)) * n / fs / 2));
             K = max(1, floor(2 * NW + 1e-9) - 1);
-            key = sprintf('%d_%.6g', n, NW);
+            resolution = struct('NW',NW,'tapers',K,'binWidth',fs/n,'smoothingWidth',2*NW*fs/n, ...
+                'bandWidth',diff(band),'resolved',diff(band)>=2*NW*fs/n-1e-12,'unit','log10(uV^2/Hz)');
+            key = sprintf('%d_%.17g', n, NW);
             if isKey(cache, key), H = cache(key); return; end
             k = (0:n-1)';
             d = ((n - 1 - 2 * k) / 2) .^ 2 * cos(2 * pi * NW / n);
@@ -344,6 +355,10 @@ classdef Measure
         function [est, sme] = estimate(o, X, opts, salt, w)
             % Point estimate and its SME for one condition (w: the trials'
             % weights, [] = equal).
+            if nargin < 5, w = []; end
+            if strcmp(o.kind, 'scalar') && pipecompare.utils.fieldOr(o, 'segmented', false)
+                [est, sme] = pipecompare.eval.Measure.meanError(X, w, true); return;
+            end
             keep = ~isnan(X(:, 1)); Y = X(keep, :); n = size(Y, 1);
             est = NaN; sme = NaN;
             if n < 2, return; end
@@ -376,12 +391,37 @@ classdef Measure
             end
         end
 
-        function v = smeBoot(o, Wc, opts, salt, scale)
+        function [mu, se] = meanError(X, w, dependent)
+            % Sandwich SE of a scalar mean, one series per column. For
+            % consecutive segments use a Bartlett HAC estimate with
+            % floor(sqrt(T)) lags. Missing/rejected positions retain their
+            % place in time (zero influence), rather than closing gaps.
+            if nargin < 2 || isempty(w), w = ones(size(X)); end
+            if nargin < 3, dependent = false; end
+            if isvector(w) && size(X, 2) > 1, w = repmat(w(:), 1, size(X, 2)); end
+            w = double(w); X = double(X);
+            w(~isfinite(X) | ~isfinite(w) | w <= 0) = 0; X(~isfinite(X)) = 0;
+            sw = sum(w, 1); n = sum(w > 0, 1);
+            mu = sum(w .* X, 1) ./ sw;
+            z = w .* (X - mu); z(w == 0) = 0;
+            v = sum(z .^ 2, 1);
+            if dependent
+                lag = min(size(X, 1) - 1, max(1, floor(sqrt(size(X, 1)))));
+                for k = 1:lag
+                    v = v + 2 * (1 - k / (lag + 1)) * sum(z(1:end-k, :) .* z(1+k:end, :), 1);
+                end
+            end
+            se = sqrt(max(v, 0) .* n ./ max(n - 1, 1)) ./ sw;
+            mu(n < 2) = NaN; se(n < 2) = NaN;
+        end
+
+        function v = smeBoot(o, Wc, opts, salt, scale, indices)
             % SME of objective o under each outer bootstrap draw (paired:
             % Wc{c} holds the same trial counts for every candidate).
             % scale(c) rescales condition c (half-samples -> full sample).
             % Returns 1 x B, RMS over conditions.
             if nargin < 5, scale = ones(1, numel(Wc)); end
+            if nargin < 6, indices = {}; end
             B = size(Wc{1}, 2); acc = zeros(1, B);
             weighted = isfield(o, 'w') && ~isempty(o.w);
             for c = 1:numel(Wc)
@@ -390,7 +430,18 @@ classdef Measure
                 if weighted
                     wt = o.w{c}; wt(~M) = 0;
                 end
-                if weighted && strcmp(o.kind, 'scalar')
+                if strcmp(o.kind, 'scalar') && pipecompare.utils.fieldOr(o, 'segmented', false)
+                    wt = ones(size(X, 1), 1); if weighted, wt = o.w{c}; end
+                    if ~isempty(indices) && ~isempty(indices{c})
+                        % The order of a block resample matters to a HAC
+                        % SE. Counts alone cannot reconstruct its adjacency.
+                        I = indices{c}; Z = reshape(X(I), size(I));
+                        wb = reshape(wt(I), size(I));
+                    else
+                        Z = repmat(X, 1, B); wb = Wc{c} .* wt;
+                    end
+                    [~, sm] = pipecompare.eval.Measure.meanError(Z, wb, true); sm2 = sm .^ 2;
+                elseif weighted && strcmp(o.kind, 'scalar')
                     % the weighted SME (see above) of each resample: a trial
                     % drawn k times counts k times with its weight
                     s0 = wt' * Wc{c}; s1 = (wt .* X0)' * Wc{c};
@@ -663,3 +714,4 @@ labs = upper({chanlocs.labels});
 a = find(strcmp(labs, 'F7')); b = find(strcmp(labs, 'F8'));
 if isscalar(a) && isscalar(b) && ~any(ismember([a b], roi)), l = a; r = b; end
 end
+

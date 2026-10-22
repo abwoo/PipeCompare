@@ -1783,7 +1783,7 @@ verifyEqual(tc, r.ranking.table.status{lp9}, 'rejected');
 verifyTrue(tc, contains(r.ranking.table.reason{lp9}, 'amplitude'));
 verifyEqual(tc, r.ranking.table.status{lp30}, 'feasible');
 verifyGreaterThanOrEqual(tc, r.ref.n, 70);                        % 150 s / 2 s, minus edges
-verifyEqual(tc, r.ref.units{1}, 'log10(uV^2)');
+verifyEqual(tc, r.ref.units{1}, 'log10(uV^2/Hz)');
 verifyTrue(tc, r.ref.segmented);
 verifyTrue(tc, any(contains(r.rootComs, 'eeg_regepochs')));       % pure EEGLAB, in the script
 end
@@ -1963,3 +1963,4 @@ for cf = [64 1000; 160 1000; 256 2048]'
     verifyGreaterThan(tc, pipecompare.run.AsrRecord.maxMemMB(C, cf(2)) * 2^20, C * C * P * 24);
 end
 end
+

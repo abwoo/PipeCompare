@@ -5,13 +5,13 @@ function c = nqc_cand(X, varargin)
 %   Options: 'kind' (cell of kinds), 'times', 'stratum', 'signal'.
 if ~iscell(X), X = {{X}}; elseif ~iscell(X{1}), X = {X}; end
 o = struct('kind', {repmat({'scalar'}, 1, numel(X))}, 'times', [], 'stratum', '', 'signal', [], 'key', '', ...
-    'polarity', 'positive', 'units', {repmat({'uV'}, 1, numel(X))});
+    'polarity', 'positive', 'units', {repmat({'uV'}, 1, numel(X))}, 'segmented', false);
 for k = 1:2:numel(varargin), o.(varargin{k}) = varargin{k+1}; end
 opts = pipecompare.eval.Measure.defaults();
-objs = struct('name', {}, 'unit', {}, 'kind', {}, 'polarity', {}, 'times', {}, 'X', {}, 'estimate', {}, 'sme', {}, 'agg', {});
+objs = struct('name', {}, 'unit', {}, 'kind', {}, 'polarity', {}, 'times', {}, 'X', {}, 'estimate', {}, 'sme', {}, 'agg', {}, 'segmented', {});
 for k = 1:numel(X)
     ob = struct('name', sprintf('obj%d', k), 'unit', o.units{k}, 'kind', o.kind{k}, 'polarity', o.polarity, ...
-        'times', o.times, 'X', {X{k}}, 'estimate', [], 'sme', [], 'agg', NaN);
+        'times', o.times, 'X', {X{k}}, 'estimate', [], 'sme', [], 'agg', NaN, 'segmented', o.segmented);
     for cc = 1:numel(X{k})
         [ob.estimate(cc), ob.sme(cc)] = pipecompare.eval.Measure.estimate(ob, X{k}{cc}, opts, k * 1000 + cc);
     end

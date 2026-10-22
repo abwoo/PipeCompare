@@ -130,14 +130,21 @@ classdef Threshold
             v = v(:)';
             assert(~isempty(v), 'PipeCompare:Threshold', 'No trial of the conditions is left at this step.');
             need = max(opts.minTrials, ceil(opts.minRetention * ref.n - 1e-9));
+            segmented = pipecompare.utils.fieldOr(ref,'segmented',false);
             ok = true(1, numel(v)); acc = zeros(1, numel(v));
             for c = 1:nC
                 K = double(M{c}(:) <= v);                     % trials x limits
                 n = sum(K, 1);
                 ok = ok & n >= max(need(c), 2);
                 for o = 1:size(X{c}, 2)
-                    s1 = X{c}(:, o)' * K; s2 = (X{c}(:, o) .^ 2)' * K;
-                    acc = acc + max((s2 - s1 .^ 2 ./ n) ./ (n - 1), 0) ./ n;
+                    if segmented
+                        fullK = double(C.M{c}(:) <= v);
+                        [~, se] = pipecompare.eval.Measure.meanError(repmat(C.X{c}(:,o),1,numel(v)),fullK,true);
+                        acc = acc + se.^2;
+                    else
+                        s1 = X{c}(:, o)' * K; s2 = (X{c}(:, o) .^ 2)' * K;
+                        acc = acc + max((s2 - s1 .^ 2 ./ n) ./ (n - 1), 0) ./ n;
+                    end
                     acc = acc + eyeSq(X{c}(:, o), ref, use(o), c, C.loc{c}, K);   % what blinks add (total error)
                 end
             end
@@ -160,6 +167,20 @@ classdef Threshold
             nC = numel(X); B = opts.nBoot;
             acc = zeros(numel(v), B);
             for c = 1:nC
+                if segmented
+                    loc = 1:size(X{c},1); if nargin > 5, loc = C.loc{c}; end
+                    fullM = nan(ref.n(c),1); fullM(loc) = M{c};
+                    [~, I] = pipecompare.eval.Rank.resampleWeights(s,ref.n(c),B,true);
+                    for o = 1:size(X{c},2)
+                        fullX = nan(ref.n(c),1); fullX(loc) = X{c}(:,o);
+                        Z = reshape(fullX(I),size(I)); marks = reshape(fullM(I),size(I));
+                        for j = 1:numel(v)
+                            [~, se] = pipecompare.eval.Measure.meanError(Z,double(marks<=v(j)),true);
+                            acc(j,:) = acc(j,:) + se.^2;
+                        end
+                    end
+                    continue;
+                end
                 W = pipecompare.eval.Rank.resampleWeights(s, size(X{c}, 1), B, segmented);
                 K = double(M{c}(:) <= v(:)');                 % trials x limits
                 Nb = K' * W;

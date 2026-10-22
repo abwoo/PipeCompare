@@ -37,7 +37,7 @@ jobs:
           command: |
             addpath(fullfile(pwd, 'eeglab')); eeglab nogui;
             cd PipeCompare; addpath(pwd); addpath(fullfile(pwd, 'tests'));
-            r = run_all({'test_history', 'test_plan', 'test_panel_text', 'test_statistics', 'test_invariants'});
+            r = run_all({'test_history', 'test_plan', 'test_panel_text', 'test_statistics', 'test_methodology', 'test_invariants'});
             assert(~any([r.Failed]), 'PipeCompare:CI', '%d test(s) failed', sum([r.Failed]));
 
   gui-tests:
@@ -74,3 +74,4 @@ jobs:
             cd PipeCompare; addpath(pwd); addpath(fullfile(pwd, 'tests'));
             r = run_all({'test_simple', 'test_main', 'test_eeglab', 'test_signal', 'test_engine'});
             assert(~any([r.Failed]), 'PipeCompare:CI', '%d test(s) failed', sum([r.Failed]));
+

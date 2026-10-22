@@ -102,6 +102,11 @@ EEG = eeg_checkset(EEG, 'makeur');
 EEG.history = sprintf('EEG = bench_synth(%d); %% simulated', seed);
 truth.types = types; truth.labels = {chanlocs.labels}; truth.badLabels = {chanlocs(truth.bad).labels};
 truth.lockedBlinkShare = mean(truth.lockedBlink(strcmp(types, '11')));
+% Population signal, for calibrating SME (sampling error about a population
+% mean). The realized trial mean above is a separate denoising target.
+z = 1/0.3; ampFactor = 0.5*erfc(-z/sqrt(2)) + 0.3*exp(-z^2/2)/sqrt(2*pi);
+truth.population = struct('targetAmp',opts.p3*ampFactor,'standardAmp',opts.p3*ampFactor/3, ...
+    'latencyMean',0.40,'latencySd',0.04);
 end
 
 function x = band(x, fs, lo, hi, pink)
@@ -112,3 +117,4 @@ g = double(f >= lo & f <= hi);
 if pink, g = g ./ sqrt(max(f, lo)); end
 x = real(ifft(F .* g, [], 2));
 end
+

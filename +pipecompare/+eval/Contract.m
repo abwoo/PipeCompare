@@ -28,7 +28,7 @@ classdef Contract
     %       eeg_regepochs on PipeCompare's copy, events 'pipecompare_seg' with their
     %       urevents, so a segment is the same segment in every candidate);
     %       score = log10 of the band power per segment (ROI mean,
-    %       multitaper), precision = SD / sqrt(number of segments).
+    %       multitaper mean PSD), precision = a dependence-aware mean SE.
     %   With 'conditions' and 'epoch' instead of 'segment', the band power
     %   of each epoch is scored (event-related band power).
     %
@@ -142,7 +142,7 @@ classdef Contract
         function units = objectiveUnits(obj)
             units = {};
             if strcmp(obj.analysis, 'bandpower')
-                units = repmat({'log10(uV^2)'}, 1, numel(obj.bands)); return;
+                units = repmat({'log10(uV^2/Hz)'}, 1, numel(obj.bands)); return;
             end
             for k = 1:numel(obj.components)
                 if strcmp(obj.components(k).measure, 'peakLatency'), units{end+1} = 'ms'; %#ok<AGROW>
@@ -248,6 +248,14 @@ classdef Contract
             end
             obj.validateTrialRule();
             if ~haveState, return; end
+            duration = diff(obj.epoch); if obj.isSegmented(), duration = obj.segment; end
+            for k = 1:numel(obj.bands)
+                if diff(obj.bands(k).freq)*duration < 2-1e-12
+                    warning('PipeCompare:BandResolution', ...
+                        ['Band %s is narrower than the minimum Slepian smoothing width (2/T Hz). ', ...
+                        'Its score is a smoothed mean PSD, not an isolated narrow-band power; use a longer window.'],obj.bands(k).name);
+                end
+            end
             fmax = max(arrayfun(@(b) b.freq(2), obj.bands));
             assert(fmax < state.srate / 2, 'PipeCompare:Contract', 'Band edge %g Hz is at or above Nyquist (%g Hz).', fmax, state.srate / 2);
             if obj.isSegmented()
@@ -295,3 +303,4 @@ function ev = eventList(v)
 if isnumeric(v), ev = arrayfun(@(x) sprintf('%g', x), v(:)', 'UniformOutput', false);
 else, ev = cellfun(@(x) strtrim(char(string(x))), cellstr(v), 'UniformOutput', false); ev = ev(:)'; end
 end
+
