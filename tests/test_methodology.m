@@ -42,7 +42,8 @@ N = 60; c = nqc_cand(exp(linspace(-2,2,N))'); ref = nqc_ref(N);
 o = pipecompare.eval.Rank.defaults(); o.nBoot = 999; o.seed = seeds(1);
 b1 = pipecompare.eval.Rank.bootstrap(c, ref, o);
 o.seed = seeds(2); b2 = pipecompare.eval.Rank.bootstrap(c, ref, o);
-verifyLessThan(tc, abs(corr(b1{1}', b2{1}')), 0.15);
+a=b1{1}-mean(b1{1}); b=b2{1}-mean(b2{1});
+verifyLessThan(tc, abs((a*b')/(norm(a)*norm(b))), 0.15);
 end
 
 function testSegmentSmeMatchesCorrelatedReplications(tc)
@@ -96,6 +97,15 @@ verifyEqual(tc,C.actualError-C.conditionalError,ones(2,1),'AbsTol',1e-12);
 verifyTrue(tc,all(C.selected));
 E=pipecompare.eval.Calibration.rows(r,[],[8 28],[9 29],10); S=pipecompare.eval.Calibration.summarize(E);
 verifyEqual(tc,height(E),0); verifyTrue(tc,isnan(S.ratio));
+end
+
+function testAncillaryUnknownBiasDoesNotBlockTheChosenObjective(tc)
+x=(1:40)'; c=nqc_cand({{x},{x}}); ref=nqc_ref(40,{'obj1','obj2'},{'uV','uV'});
+c.m.objectives(2).eyeBias=NaN; c.m.objectives(2).eyeBiasSq=NaN;
+c.m.objectives(2).eyeBiasAssessed=false;
+opts=pipecompare.eval.Rank.defaults(); opts.objective='obj1'; opts.nBoot=99; opts.nSplits=0;
+R=pipecompare.eval.Rank.run(c,ref,opts);
+verifyEqual(tc,R.recommended,1); verifyTrue(tc,isnan(R.table.eyeBias_obj2));
 end
 
 function testCalibrationRecordsAreTheSamplingUnits(tc)

@@ -166,7 +166,9 @@ classdef Rank
                 [primary(i), noise(i), bias(i)] = primaryPoint(m, objName, ref, g, sp);
                 for k = 1:nO
                     eb = pipecompare.utils.fieldOr(m.objectives(k), 'eyeBias', 0);
-                    [~, at] = max(abs(eb)); eyeB(i, k) = eb(at);   % the condition where blinks add most
+                    if all(isfinite(eb))
+                        [~, at] = max(abs(eb)); eyeB(i, k) = eb(at);   % the condition where blinks add most
+                    end
                 end
                 minRet(i) = min(m.retention); minKept(i) = min(m.kept);
                 interp(i) = c.interpolatedFraction;
@@ -176,7 +178,9 @@ classdef Rank
                     wCorr(i) = sg.waveformCorr; tCorr(i) = sg.topoCorr;
                 end
                 why = {};
-                for k = 1:nO
+                assessedUse = 1:nO;
+                if ~strcmp(objName,'composite'), assessedUse = find(strcmp(ref.objectives,objName)); end
+                for k = assessedUse
                     assessed = pipecompare.utils.fieldOr(m.objectives(k),'eyeBiasAssessed',true);
                     if any(~assessed)
                         why{end+1} = 'artifact bias unassessed: no artifact-free comparison trials'; %#ok<AGROW>
@@ -1005,10 +1009,10 @@ if ~any(isfinite(best)), return; end
 j = find(best <= mg * min(best), 1);
 u = lims{j}(find(objs{j} <= mg * best(j), 1, 'last'));
 P = in.options{j};
-vH = scoredAt(in, P, u, H, scH, opts); vO = scoredAt(in, P, u, O, scO, opts);
+vH = scoredAt(in, P, u, H, scH, ref, opts); vO = scoredAt(in, P, u, O, scO, ref, opts);
 end
 
-function v = scoredAt(in, P, u, W, sc, opts)
+function v = scoredAt(in, P, u, W, sc, ref, opts)
 % The total error of option P with the trials kept at limit u, under the
 % trial weights W (Measure.smeBoot, rescaled by sc; the bias as in
 % halfBias; RMS over the measures)
