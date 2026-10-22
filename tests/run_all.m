@@ -14,9 +14,10 @@ for k = 1:numel(names)
     results = [results, runtests(fullfile(here, [names{k} '.m']))]; %#ok<AGROW>
 end
 disp(table(results));
+skipped = sum([results.Incomplete] & ~[results.Failed]);
 fprintf('\n%d passed, %d failed, %d incomplete (skipped) of %d\n', sum([results.Passed]), ...
-    sum([results.Failed]), sum([results.Incomplete]), numel(results));
-% one machine-readable summary line (skipped tests count as not passed)
-fprintf('TOTAL=%d PASSED=%d FAILED=%d\n', numel(results), sum([results.Passed]), ...
-    numel(results) - sum([results.Passed]));
+    sum([results.Failed]), skipped, numel(results));
+% Skipped tests are reported separately from failed tests.
+fprintf('TOTAL=%d PASSED=%d FAILED=%d SKIPPED=%d\n', numel(results), sum([results.Passed]), ...
+    sum([results.Failed]), skipped);
 end

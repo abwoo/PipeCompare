@@ -5,6 +5,10 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- CI follow-up: the results-window regression checks the conditional-validation wording.
+  Scripted channel edits now retain their changes and replayable history with EEGLAB 2022.0,
+  which returns no command string. Test summaries distinguish skips from failures. New PR
+  commits cancel superseded CI runs, and compatibility uses at most eight parallel jobs.
 - HMM emissions are normalized in log space before exponentiation. An isolated extreme sample
   no longer makes the entire recording active; invalid fits expose `valid` and `reason`.
 - Artifact bias is unassessed (NaN) when all retained trials contain a detected artifact. Such
