@@ -11,7 +11,8 @@ if nargin < 1
 end
 results = [];
 for k = 1:numel(names)
-    results = [results, runtests(fullfile(here, [names{k} '.m']))]; %#ok<AGROW>
+    % Name each running test, so a stalled CI job identifies its last case.
+    results = [results, runtests(fullfile(here, [names{k} '.m']), 'OutputDetail', 3)]; %#ok<AGROW>
 end
 disp(table(results));
 skipped = sum([results.Incomplete] & ~[results.Failed]);

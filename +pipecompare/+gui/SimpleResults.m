@@ -30,8 +30,10 @@ classdef SimpleResults < handle
     methods
         function obj = SimpleResults(result, parent, host)
             obj.Result = result;
-            if nargin < 2 || isempty(parent)
-                obj.Fig = uifigure('Name', 'Pipeline comparison', 'Position', pipecompare.utils.onScreen([220 100 900 600]));
+            ownWindow = nargin < 2 || isempty(parent);
+            if ownWindow
+                obj.Fig = uifigure('Name', 'Pipeline comparison', 'Visible', 'off', ...
+                    'Position', pipecompare.utils.onScreen([220 100 900 600]));
                 pipecompare.gui.helpMenu(obj.Fig);
                 parent = obj.Fig;
             else
@@ -43,7 +45,7 @@ classdef SimpleResults < handle
             g = uigridlayout(parent, [5 1]); g.RowHeight = {100, '1x', 22, 150, 30};
             obj.Root = pipecompare.utils.ternary(parent == obj.Fig, obj.Fig, g);
             obj.Headline = uitextarea(g, 'Value', obj.headline(), 'Editable', 'off', 'FontWeight', 'bold');
-            obj.Table = uitable(g, 'RowName', {}, 'SelectionChangedFcn', @(~, ~) obj.showSteps());
+            obj.Table = uitable(g, 'RowName', {});
             obj.showRows();
             uilabel(g, 'Text', obj.shared(), 'FontColor', [0.3 0.3 0.3]);
             obj.Steps = uitextarea(g, 'Editable', 'off');
@@ -53,6 +55,10 @@ classdef SimpleResults < handle
             obj.AllBox = uicheckbox(b, 'Text', 'Show all pipelines', 'ValueChangedFcn', @(~, ~) obj.showRows());
             uibutton(b, 'Text', 'Use this pipeline', 'FontWeight', 'bold', 'ButtonPushedFcn', @(~, ~) obj.adopt());
             uibutton(b, 'Text', 'Save script...', 'ButtonPushedFcn', @(~, ~) obj.saveScript());
+            % Populate the table before enabling events: the callback needs
+            % the Steps control, and older web-based UIs may dispatch early.
+            obj.Table.SelectionChangedFcn = @(~, ~) obj.showSteps();
+            if ownWindow, obj.Fig.Visible = 'on'; end
         end
 
         function t = headline(obj)
@@ -101,7 +107,7 @@ classdef SimpleResults < handle
                 end
                 t = sprintf('%s %d of %d pipelines passed the checks.', t, nFeas, height(T));
             end
-            % equivalence to the best, and the best checked on held-out trials
+            % equivalence to the best and the conditional selection diagnostic
             pr = pipecompare.simple.Presets.precisionText(obj.Result);
             if ~isempty(pr), t = sprintf('%s %s', t, pr); end
             % how large a difference these data can show (a weak result
