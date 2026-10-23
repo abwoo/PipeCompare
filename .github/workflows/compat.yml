@@ -28,6 +28,10 @@ jobs:
       - name: Checkout EEGLAB 2026.0.0
         run: git clone --depth 1 --branch 2026.0.0 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
 
+      - name: Bound MATLAB dependency downloads
+        if: runner.os == 'Linux'
+        run: bash PipeCompare/.github/scripts/prepare-matlab.sh
+
       - name: Start a virtual display
         if: runner.os == 'Linux'
         timeout-minutes: 10

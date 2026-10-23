@@ -3,8 +3,8 @@ name: benchmark
 # The ground-truth benchmark (benchmarks/pipecompare_benchmark.m): simulated
 # recordings with a known P3, measured by the pipeline PipeCompare
 # recommends and by common fixed pipelines. Long (an ICA per pipeline and
-# recording, hours for 8 recordings), so it runs by hand only (Actions >
-# benchmark > Run workflow). The results are written after every recording
+# recording, hours for 8 recordings). Manual runs and marked PR commits
+# request scientific evaluation. Results are written after every recording
 # and kept even when the run stops early.
 
 on:
@@ -89,11 +89,13 @@ jobs:
       - name: Checkout EEGLAB
         run: git clone --depth 1 --branch 2026.0.0 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
 
+      - name: Bound MATLAB dependency downloads
+        if: runner.os == 'Linux'
+        run: bash PipeCompare/.github/scripts/prepare-matlab.sh
+
       - name: Start a virtual display
-        run: |
-          sudo apt-get update -q
-          sudo apt-get install -y -q xvfb
-          Xvfb :99 -screen 0 1920x1080x24 &
+        timeout-minutes: 10
+        run: bash PipeCompare/.github/scripts/start-display.sh
 
       - name: Set up MATLAB
         uses: matlab-actions/setup-matlab@v2
@@ -135,6 +137,10 @@ jobs:
           path: synthetic_results
           run-id: ${{ inputs.source_run || github.run_id }}
           github-token: ${{ github.token }}
+      - name: Bound MATLAB dependency downloads
+        if: runner.os == 'Linux'
+        run: bash ./.github/scripts/prepare-matlab.sh
+
       - uses: matlab-actions/setup-matlab@v2
         with:
           release: R2026a
