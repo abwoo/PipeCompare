@@ -172,16 +172,20 @@ classdef Measure
             end
         end
 
-        function [bias, sq, assessed] = eyeBias(x, b, K)
+        function [bias, sq, assessed] = eyeBias(x, b, K, counts)
             % What the blink trials add to a weighted mean score. x: scores
             % (n x 1, NaN = absent), b: blink trials (n x 1 logical), K:
-            % weights (n x L: a column per mean, e.g. the trials kept at a
-            % limit, a bootstrap resample's counts, or trial weights). The
+            % weights (n x L: a column per mean). Optional counts are the
+            % physical resampling multiplicities, before trial weights;
+            % without them each positive weight is one observation. Pass
+            % counts separately for bootstrap draws, so duplicating a trial
+            % differs from increasing its reliability weight. The
             % mean is sum(K .* x) / sum(K); with blink share p (of the
             % weight) and blink and other trials' means mB and mN, it is mN
             % + p (mB - mN): bias = p (mB - mN), what the blinks add. The
-            % estimate is noisy (its standard error se = p s sqrt(1/nB +
-            % 1/nN), s the scores' SD, often larger than the SME itself when
+            % estimate is noisy (se = p s sqrt(qB/swB^2 + qN/swN^2),
+            % q the sums of squared weights per physical observation, s
+            % the pooled weighted SD, often larger than the SME itself when
             % most trials have a blink), so what counts is only the part
             % beyond what chance makes: sq = max(|bias| - BiasZ se, 0)^2
             % (soft thresholding). Taking only the variance off (bias^2 -
@@ -193,16 +197,23 @@ classdef Measure
             % when every kept trial has one, or no trial remains: there is
             % no artifact-free comparison and the bias is unidentifiable.
             % assessed says which weighted means have an estimate. 1 x L.
-            ok = ~isnan(x); x(~ok) = 0; b = double(b(:) & ok(:)); o = double(ok(:)) - b;
+            if nargin < 4, counts = ones(size(K)); end
+            assert(all(isfinite(K(:)) & K(:) >= 0), 'PipeCompare:Weights', 'Bias weights must be finite and nonnegative.');
+            assert(all(isfinite(counts(:)) & counts(:) >= 0 & counts(:) == fix(counts(:))), ...
+                'PipeCompare:Weights', 'Resampling counts must be nonnegative integers.');
+            counts = double(counts) + zeros(size(K));
+            assert(all(K(counts == 0) == 0), 'PipeCompare:Weights', 'A positive weight needs a physical observation.');
+            ok = isfinite(x); x(~ok) = 0; b = double(b(:) & ok(:)); o = double(ok(:)) - b;
             K = double(K) .* double(ok(:));
+            Q = K .^ 2 ./ max(counts, 1);
             nB = b' * K; nN = o' * K; n = nB + nN;
             sB = (x .* b)' * K; sN = (x .* o)' * K;
             s2 = (x .^ 2)' * K;
             mu = (sB + sN) ./ n;
-            v = max(s2 ./ n - mu .^ 2, 0) .* n ./ max(n - 1, eps);
+            v = max(s2 ./ n - mu .^ 2, 0) ./ max(1 - sum(Q,1) ./ n .^ 2, eps);
             p = nB ./ n;
             bias = p .* (sB ./ nB - sN ./ nN);
-            se = p .* sqrt(v .* (1 ./ nB + 1 ./ nN));
+            se = p .* sqrt(v .* ((b' * Q) ./ nB .^ 2 + (o' * Q) ./ nN .^ 2));
             sq = max(abs(bias) - pipecompare.eval.Measure.BiasZ * se, 0) .^ 2;
             clean = nB == 0 & nN > 0;
             assessed = nN > 0;
@@ -290,9 +301,11 @@ classdef Measure
             assert(any(sel), 'PipeCompare:Measure', 'The window is too short to resolve the band [%g %g] Hz.', band(1), band(2));
             Xp = permute(X, [2 1 3]);                              % samples x ROI x trials
             P = 0;
+            sided = 2 * ones(nnz(sel), 1);
+            sided(f(sel) == 0 | (mod(n,2) == 0 & f(sel) == fs/2)) = 1;
             for k = 1:size(H, 2)
                 F = fft(Xp .* H(:, k), [], 1);
-                P = P + 2 * abs(F(sel, :, :)) .^ 2 / (fs * sum(H(:, k) .^ 2));
+                P = P + sided .* abs(F(sel, :, :)) .^ 2 / (fs * sum(H(:, k) .^ 2));
             end
             s = reshape(log10(mean(mean(P / size(H, 2), 1), 2)), nt, 1);
         end

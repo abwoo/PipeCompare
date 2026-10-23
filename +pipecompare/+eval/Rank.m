@@ -875,7 +875,7 @@ for k = 1:numel(cands)
             if strcmp(objs(o).kind, 'scalar') && numel(blink) >= o && ~isempty(blink{o})
                 K = W{c};
                 if isfield(objs(o), 'w') && ~isempty(objs(o).w), wt = objs(o).w{c}; wt(isnan(wt)) = 0; K = K .* wt; end
-                [~, eq] = pipecompare.eval.Measure.eyeBias(objs(o).X{c}(:, 1), blink{o}{c}, K);
+                [~, eq] = pipecompare.eval.Measure.eyeBias(objs(o).X{c}(:, 1), blink{o}{c}, K, W{c});
             end
             oc = struct('estimate', objs(o).estimate(c));
             b2 = b2 + biasOf(oc, g(o), sp(o), eq) .^ 2;
