@@ -6,6 +6,63 @@ function setupOnce(~)
 addpath(fullfile(fileparts(mfilename('fullpath')), '..'));
 end
 
+function testArtifactBiasIsInvariantToWeightScale(tc)
+x = [zeros(20,1); 10*ones(20,1)]; b = [false(20,1); true(20,1)];
+K = [ones(40,1), linspace(0.2,1,40)'];
+[bias, sq] = pipecompare.eval.Measure.eyeBias(x,b,K);
+[scaledBias, scaledSq] = pipecompare.eval.Measure.eyeBias(x,b,100*K);
+verifyEqual(tc,scaledBias,bias,'AbsTol',1e-12);
+verifyEqual(tc,scaledSq,sq,'AbsTol',1e-12);
+end
+
+function testArtifactBiasBootstrapCountsMatchExpandedSample(tc)
+x = [0; 1; 2; 7; 9; 10]; b = logical([0;0;0;1;1;1]);
+w = [0.4;1;0.7;0.5;0.8;1]; counts = [1;3;2;2;1;3];
+idx = repelem((1:numel(x))',counts);
+[bias,sq] = pipecompare.eval.Measure.eyeBias(x,b,counts.*w,counts);
+[expandedBias,expandedSq] = pipecompare.eval.Measure.eyeBias(x(idx),b(idx),w(idx));
+verifyEqual(tc,bias,expandedBias,'AbsTol',1e-12);
+verifyEqual(tc,sq,expandedSq,'AbsTol',1e-12);
+end
+
+function testGroupVarianceRespectsDisconnectedDesign(tc)
+A = [1 2; 2 1]; Y = nan(4); Y(1:2,1:2)=A; Y(3:4,3:4)=A;
+[~,~,one] = pipecompare.Group.twoLevel(A,0.01*ones(2));
+[~,~,two] = pipecompare.Group.twoLevel(Y,0.01*ones(4));
+verifyEqual(tc,two,one,'AbsTol',1e-12);
+end
+
+function testGroupPairedCovariancePreservesKnownContrasts(tc)
+rs = RandStream('mt19937ar','Seed',41);
+Y = exp(0.3*randn(rs,20,1)+0.03*randn(rs,1,12)+0.08*randn(rs,20,12));
+V = (0.3*Y).^2;
+C = arrayfun(@(i) 0.3^2*(Y(i,:)'*Y(i,:)),(1:size(Y,1))','UniformOutput',false);
+[theta,~,tau,model] = pipecompare.Group.twoLevel(Y,V,C);
+% The only estimation error is a shared recording scale: pipeline
+% contrasts are exact and must not be shrunk towards a common choice.
+verifyGreaterThan(tc,tau,0);
+verifyEqual(tc,log(theta)-mean(log(theta),2),log(Y)-mean(log(Y),2),'AbsTol',1e-9);
+verifyTrue(tc,model.pairedCovariance);
+end
+
+function testGroupDiagonalCovarianceMatchesIndependentModel(tc)
+rs = RandStream('mt19937ar','Seed',19); Y=exp(0.2*randn(rs,8,5)); V=(0.05*Y).^2;
+C=arrayfun(@(i) diag(V(i,:)),(1:size(Y,1))','UniformOutput',false);
+[a,sa,ta]=pipecompare.Group.twoLevel(Y,V); [b,sb,tb]=pipecompare.Group.twoLevel(Y,V,C);
+verifyEqual(tc,b,a,'AbsTol',1e-12); verifyEqual(tc,[sb tb],[sa ta],'AbsTol',1e-12);
+end
+
+function testMultitaperEndpointsAreNotDoubled(tc)
+n=256; fs=256;
+for band = {[0 0.1],[127.9 128]}
+    f=band{1}; X=ones(1,n); if f(1)>0, X=(-1).^(0:n-1); end
+    H=pipecompare.eval.Measure.tapers(n,fs,f); F=fft(X'.*H(:,1));
+    at=1; if f(1)>0, at=n/2+1; end
+    expected=log10(abs(F(at))^2/fs);
+    verifyEqual(tc,pipecompare.eval.Measure.bandScores(X,fs,f),expected,'AbsTol',1e-10);
+end
+end
+
 function testHmmExtremeImpulseDoesNotMarkWholeRecording(tc)
 rs = RandStream('mt19937ar', 'Seed', 93);
 fs = 250; X = randn(rs, 1, 150000); X(75000) = 1e4;
