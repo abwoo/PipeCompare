@@ -307,3 +307,11 @@ if exist('dpss','file')
     end
 end
 end
+
+function testFrozenGroupPriorHandlesNoAssessedTrainingRecordings(tc)
+[~,~,~,prior]=pipecompare.Group.twoLevel(nan(0,3),nan(0,3));
+x=[1 NaN -1];v=[0.01 0.01 0.01];
+[a,info]=pipecompare.Group.applyPrior(prior,x,v);
+verifyEqual(tc,a(1),1);verifyTrue(tc,all(isnan(a(2:3))));
+verifyFalse(tc,info.assessed);verifyEqual(tc,info.reason{1},'training interaction variance unassessed');
+end

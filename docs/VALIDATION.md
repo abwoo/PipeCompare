@@ -131,3 +131,26 @@ Data attribution and reuse terms:
 - Kappenman, Farrens, Zhang, Stewart and Luck, ERP CORE, NEMAR nm000132 v1.1.1,
   https://doi.org/10.82901/nemar.nm000132, CC BY 4.0 for this distribution;
   original article: https://doi.org/10.1016/j.neuroimage.2020.117465.
+
+
+Summary recovery reuses completed Actions artifacts and does not repeat ICA. It filters exact
+shard names to avoid counting an aggregate artifact as another participant cohort. A missing
+recommendation or unassessed source remains visible; execution counts and calibratable counts
+are separate.
+
+For the additional independent group test, participants 21–30 train the prior and 31–50 test it.
+The split was fixed before inspecting group losses. Test-record bootstrap intervals are
+conditional on that fitted training prior; leave-one-participant-out results are descriptive
+and do not include the uncertainty of a new training cohort. Raw and corrected readouts
+against population and realized truths have separate accuracy summaries. Only a readout with
+the matching uncertainty target is called calibration.
+
+An additional known-spectrum experiment uses independent white/1-f Gaussian segments, several
+durations and narrow/ordinary bands with center, edge and outside peaks. Seed 120001 and 600
+segments per case are fixed in the protocol. Bias/RMSE target the unsmoothed, bin-averaged PSD;
+log/Jensen bias and taper leakage are retained rather than retuned on these outcomes. The
+600 segments are Monte Carlo units, not additional human participants.
+
+The declared pilot precision target is a record-bootstrap RMS-ratio relative half-width of 10%,
+with at least 30 assessable records. A narrow interval around a biased ratio is not evidence
+of calibration, and this precision target cannot establish stability under distribution shifts.

@@ -225,7 +225,8 @@ classdef Group
             [record, pipeline] = find(ok); m = numel(record);
             theta = nan(size(Y)); share = NaN; tau2 = 0;
             model = struct('scope','observed-recordings','fullyHeldOut',false, ...
-                'pairedCovariance',paired,'cells',m,'components',0,'df',0,'varianceAssessed',false);
+                'pairedCovariance',paired,'cells',m,'components',0,'df',0,'varianceAssessed',false, ...
+                'pipelineEffects',nan(1,nP),'pipelineComponents',nan(1,nP),'tau2',NaN);
             if m == 0, return; end
             [D, components, columns, component] = groupDesign(record,pipeline,nR,nP);
             model.pipelineEffects = nan(1,nP);
@@ -292,7 +293,8 @@ classdef Group
             % on unseen trials. Unseen/disconnected candidates are not
             % compared using arbitrary gauges and retain their raw scores.
             assert(isequal(size(Y),size(V)), 'PipeCompare:Group', 'Objectives and variances must have the same size.');
-            [nR,nP] = size(Y); theta = Y;
+            [nR,nP] = size(Y); theta = nan(size(Y));
+            observed=isfinite(Y)&Y>0&isfinite(V)&V>=0;theta(observed)=Y(observed);
             assert(isfield(prior,'pipelineEffects') && numel(prior.pipelineEffects)==nP, ...
                 'PipeCompare:Group', 'Prior pipeline order must match the new observations.');
             paired = nargin >= 4;
