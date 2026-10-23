@@ -14,10 +14,10 @@ on:
     inputs:
       public_run:
         description: 'Public EEG source run ID'
-        default: '39947982777'
+        default: '39969962494'
       synthetic_run:
         description: 'Independent simulation source run ID'
-        default: '39936975660'
+        default: '39969962494'
 
 permissions:
   contents: read
@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     env:
-      VALIDATION_SOURCE_RUN: ${{ inputs.public_run || '39947982777' }}
+      VALIDATION_SOURCE_RUN: ${{ inputs.public_run || '39969962494' }}
     steps:
       - uses: actions/checkout@v4
       - name: Bound MATLAB dependency downloads
@@ -92,7 +92,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     env:
-      VALIDATION_SOURCE_RUN: ${{ inputs.synthetic_run || '39936975660' }}
+      VALIDATION_SOURCE_RUN: ${{ inputs.synthetic_run || '39969962494' }}
     steps:
       - name: Wait for the frozen simulation source run to finish
         timeout-minutes: 335

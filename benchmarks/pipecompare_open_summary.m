@@ -92,6 +92,12 @@ if ~isempty(C)
     result.noSelectedCalibration=30-numel(unique(C.recording(C.selected==1)));
     result.calibrationByPrevalence=prevalenceCalibration(C,coverage);
 end
+if ~isempty(expectedSubjects)
+    assert(numel(trainingSubjects)==10&&numel(testSubjects)==20&& ...
+        isempty(intersect(trainingSubjects,testSubjects))&& ...
+        isequal(sort([trainingSubjects testSubjects]),expectedSubjects), ...
+        'PipeCompare:Validation','Training/test participants must be disjoint and match the frozen cohort.');
+end
 rows={};groupCoverage={};
 if numel(S)>=3
     for held=1:numel(S)
