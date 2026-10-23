@@ -162,3 +162,37 @@ actual group-ranking path. A MATLAB Code Analyzer check rejects syntax errors in
 scripts before expensive evaluation. A PR commit containing [public-validation] requests a
 full public-data rerun; it starts only after the fast numerical/checkpoint suites pass. Other
 PR updates do not restart the long scientific experiment.
+
+## Recorded PR #50 public-data results
+
+Derived results are retained in [public CSV metrics](../benchmarks/results/pr50_public_csv_metrics.json)
+and [known-spectrum metrics](../benchmarks/results/pr50_spectral_metrics.json). They contain no
+raw recordings. The CSV recovery used an independent Python implementation of record-balanced
+aggregation; its bootstrap uses a different random stream from MATLAB, so interval endpoints
+need not agree exactly. Source run IDs and code revisions are included in the JSON files.
+
+| Evaluation | Independent units | Observed result |
+|---|---|---|
+| EEG-IO blink events | 15 participants, 430 annotations | Macro precision 0.813, recall 0.968, F1 0.879; participant F1 range 0.727–0.945. Unmatched predictions are blink-specific and can include other ocular activity. |
+| Real-background P3 calibration | 30 planned participants; 20 assessable selected readouts | Actual/reported RMS ratio 3.703; MATLAB record-bootstrap 95% CI 1.12–5.72. Selected actual RMS 2.382 uV versus reported 0.643 uV. This is an unfavorable calibration result. |
+| Multitaper reference agreement | 30 participants, 810 rows | Maximum difference from matched pmtm/periodogram 3.01e-13 log10 PSD. Ninety rows fail the declared smoothing-resolution criterion. |
+| Channel-fault detection | 30 participants, eight fault cases each | Recall 0 for 1/5-second faults and 1 for these injected 10/20-second strong faults. The configured minimum is ten windows. This does not support detection of short faults. |
+| Oracle stretch interpolation | Same 240 cases; original observed EEG is the target | Mean reconstruction RMSE 3.82–4.91 uV versus approximately 100 uV before repair; maximum boundary jump 27.8 uV. This oracle result is separate from detection success. |
+| ERP CORE P3 execution | Six participants | All six produce recommendations; mean selected raw rare-minus-frequent amplitude 2.05 uV. Clean neural truth is unknown. |
+| Known-spectrum stress | 48 cases, 600 simulated segments per case | Mean log10 PSD bias from -0.1470 to +0.00424; eight short-window narrow-band cases are unresolved. Five legacy fractional-rate endpoint counterexamples pass after repair. These segments are not human participants. |
+
+The largest selected-readout calibration discrepancy is in the 95% blink regime: only two
+of its six planned participants remain assessable, with ratio 7.17. The all-blink regime
+has no assessable recommendation. Coverage is part of the result, rather than an exclusion
+that makes the cohort appear larger or easier.
+
+A post-hoc readout sensitivity calculation, leaving the selected pipelines unchanged and
+using the unshrunk artifact association, gives ratio 0.974. This diagnoses sensitivity to
+the bias penalty; it does not validate a replacement ranking rule or establish causal artifact
+bias. These same outcomes cannot be reused to tune a rule and then certify it as independently
+validated. The 20 assessable records do not meet the prespecified 30-record precision floor.
+
+The recovered CSV source had a score-checkpoint initialization error, so this recovered artifact
+contains no group-prior or native-replay validation. The checkpointed source run retains
+per-candidate scores for that separate evaluation. Execution and scientific calibration
+remain separate outcomes.

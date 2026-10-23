@@ -64,6 +64,9 @@ if ~isempty(C)
     result.correctedRealizedAccuracy=validation_accuracy(C,'conditionalError');
     result.rawRealizedAccuracy=validation_accuracy(C,'rawConditionalError');
     result.selectedRawPopulationAccuracy=validation_accuracy(C(C.selected==1,:),'rawError');
+    result.selectedCorrectedPopulationAccuracy=validation_accuracy(C(C.selected==1,:),'actualError');
+    result.selectedCorrectedRealizedAccuracy=validation_accuracy(C(C.selected==1,:),'conditionalError');
+    result.selectedRawRealizedAccuracy=validation_accuracy(C(C.selected==1,:),'rawConditionalError');
     result.noCalibratableRecordings=30-numel(unique(C.recording));
     result.noSelectedCalibration=30-numel(unique(C.recording(C.selected==1)));
     result.calibrationByPrevalence=prevalenceCalibration(C,coverage);
@@ -105,6 +108,15 @@ fprintf('PIPECOMPARE_VALIDATION_JSON %s\n',jsonencode(result));
 assert(numel(S)==30 && numel(unique({S.name}))==30,'PipeCompare:Validation', ...
     'Only %d of 30 planned records have saved scores.',numel(S));
 assert(sourceFailures==0,'PipeCompare:Validation','%d source shards recorded execution/invariant failures.',sourceFailures);
+ids=arrayfun(@(s)sscanf(s.name,'S%dR01.mat'),S);
+assert(isequal(sort(ids(:))',(21:50)),'PipeCompare:Validation','Source participants differ from the frozen cohort.');
+expected={'blink','records',15;'spectral','participants',30;'stretches','participants',30; ...
+    'recordings','participants',30;'real_erp','participants',6};
+for k=1:size(expected,1)
+    name=expected{k,1};field=expected{k,2};count=expected{k,3};
+    assert(isfield(components,name)&&components.(name).(field)==count,'PipeCompare:Validation', ...
+        'The %s evaluation did not cover all %d planned participants.',name,count);
+end
 end
 
 function [Y,V,C]=groupInputs(S,keys)

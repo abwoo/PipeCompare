@@ -23,6 +23,10 @@ permissions:
   contents: read
   actions: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   public:
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.number == 50
