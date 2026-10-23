@@ -1,0 +1,46 @@
+name: frozen spectral and frequency-grid diagnostics
+
+on:
+  push:
+    branches: [codex/verify-spectral-20261023]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  spectrum:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+      - uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(pwd);addpath(fullfile(pwd,'benchmarks'));
+            pipecompare_spectral_validation(fullfile(pwd,'spectrum_results'));
+            cases=[0.1 6;250.003 500;257.3 258;512.001 1024;1000.001 1024];
+            rows=struct([]);
+            for q=1:size(cases,1)
+                fs=cases(q,1);n=cases(q,2);band=[fs/2-fs/n/10 fs/2];
+                H=pipecompare.eval.Measure.tapers(n,fs,band);
+                X=(-1).^(0:n-1);F=fft(X'.*H(:,1));
+                expected=log10(abs(F(n/2+1))^2/(fs*sum(H(:,1).^2)));
+                actual=NaN;message='';
+                try,actual=pipecompare.eval.Measure.bandScores(X,fs,band);
+                catch ex,message=ex.message;end
+                rows(q)=struct('fs',fs,'samples',n,'expected',expected,'actual',actual, ...
+                    'difference',actual-expected,'message',message,'passed',isfinite(actual)&&abs(actual-expected)<1e-10);
+            end
+            fprintf('PIPECOMPARE_GRID_JSON %s\n',jsonencode(rows));
+            fid=fopen(fullfile(pwd,'spectrum_results','grid.json'),'w');fprintf(fid,'%s\n',jsonencode(rows));fclose(fid);
+            assert(all([rows.passed]),'PipeCompare:Validation','Fractional-frequency endpoint counterexample found.');
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frozen-spectrum-diagnostics
+          path: spectrum_results
+          retention-days: 90
