@@ -1,4 +1,4 @@
-name: stop redundant public validation rescue
+name: recover complete public CSV metrics without refitting
 
 on:
   push:
@@ -7,28 +7,25 @@ on:
 
 permissions:
   contents: read
-  actions: write
+  actions: read
 
 jobs:
-  cleanup:
+  summarize:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/github-script@v7
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         with:
-          script: |
-            const id=39951697772;
-            const r=await github.rest.actions.getWorkflowRun({...context.repo,run_id:id});
-            if(r.data.head_sha!=='a9b2eb7b4c737e003573ad9413d9fe9e1f9ac4fe'||
-               r.data.name!=='recover one stalled public validation shard')
-              throw new Error('Unexpected rescue run');
-            const jobs=await github.paginate(github.rest.actions.listJobsForWorkflowRun,{
-              ...context.repo,run_id:39947982777,filter:'latest',per_page:100
-            });
-            const original=jobs.find(j=>j.id===120397433681);
-            const step=original?.steps?.find(s=>s.status==='in_progress');
-            if(original?.conclusion==='success'||step?.name==='Run independent measurements and complete per-recording refits') {
-              if(r.data.status!=='completed') {
-                await github.rest.actions.cancelWorkflowRun({...context.repo,run_id:id});
-                core.info('Original shard resumed; stopped the redundant rescue without stopping any original calculation');
-              }
-            } else throw new Error('Original shard has not resumed; retain rescue');
+          pattern: public-validation-[0-5]
+          path: recovered
+          run-id: 39938907558
+          github-token: ${{ github.token }}
+      - name: Independently compute record-balanced derived metrics
+        run: python3 .github/scripts/recover-public-metrics.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: recovered-public-metrics
+          path: recovered_summary
+          retention-days: 90
