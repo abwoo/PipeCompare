@@ -315,3 +315,29 @@ x=[1 NaN -1];v=[0.01 0.01 0.01];
 verifyEqual(tc,a(1),1);verifyTrue(tc,all(isnan(a(2:3))));
 verifyFalse(tc,info.assessed);verifyEqual(tc,info.reason{1},'training interaction variance unassessed');
 end
+
+function testValidationScoresSurviveCheckpointAndGroupRanking(tc)
+old=path;restore=onCleanup(@()path(old)); %#ok<NASGU>
+addpath(fullfile(fileparts(mfilename('fullpath')),'..','benchmarks'));
+opts=pipecompare.eval.Rank.defaults();opts.nBoot=99;opts.nSplits=0;
+x=sin((1:40)');ref=nqc_ref(40);S=pipecompare_record_summary();
+for j=1:2
+    c=[nqc_cand(j*x),nqc_cand(1.1*j*x)];
+    c(1).id=1;c(1).key='a';c(2).id=2;c(2).key='b';
+    rank=pipecompare.eval.Rank.run(c,ref,opts);
+    r=struct('cands',c,'leaves',struct('key',{'a','b'}),'labels',{{'a','b'}},'ranking',rank,'ref',ref);
+    S(end+1)=pipecompare_record_summary(r,sprintf('checkpoint%d',j)); %#ok<AGROW>
+end
+file=[tempname '.mat'];clean=onCleanup(@()delete(file)); %#ok<NASGU>
+save(file,'S');D=load(file);G=pipecompare.Group.rank(D.S);
+verifyEqual(tc,{D.S.name},{'checkpoint1','checkpoint2'});
+verifySize(tc,G.perRecording,[2 2]);verifyTrue(tc,all(isfinite(G.perRecording(:))));
+end
+
+function testValidationScriptsHaveNoAnalyzerErrors(tc)
+assumeTrue(tc,exist('codeIssues','file')>0||exist('codeIssues','class')==8,'Code Analyzer requires R2022b or newer.');
+folder=fullfile(fileparts(mfilename('fullpath')),'..','benchmarks');
+issues=codeIssues(folder,'CodeAnalyzerConfiguration','factory');
+errors=issues.Issues(string(issues.Issues.Severity)=="error",:);
+verifyEmpty(tc,errors,evalc('disp(errors)'));
+end
