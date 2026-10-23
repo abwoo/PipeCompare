@@ -200,6 +200,11 @@ verifyEqual(tc,C.reportedError,reported(:),'AbsTol',1e-12);
 verifyGreaterThan(tc,C.reportedError,sqrt(o.sme(:).^2+o.eyeBiasSq(:))/g);
 verifyEqual(tc,C.actualError-C.conditionalError,ones(2,1),'AbsTol',1e-12);
 verifyTrue(tc,all(C.selected));
+verifyEqual(tc,C.rawEstimate,o.estimate(:),'AbsTol',1e-12);
+verifyEqual(tc,C.correctedEstimate,o.estimate(:)/g,'AbsTol',1e-12);
+verifyEqual(tc,C.rawError,o.estimate(:)-[8;28],'AbsTol',1e-12);
+verifyEqual(tc,C.actualError,C.correctedEstimate-C.populationTruth,'AbsTol',1e-12);
+verifyNotEqual(tc,C.rawError,C.actualError);
 E=pipecompare.eval.Calibration.rows(r,[],[8 28],[9 29],10); S=pipecompare.eval.Calibration.summarize(E);
 verifyEqual(tc,height(E),0); verifyTrue(tc,isnan(S.ratio));
 end
@@ -232,6 +237,8 @@ c = nqc_cand((1:40)'); opts=pipecompare.eval.Rank.defaults(); opts.nSplits=2;
 cf=pipecompare.eval.Rank.crossfit(c,nqc_ref(40),opts,'composite',c.m.composite);
 verifyEqual(tc,cf.scope,'conditional-selection'); verifyFalse(tc,cf.fullyHeldOut);
 verifyTrue(tc,any(strcmp(cf.fixedDecisions,'factorial shrinkage')));
+opts.nBoot=99; R=pipecompare.eval.Rank.run(c,nqc_ref(40),opts);
+verifyEqual(tc,R.validationScope,'conditional-on-fitted-candidates'); verifyFalse(tc,R.fullyHeldOut);
 end
 
 function testBadStretchesReportUnsupportedRank(tc)

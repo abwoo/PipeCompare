@@ -89,7 +89,7 @@ PipeCompare makes this choice from the data, in these steps:
 4. **It runs each pipeline** with EEGLAB's own functions, on your data.
 5. **It removes pipelines that harm the data.** A pipeline is excluded when it keeps too few
    trials, interpolates too many channels, or changes the brain signal. To check the last point,
-   a known artificial signal is added to a copy of the data and carried through the same pipeline;
+   a noise-free copy carrying a known artificial signal replays the fitted pipeline decisions;
    if it comes out smaller, shifted or reshaped, the pipeline is excluded.
 6. **It ranks the rest by precision.** The measure is the standardized measurement error (SME;
    Luck et al., 2021): how much your averaged value would vary if the experiment were repeated.
@@ -1342,25 +1342,23 @@ pipecompare.Group.writeScript(G, 'sub02_pipeline.m', 2);  % the own pipeline of 
    rejected epochs and its automatic limits.
 2. A pipeline counts for the group only when it **passes on every recording**. A recording on
    which no pipeline passes is left out and named (`G.leftOut`); look at it on its own.
-3. The pipelines are ranked by the **root mean square of their noise over the recordings**: noise
-   in each participant's average adds the mean of the squared SMEs to the variance of the group
-   average, so this is what your group-level test loses to noise.
+3. The pipelines are ranked by the **root mean square of individual total errors over the
+   recordings**. This summarizes the observed group's measurements; it is not the uncertainty
+   of a group mean. Systematic bias shared across participants need not average away.
 4. Which pipelines cannot be told apart from the best, and which are within 5 % of it, come from
    each recording's bootstrap of its trials, combined the same way. Among those that cannot be told
-   apart, the one that keeps the most trials in its worst recording is recommended, as for one
-   recording.
+   apart, the group rule recommends the one that keeps the most trials in its worst recording.
 5. **Each recording's own pipeline** is also given (`G.own`: recording, pipeline, and whether it
    is the group's). Picking on one recording alone is unreliable with a few dozen trials, and one
    pipeline for all ignores real differences between recordings. So each pipeline's error on a
    recording is estimated together with the others: a part common to the whole group (how good
    the pipeline is on average, and how noisy the recording is), plus what is particular to this
-   recording, kept only as far as it is larger than its own bootstrap noise (two-level empirical
-   Bayes). How far the recordings differ is estimated from the data: when they hardly differ, all
-   recordings get the group's pipeline; when they differ a lot, each its own. In simulation (20
-   recordings, 12 pipelines) this was best or tied in every case, while choosing on each
-   recording alone or using one pipeline for all each failed clearly in one case. The Command
-   Window shows the own pipelines and the share of a recording's own differences that is kept
-   (`G.share`, 0 = one pipeline fits all; `G.ownShrunk` the estimated errors).
+   recording, estimated with the full paired bootstrap covariance (two-level empirical Bayes).
+   Correlated estimation noise can cancel between pipelines; it is not treated as independent
+   evidence against individual differences. Missing candidate patterns use the actual design
+   rank. The Command Window shows own pipelines and the average posterior gain (`G.share`);
+   `G.ownShrunk` contains the estimates and `G.twoLevelModel` describes the fitted design.
+   This fits the observed group; benefit for new participants still needs independent validation.
 
 The Command Window shows each recording's comparison, then the group's recommendation. `G` is also
 stored in the variable `pipecompare_group`; `G.perRecording` has each pipeline's noise on each

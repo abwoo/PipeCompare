@@ -18,6 +18,9 @@ used as a universal calibration multiplier or as proof of stability.
   not the already-shrunk ranking column. Sharing the observed group's data is intentional;
   performance on unseen participants remains a separate question. Group uncertainty resamples
   each recording's trials, not new participants.
+  Paired covariance is retained within each recording; missing candidate patterns use the
+  actual design rank. Estimated covariance, group effects and interaction variance are plug-in
+  quantities, with no general guarantee for small or selectively missing groups.
 - Continuous mean-PSD scores use Bartlett HAC standard errors with `floor(sqrt(T))` lags and a
   moving-block bootstrap for comparison. Neither method guarantees calibration under arbitrary
   nonstationarity or very long dependence. ERP trials retain the independent-trial assumption.
@@ -33,6 +36,13 @@ used as a universal calibration multiplier or as proof of stability.
 `actualError` targets the population P3, matching sampling uncertainty; `conditionalError` targets
 the realized clean-trial mean. Their difference is genuine trial-to-trial signal variation.
 These are RMS-error diagnostics, not confidence-interval coverage probabilities.
+
+The calibration target is the **gain-corrected readout**, `estimate/gain`. Adopting a pipeline
+does not divide the entire EEG dataset by that diagnostic gain. Calibration exports both
+`rawEstimate` and `correctedEstimate`, their errors against population and realized truths
+(`rawError`, `rawConditionalError`, `actualError`, `conditionalError`), and the truths themselves.
+A claim about the accuracy of the raw ERP must use the raw errors. Passing calibration for
+the corrected readout is not evidence of calibrated uncertainty for the raw adopted dataset.
 
 `Calibration.summarize` first averages squared errors within each recording and then gives
 records equal weight. Its 95% percentile interval resamples whole records. Selected pipelines
@@ -74,3 +84,6 @@ retune on the validation seeds and continue calling them independent validation.
 
 The regression suite checks the reproduced implementation failures and numerical invariants.
 It does not replace these independent scientific validation experiments.
+
+See [the research-readiness audit](RESEARCH_READINESS.md) for the remaining publication claims,
+priority experiments and the distinction between an implementation fix and independent evidence.

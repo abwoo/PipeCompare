@@ -161,11 +161,17 @@ statistic is the maximum over all ordered pairs of the centred differences:
   *M*ᵇ = max over *i*, *j* of [ (θ*ᵢᵇ − θ*ⱼᵇ) − (θ̂ᵢ − θ̂ⱼ) ].
 
 Let *c* be the (1 − α) quantile of *M*. Candidate *i* is declared worse than *j* only when
-θ̂ᵢ − θ̂ⱼ > *c*. Because *c* bounds all pairs at once, the probability that any candidate is wrongly
-declared worse is at most about α, however many candidates there are and whichever one looks best.
+θ̂ᵢ − θ̂ⱼ > *c*. The maximum accounts for comparison across the fitted candidate pairs, subject to
+the conditional bootstrap approximation and its sampling assumptions.
 This is the bootstrap reality check of White (2000) and the max-statistic step of Romano and Wolf
 (2005). The set kept, every candidate not shown worse than another, is a model confidence set in
 the sense of Hansen, Lunde and Nason (2011).
+
+These are conditional intervals: preprocessing, artifact detection, candidate eligibility,
+signal templates and model hyperparameters were fitted using the observed data. Resampling
+stored trial scores does not repeat those fits. `R.validationScope` states this and
+`R.fullyHeldOut` is false. The procedure has no general finite-sample family-wise error
+guarantee for arbitrary adaptive candidate families, correlated ERP trials or population shifts.
 
 Raw differences are used instead of studentized ones. With few trials the per-pair bootstrap SD is
 itself noisy, and a maximum over many pairs is then driven by underestimated SDs. In simulation
@@ -769,7 +775,8 @@ like a rejection, stored by the `urevent` of each epoch's time-locking event
 
   SME = √( *n*/(*n* − 1) · Σ *w*ᵢ² (*s*ᵢ − *ŝ*)² ) / Σ *w*ᵢ,
 
-which is SD/√*n* for equal weights and does not assume the weights are right. In each bootstrap
+which is SD/√*n* for equal weights and conditions on the fitted weights. It is not a guarantee
+for weights learned from the same scores or for dependent trials. In each bootstrap
 draw a trial drawn *k* times counts *k* times with its weight (the weights are not estimated
 again); peak measures average the waveforms with the weights (inner bootstrap included). In
 simulation (`test_statistics`: 20 trials of noise SD 1 and 10 of SD 4) the error of the mean was
@@ -907,6 +914,11 @@ when it passes a test of its own (below); everything else stays quiet. [`Hmm.seg
 Emission log densities are normalized before exponentiation, avoiding underflow from isolated
 extreme samples. A nonfinite fit returns an inactive mask with `model.valid = false` and a
 reason, rather than decoding invalid parameters. Existing fixed detection rules remain in use.
+At least ten finite features are required. Missing emissions have likelihood one in both states,
+are excluded from emission-parameter updates and cannot be reported as detected events. Moving
+eye-channel features omit missing samples and expose `inputMissingSamples`; this prevents one
+missing value from disabling detection throughout an otherwise usable recording. This treatment
+does not validate events inside gaps or assume that informative missingness is harmless.
 
 **Blinks and eye movements** [`Hmm.events`; used by `Steps.withoutBlinks`, `Steps.eogRegress`,
 `Measure.sampleHits`, each united with its fixed rule]. *y*: for each eye channel (or left minus
@@ -996,9 +1008,10 @@ which scores the whole recording, does not catch. When no pipeline passed, the s
 settings), its decisions made on its own data. For the pipelines *k* run on every recording, with
 *J*_{s,k} the gain-corrected objective of *k* on *s*: *k* passes when it passes on every recording
 (recordings on which nothing passes are left out); the group objective is
-*J*_k = √(mean_s *J*_{s,k}²). This is the quantity a group analysis pays for: if participant *s*'s
-score is its true value plus a measurement error of SD *J*_{s,k}, the variance of the group mean
-gains mean_s *J*_{s,k}² / *S* from measurement error. The paired bootstrap replicates of each
+*J*_k = √(mean_s *J*_{s,k}²). This is an RMS of individual measurement errors in the observed
+group, not the MSE of the group mean or a group contrast. Independent zero-mean noise contributes
+Σ SME_s² / *S*² to a group mean's variance; systematic same-direction biases instead contribute
+(mean_s bias_s)² and need not average away. The paired bootstrap replicates of each
 recording (section 3, its own trials) are combined the same way, *J*_k^(b) = √(mean_s
 (*J*_{s,k}^(b))²), with independent draws per recording; the confidence and equivalence sets and
 the choice among those not distinguished from the best (highest minimum retention over the
@@ -1014,17 +1027,39 @@ duplicate names are disambiguated by occurrence.
 its bootstrap replicates. On the log scale, *y*_{s,k} = log *Y*_{s,k} = *a*_s + *c*_k + *u*_{s,k} +
 ε_{s,k}: a recording effect (how noisy it is), a pipeline effect (how good it is on average), what
 is particular to this pair, *u* ~ (0, τ²), and estimation noise of variance *v*_{s,k} =
-*V*_{s,k}/*Y*_{s,k}² (delta method). *a* and *c* are fitted by alternating means over the observed
-cells; with residuals *r* and *df* = cells − (*S* + *K* − 1),
+*V*_{s,k}/*Y*_{s,k}² (delta method). The observation covariance Σ_s also includes off-diagonal
+terms from the same paired bootstrap: Cov(J_s,k,J_s,l)/(Y_s,k Y_s,l). Shared estimation noise
+can cancel in pipeline contrasts; treating its diagonal as independent noise can erase real
+recording-specific differences.
 
-  τ̂² = max(0, Σ *r*² / *df* − mean *v*),   *w*_{s,k} = τ̂² / (τ̂² + *v*_{s,k}),
-  θ̂_{s,k} = exp(*â*_s + *ĉ*_k + *w*_{s,k} *r*_{s,k}).
+Let *D* be the recording/pipeline design on the observed cells, *H* its least-squares projection,
+*R* = *I* − *H*, and Σ the block-diagonal matrix of Σ_s (recordings assumed independent).
+With *r* = *R y*, *df* = rank(*R*), estimate
+
+  τ̂² = max(0, (rᵀr − tr(RΣ)) / df).
+
+The design drops one gauge per connected component of the observed recording/pipeline graph:
+*df* = cells − (active recordings + active pipelines − components). A disconnected missingness
+pattern cannot be treated as one connected design. If *df* = 0, the interaction variance is
+unassessed; the observed estimates are retained and the diagnostic says so.
+
+Given τ̂², additive effects are fitted by generalized least squares under C_s = τ̂² I + Σ_s.
+The conditional empirical-Bayes estimate is
+
+  θ̂_s = exp(D_s β̂ + τ̂² C_s⁻¹ (y_s − D_s β̂)).
+
+This reduces to scalar residual shrinkage for diagonal Σ_s. Singular covariance blocks use a
+small numerical diagonal regularizer. Covariance inputs are checked for symmetry, matching
+diagonals and positive semidefiniteness. The trace correction and block gains avoid counting
+shared recording noise as evidence against pipeline-specific differences.
 
 Recording *s* gets argmin_k θ̂_{s,k} over the pipelines passing on it (`G.own`, `G.ownShrunk`);
-`G.share` = mean *w*. With τ̂² = 0 every recording gets the pipeline with the best ĉ (one for
-all); with τ̂² large, its own lowest *Y*. Simulated (20 recordings × 12 pipelines, excess error
-over the true best per recording): own choice 0.4–2.4 %, one for all 0.8–9.5 %, two-level
-0.4–1.6 %, best or tied in all settings (`sims-2026-10-16c/group_eb.py`).
+`G.share` is the mean diagonal of the posterior gain matrices. `G.twoLevelModel` reports
+covariance use, residual degrees of freedom, disconnected components and validation scope.
+Effects, covariance and τ̂² are estimated on these recordings: this is an empirical-Bayes
+plug-in estimate, not a calibrated probability or proof of benefit on new participants.
+The independent-noise simulation remains a regression; paired-noise and missing-design
+regressions cover the failures above. Broader independent validation is still required.
 
 ## 15. Total error: noise and bias together
 
@@ -1068,7 +1103,7 @@ weight and *m*_B, *m*_N the weighted mean scores of the blink and other trials,
 
 what the blink trials add to the mean (a pipeline that removed the eye activity, by ICA or by
 rejecting those trials, has *e* ≈ 0). *e* is itself an estimate, with standard error
-*se* = *p* *s* √(1/*n*_B + 1/*n*_N) (*s* the scores' SD); with most trials blinking it is often larger than
+*se* = *p* *s* √(1/*n*_B + 1/*n*_N) with equal weights (*s* the pooled scores' SD); with most trials blinking it is often larger than
 the SME itself. Only the part beyond what chance makes counts: (|*e*| − 2 *se*)₊², soft thresholding
 (`test_statistics/testWhatBlinksAddToTheMean`). Taking only the variance off, *e*² − *se*², floored at
 0, counts a bias where there is none, since its positive part has a positive mean: in simulation
@@ -1076,7 +1111,15 @@ with 35 trials, no real effect and 70 % blink trials it added a third to the tot
 average (twice as much in one run in ten) and pulled the rejection limit towards rejecting blink
 trials; soft thresholding adds about 1 %. A real bias is underestimated by up to 2 *se*, the price
 of not acting on noise. In the
-bootstrap (section 3) *e* is recomputed in every resample. A difference of the blink trials'
+bootstrap (section 3) *e* is recomputed in every resample.
+Weights are normalized only through ratios. With physical multiplicities c_i and combined
+weights K_i = c_i w_i, q_i = K_i²/c_i; the weighted pooled variance divides the second central
+moment by 1−Σq_i/(ΣK_i)², and the standard error uses q_B/(Σ_B K_i)² + q_N/(Σ_N K_i)².
+Resampling counts are supplied separately from trial weights. Multiplying all weights by a
+constant leaves the bias, its standard error and the ranking unchanged, while drawing a trial
+twice still counts two physical observations.
+
+A difference of the blink trials'
 mean that is real brain activity (a larger P3 in the trials with a blink) is counted as bias too;
 using the blink's size only to select the trials, not as a regressor, keeps frontal brain activity
 that correlates with the measured electrodes from being read as eye activity.

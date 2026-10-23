@@ -33,8 +33,9 @@ classdef Measure
     %   weightTrials) are averaged with their weights w: estimate =
     %   sum(w .* x) / sum(w), and SME = sqrt(n / (n - 1) * sum(w.^2 .* (x -
     %   estimate).^2)) / sum(w), the sandwich (robust) standard error of a
-    %   weighted mean, valid whatever the weights; equal weights give SD /
-    %   sqrt(n). Peak measures average the waveforms with the weights.
+    %   weighted mean conditional on the fitted weights; equal weights give
+    %   SD / sqrt(n). Adaptive weights and dependent trials still need
+    %   separate validation. Peak measures average with the weights.
     %
     %   w = pipecompare.eval.Measure.epochWeights(EEG)
     %   The weight of each epoch (1 x trials; all 1 without weighting): the

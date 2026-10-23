@@ -48,9 +48,9 @@ classdef Rank
     %      trials, by urevent, for every candidate). A candidate is "not
     %      distinguished from the best" unless the data show it is worse
     %      than some other candidate, with intervals simultaneous over all
-    %      candidate pairs: the probability that ANY candidate is wrongly
-    %      declared worse stays <= ~5% for any number of candidates (alpha
-    %      = 0.02 chosen by simulation for 2-24 candidates, 20-100 trials,
+    %      candidate pairs, conditional on the fitted candidates. A roughly
+    %      5% family-wise rate was seen in the tested simulations (alpha
+    %      = 0.02 chosen for 2-24 candidates, 20-100 trials,
     %      unequal condition sizes, correlated candidates; see
     %      test_statistics). This is the bootstrap max-statistic of White
     %      (2000) and Romano & Wolf (2005); the set kept is a model
@@ -248,7 +248,8 @@ classdef Rank
                 T.(matlab.lang.makeValidName(['shapeSpread_' ref.objectives{k}])) = spreads(:, k);
             end
             R = struct('table', T, 'whyList', {whyList}, 'order', order, 'best', best, 'recommended', recommended, ...
-                'byStratum', byStratum, 'objective', objName, 'options', opts, 'units', {ref.units});
+                'byStratum', byStratum, 'objective', objName, 'options', opts, 'units', {ref.units}, ...
+                'validationScope','conditional-on-fitted-candidates','fullyHeldOut',false);
         end
 
         function why = signalReasons(sg, opts)

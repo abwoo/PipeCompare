@@ -1,10 +1,10 @@
 classdef Calibration
-    % Calibration of the deployed error estimate against independent
+    % Calibration of the gain-corrected ranking error against independent
     % simulated records. Records, not candidate/condition rows, are the
     % sampling units. This measures RMS error, not interval coverage.
     methods (Static)
         function C = rows(r, feasible, population, realized, recording)
-            data = cell(0,12); T = r.ranking.table;
+            data = cell(0,18); T = r.ranking.table;
             vars = T.Properties.VariableNames;
             gv = vars(startsWith(vars, 'gain_')); sv = vars(startsWith(vars, 'shapeSpread_'));
             for j = feasible(:)'
@@ -16,11 +16,14 @@ classdef Calibration
                 selected = any(r.ranking.recommended == j);
                 for c = 1:numel(population)
                     data(end+1,:) = {recording, r.labels{j}, c, o.estimate(c)/g-population(c), ...
-                        reported(c), o.sme(c), o.eyeBias(c), g, selected, o.estimate(c)/g-realized(c), sp, bias(c)}; %#ok<AGROW>
+                        reported(c), o.sme(c), o.eyeBias(c), g, selected, o.estimate(c)/g-realized(c), sp, bias(c), ...
+                        o.estimate(c)-population(c), o.estimate(c)-realized(c), o.estimate(c), o.estimate(c)/g, ...
+                        population(c), realized(c)}; %#ok<AGROW>
                 end
             end
             C = cell2table(data, 'VariableNames', {'recording','steps','condition','actualError','reportedError', ...
-                'sme','eyeBias','gain','selected','conditionalError','shapeSpread','totalBias'});
+                'sme','eyeBias','gain','selected','conditionalError','shapeSpread','totalBias', ...
+                'rawError','rawConditionalError','rawEstimate','correctedEstimate','populationTruth','realizedTruth'});
         end
 
         function S = summarize(C, nBoot, seed)

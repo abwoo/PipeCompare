@@ -16,9 +16,9 @@ classdef Group
     %   - Its group objective is the root mean square over the recordings
     %     of its total error (Rank step 3b: the gain-corrected SME with the
     %     bias of what blinks add and of the signal's unknown shape).
-    %     Measurement error adds the mean of the squared SMEs, divided by
-    %     the number of recordings, to the variance of a group mean, so
-    %     this is what the group-level test loses to noise (and bias).
+    %     This summarizes individual measurement errors in the observed
+    %     group. It is not the MSE of a group mean: same-direction bias
+    %     across recordings does not average away like independent noise.
     %   - Its uncertainty is that of each recording's paired bootstrap of
     %     its trials (Rank.bootstrap, as one recording's ranking), combined
     %     the same way; the pipelines not distinguished from the best and
@@ -41,9 +41,10 @@ classdef Group
     %   empirical Bayes, Group.twoLevel): the log of each pipeline's
     %   objective on each recording is a recording effect plus a pipeline
     %   effect (fitted over all recordings) plus what this pipeline does on
-    %   this recording beyond them. That last part is shrunk towards 0 by
-    %   tau^2 / (tau^2 + v), v its bootstrap variance and tau^2 how much the
-    %   recordings really differ in it (method of moments). Each recording
+    %   this recording beyond them. Its posterior gain retains the full
+    %   within-recording paired bootstrap covariance (the scalar factor
+    %   tau^2/(tau^2+v) when that covariance is diagonal). tau^2 is fitted
+    %   after projecting out recording and pipeline effects. Each recording
     %   gets the pipeline lowest by this estimate among those passing on it.
     %   With tau^2 = 0 every recording gets the same pipeline; with
     %   precise recordings each gets its own best. G.own: a table (recording,

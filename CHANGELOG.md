@@ -5,6 +5,19 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- Follow-up methodology audit: artifact-bias uncertainty is invariant to the normalization
+  of trial weights; bootstrap multiplicities are separate from reliability weights.
+- Group empirical Bayes retains paired covariance across pipelines, subtracts projected
+  observation noise from the interaction variance, and fits additive effects by GLS. Missing
+  candidate patterns use one gauge per connected component and expose variance identifiability.
+- HMMs marginalize missing emissions and estimate their parameters from finite observations;
+  one missing eye-channel sample no longer disables event detection on the whole recording.
+- One-sided multitaper spectra leave DC and Nyquist undoubled. Calibration exports raw and
+  gain-corrected readouts separately; group RMS error is not described as group-mean uncertainty.
+- Numerical regressions cover weight normalization, physical bootstrap replication, paired
+  group contrasts, disconnected candidate patterns, missing HMM inputs and spectral endpoints.
+- `docs/RESEARCH_READINESS.md` records the independent validation still needed for publication.
+
 - CI jobs allow two hours for the full GUI/ICA suite, which can exceed one hour on hosted
   runners. Virtual displays reuse installed Xvfb and bound package-download and startup waits.
   Logs name each test as it starts. R2022b/R2023a get an early results-window check and a
