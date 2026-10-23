@@ -14,7 +14,7 @@ on:
     inputs:
       public_run:
         description: 'Public EEG source run ID'
-        default: '39938907558'
+        default: '39947982777'
       synthetic_run:
         description: 'Independent simulation source run ID'
         default: '39936975660'
@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     env:
-      VALIDATION_SOURCE_RUN: ${{ inputs.public_run || '39938907558' }}
+      VALIDATION_SOURCE_RUN: ${{ inputs.public_run || '39947982777' }}
     steps:
       - name: Wait for the frozen source run to finish
         timeout-minutes: 335

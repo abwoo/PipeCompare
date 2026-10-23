@@ -341,3 +341,16 @@ issues=codeIssues(folder,'CodeAnalyzerConfiguration','factory');
 errors=issues.Issues(string(issues.Issues.Severity)=="error",:);
 verifyEmpty(tc,errors,evalc('disp(errors)'));
 end
+
+function testMultitaperFractionalSampleRateKeepsNyquist(tc)
+% These grids round the Nyquist frequency in opposite directions. The
+% endpoint must be included once, using its FFT index rather than equality.
+cases=[100.1 328; 160.1 416; 200.1 328; 250.003 264; 250.1 264];
+for q=1:size(cases,1)
+    fs=cases(q,1);n=cases(q,2);band=[fs/2-fs/n/10 fs/2];
+    X=(-1).^(0:n-1);H=pipecompare.eval.Measure.tapers(n,fs,band);
+    F=fft(X'.*H(:,1));
+    expected=log10(abs(F(n/2+1))^2/(fs*sum(H(:,1).^2)));
+    verifyEqual(tc,pipecompare.eval.Measure.bandScores(X,fs,band),expected,'AbsTol',1e-10);
+end
+end

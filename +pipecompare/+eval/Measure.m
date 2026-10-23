@@ -301,12 +301,16 @@ classdef Measure
                 'PipeCompare:Measure', 'A one-sided PSD band must lie between zero and Nyquist.');
             [H, resolution] = pipecompare.eval.Measure.tapers(n, fs, band);
             f = (0:n-1) * fs / n;
+            % Locate the Nyquist bin by index. Fractional sample rates can
+            % round its computed frequency above/below fs/2 by one ulp.
+            if mod(n,2)==0, f(n/2+1)=fs/2; end
             sel = f >= band(1) & f <= band(2);
             assert(any(sel), 'PipeCompare:Measure', 'The window is too short to resolve the band [%g %g] Hz.', band(1), band(2));
             Xp = permute(X, [2 1 3]);                              % samples x ROI x trials
             P = 0;
             sided = 2 * ones(nnz(sel), 1);
-            sided(f(sel) == 0 | (mod(n,2) == 0 & f(sel) == fs/2)) = 1;
+            bins=find(sel);
+            sided(bins == 1 | (mod(n,2) == 0 & bins == n/2+1)) = 1;
             for k = 1:size(H, 2)
                 F = fft(Xp .* H(:, k), [], 1);
                 P = P + sided .* abs(F(sel, :, :)) .^ 2 / (fs * sum(H(:, k) .^ 2));
