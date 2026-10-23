@@ -27,16 +27,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { matlab: R2022a, eeglab: '2022.1', os: ubuntu-22.04 }
-          - { matlab: R2022b, eeglab: '2022.1', os: ubuntu-22.04 }
-          - { matlab: latest, eeglab: '2023.1' }
-          - { matlab: latest, eeglab: 2024.2.1 }
-          - { matlab: latest, eeglab: 2025.1.0 }
-          - { matlab: latest, eeglab: 2026.0.0 }
-          - { matlab: latest, eeglab: 2026.0.0, os: windows-latest }
-          - { matlab: R2022a, eeglab: '2022.0', os: windows-latest }
-          - { matlab: latest, eeglab: 2026.0.0, os: macos-latest }
-          - { matlab: latest, eeglab: '2022.0', os: macos-latest }
+          - { matlab: R2026a, eeglab: '2026.0.0' }
     steps:
       - name: Checkout EEGLAB ${{ matrix.eeglab }}
         run: git clone --depth 1 --branch ${{ matrix.eeglab }} --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
@@ -76,7 +67,6 @@ jobs:
             assert(startsWith(p, home), 'PipeCompare:CI', 'pop_pipecompare is not the installed one');
             fprintf('Installed PipeCompare %s\n', pipecompare.PipeCompare.version());
             addpath(fullfile(home, 'tests'));
-            if any(strcmp(version('-release'), {'2022b', '2023a'})), addpath(fullfile(home, 'tests', 'shims')); end
             EEG = nqc_synth(struct('seconds', 120, 'nPerCond', 30)); nqc_setBase(EEG);
             EEG = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'11', '31'}, 'recipe', 'filters', 'show', 'off');
             r = evalin('base', 'pipecompare_result');

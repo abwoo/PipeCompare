@@ -33,7 +33,7 @@ jobs:
           path: PipeCompare
 
       - name: Checkout EEGLAB
-        run: git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
+        run: git clone --depth 1 --branch 2026.0.0 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
 
       - name: Start a virtual display
         run: |
@@ -44,7 +44,7 @@ jobs:
       - name: Set up MATLAB
         uses: matlab-actions/setup-matlab@v2
         with:
-          release: latest
+          release: R2026a
           products: Signal_Processing_Toolbox
 
       - name: Run the benchmark

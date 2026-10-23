@@ -16,7 +16,7 @@ release has a git tag `vX.Y.Z`.
   gain-corrected readouts separately; group RMS error is not described as group-mean uncertainty.
 - Numerical regressions cover weight normalization, physical bootstrap replication, paired
   group contrasts, disconnected candidate patterns, missing HMM inputs and spectral endpoints.
-- `docs/RESEARCH_READINESS.md` records the independent validation still needed for publication.
+- From PR #50, current CI is pinned to MATLAB R2026a and EEGLAB 2026.0.0; numerical and GUI suites are retained without the legacy compatibility matrix.
 
 - CI jobs allow two hours for the full GUI/ICA suite, which can exceed one hour on hosted
   runners. Virtual displays reuse installed Xvfb and bound package-download and startup waits.

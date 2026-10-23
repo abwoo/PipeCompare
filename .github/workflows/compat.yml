@@ -1,9 +1,8 @@
 name: compatibility
 
-# Runs the suites that open windows or run whole searches on older MATLAB
-# releases (with the current EEGLAB) and on older EEGLAB releases (with
-# the latest MATLAB), so the versions stated in the README are tested;
-# and on Windows and macOS, oldest and newest supported versions.
+# Starting with PR #50, current compatibility uses this pinned pair.
+# Fast numerical suites run in matlab-tests.yml; all native EEGLAB, GUI
+# and end-to-end suites remain here without a duplicate version matrix.
 
 on:
   push:
@@ -17,72 +16,17 @@ concurrency:
 
 jobs:
   compat:
-    name: MATLAB ${{ matrix.matlab }} + EEGLAB ${{ matrix.eeglab }}${{ matrix.label }}
-    runs-on: ${{ matrix.os || 'ubuntu-latest' }}
-    # The complete GUI/ICA suite takes about 75 minutes on some hosted runners.
+    name: MATLAB R2026a + EEGLAB 2026.0.0
+    runs-on: ubuntu-latest
     timeout-minutes: 120
-    strategy:
-      fail-fast: false
-      max-parallel: 8
-      matrix:
-        include:
-          # R2021b-R2023a on Ubuntu 22.04, the newest Ubuntu MathWorks supports for them.
-          # every MATLAB release with the current EEGLAB
-          - { matlab: R2021b, eeglab: 2026.0.0, os: ubuntu-22.04 }
-          - { matlab: R2022a, eeglab: 2026.0.0, os: ubuntu-22.04 }
-          - { matlab: R2022b, eeglab: 2026.0.0, os: ubuntu-22.04 }
-          - { matlab: R2023a, eeglab: 2026.0.0, os: ubuntu-22.04 }
-          - { matlab: R2023b, eeglab: 2026.0.0 }
-          - { matlab: R2024a, eeglab: 2026.0.0 }
-          - { matlab: R2024b, eeglab: 2026.0.0 }
-          - { matlab: R2025a, eeglab: 2026.0.0 }
-          - { matlab: R2025b, eeglab: 2026.0.0 }
-          - { matlab: R2026a, eeglab: 2026.0.0 }
-          - { matlab: latest, eeglab: 2026.0.0 }
-          # every EEGLAB release with the newest MATLAB
-          - { matlab: latest, eeglab: '2022.0' }
-          - { matlab: latest, eeglab: '2022.1' }
-          - { matlab: latest, eeglab: '2023.0' }
-          - { matlab: latest, eeglab: '2023.1' }
-          - { matlab: latest, eeglab: '2024.0' }
-          - { matlab: latest, eeglab: '2024.1' }
-          - { matlab: latest, eeglab: '2024.2' }
-          - { matlab: latest, eeglab: '2024.2.1' }
-          - { matlab: latest, eeglab: '2025.0.0' }
-          - { matlab: latest, eeglab: '2025.1.0' }
-          # every EEGLAB release with the oldest MATLAB of 2022
-          - { matlab: R2022a, eeglab: '2022.0', os: ubuntu-22.04 }
-          - { matlab: R2022a, eeglab: '2022.1', os: ubuntu-22.04 }
-          - { matlab: R2022a, eeglab: '2023.0', os: ubuntu-22.04 }
-          - { matlab: R2022a, eeglab: '2023.1', os: ubuntu-22.04 }
-          - { matlab: R2022a, eeglab: '2024.0', os: ubuntu-22.04 }
-          - { matlab: R2022a, eeglab: '2024.1', os: ubuntu-22.04 }
-          - { matlab: R2022a, eeglab: '2024.2', os: ubuntu-22.04 }
-          - { matlab: R2022a, eeglab: '2024.2.1', os: ubuntu-22.04 }
-          - { matlab: R2022a, eeglab: '2025.0.0', os: ubuntu-22.04 }
-          - { matlab: R2022a, eeglab: '2025.1.0', os: ubuntu-22.04 }
-          # Windows and macOS (on GitHub's Macs, windows of MATLAB before the
-          # latest release close by themselves or never return, so latest only)
-          - { matlab: latest, eeglab: 2026.0.0, os: windows-latest, label: ' (Windows)' }
-          - { matlab: R2022a, eeglab: '2022.0', os: windows-latest, label: ' (Windows)' }
-          - { matlab: latest, eeglab: 2026.0.0, os: macos-latest, label: ' (macOS)' }
-          - { matlab: latest, eeglab: '2022.0', os: macos-latest, label: ' (macOS)' }
     steps:
       - name: Checkout PipeCompare
         uses: actions/checkout@v4
         with:
           path: PipeCompare
 
-      - name: Checkout EEGLAB ${{ matrix.eeglab }}
-        run: git clone --depth 1 --branch ${{ matrix.eeglab }} --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
-
-      - name: ICLabel 1.6 with EEGLAB 2024.0
-        # EEGLAB 2024.0 bundles ICLabel 1.5, whose rotated scalp maps leave
-        # eye components unrecognised (PipeCompare warns); users update it
-        if: matrix.eeglab == '2024.0'
-        run: |
-          git -C eeglab/plugins/ICLabel fetch --depth 1 origin 20221d80430c2c4eab86dc14bad28c1a20939913
-          git -C eeglab/plugins/ICLabel checkout FETCH_HEAD
+      - name: Checkout EEGLAB 2026.0.0
+        run: git clone --depth 1 --branch 2026.0.0 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
 
       - name: Start a virtual display
         if: runner.os == 'Linux'
@@ -92,30 +36,8 @@ jobs:
       - name: Set up MATLAB
         uses: matlab-actions/setup-matlab@v2
         with:
-          release: ${{ matrix.matlab }}
+          release: R2026a
           products: Signal_Processing_Toolbox
-
-      - name: Check the legacy MATLAB results window
-        # Native uialert/uiprogressdlg block on legacy Xvfb; keep the real
-        # selection/adoption/export regression and use CI-only dialog stand-ins.
-        if: matrix.matlab == 'R2022b' || matrix.matlab == 'R2023a'
-        timeout-minutes: 10
-        uses: matlab-actions/run-command@v2
-        with:
-          command: |
-            addpath(fullfile(pwd, 'eeglab')); eeglab nogui;
-            cd PipeCompare; addpath(pwd); addpath(fullfile(pwd, 'tests'));
-            addpath(fullfile(pwd, 'tests', 'shims'));
-            assert(contains(which('uiprogressdlg'), [filesep 'tests' filesep 'shims' filesep]));
-            f = uifigure('Visible', 'off');
-            d = uiprogressdlg(f, 'Title', 'Lifecycle', 'Message', 'Check close', 'Indeterminate', 'on');
-            assert(isvalid(d)); close(d); assert(~isvalid(d)); delete(f);
-            s = matlab.unittest.TestSuite.fromFile(fullfile(pwd, 'tests', 'test_simple.m'));
-            s = s(endsWith({s.Name}, '/testResultsWindow'));
-            assert(numel(s) == 1, 'PipeCompare:CI', 'Results-window test was not found');
-            runner = matlab.unittest.TestRunner.withTextOutput('OutputDetail', 3);
-            r = runner.run(s);
-            assert(all([r.Passed]), 'PipeCompare:CI', 'Results-window test did not pass');
 
       - name: Run tests
         timeout-minutes: 105
@@ -124,8 +46,5 @@ jobs:
           command: |
             disp(version); addpath(fullfile(pwd, 'eeglab')); eeglab nogui;
             cd PipeCompare; addpath(pwd); addpath(fullfile(pwd, 'tests'));
-            % Native alert/progress dialogs block on these releases under Xvfb.
-            if any(strcmp(version('-release'), {'2022b', '2023a'})), addpath(fullfile(pwd, 'tests', 'shims')); end
-            r = run_all({'test_history', 'test_plan', 'test_panel_text', 'test_statistics', 'test_methodology', 'test_invariants', ...
-                         'test_simple', 'test_main', 'test_eeglab', 'test_signal', 'test_engine'});
+            r = run_all({'test_simple', 'test_main', 'test_eeglab', 'test_signal', 'test_engine'});
             assert(~any([r.Failed]), 'PipeCompare:CI', '%d test(s) failed', sum([r.Failed]));

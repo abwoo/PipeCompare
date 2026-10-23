@@ -84,6 +84,3 @@ retune on the validation seeds and continue calling them independent validation.
 
 The regression suite checks the reproduced implementation failures and numerical invariants.
 It does not replace these independent scientific validation experiments.
-
-See [the research-readiness audit](RESEARCH_READINESS.md) for the remaining publication claims,
-priority experiments and the distinction between an implementation fix and independent evidence.

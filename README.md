@@ -360,16 +360,11 @@ epochs) from each recording's own data.
 | EEGLAB plugins | firfilt (bundled with EEGLAB); ICLabel for IC removal; clean_rawdata for ASR |
 | Optional | Parallel Computing Toolbox, for parallel execution; Signal Processing Toolbox, for ASR at sampling rates other than 100, 128, 200, 256, 300, 500 and 512 Hz and for faster low-frequency high-pass filtering |
 
-MATLAB R2026a with EEGLAB 2026.0.0 is the combination run by hand
-([docs/COVERAGE.md](docs/COVERAGE.md)). Continuous integration runs the full automated test suite
-on every MATLAB release from R2021b to R2026a and the latest release with EEGLAB 2026.0.0, and on
-every EEGLAB release from 2022.0 to 2025.1.0 with both MATLAB R2022a and the latest MATLAB. It also
-runs it on Windows (the latest MATLAB with EEGLAB 2026.0.0, and R2022a with EEGLAB 2022.0) and on
-macOS (the latest MATLAB with EEGLAB 2026.0.0 and 2022.0; on GitHub's Mac test machines the windows
-of older MATLAB releases close by themselves, so those are not tested there). On
-R2022b and R2023a, MATLAB's own message box (`uialert`) never returns on the test machines'
-virtual display, even in an empty window, so there the tests use a stand-in that prints the
-message instead of drawing the box.
+MATLAB R2026a with EEGLAB 2026.0.0 is the current tested combination
+([docs/COVERAGE.md](docs/COVERAGE.md)). From PR #50 onward, continuous integration,
+installation checks and benchmarks use this pinned pair. Numerical, native EEGLAB,
+GUI and end-to-end suites are retained. Earlier releases were tested by the historical
+compatibility matrix through PR #49; they are no longer checked on each change.
 
 Two known problems of older EEGLAB releases, which PipeCompare works around or reports:
 
