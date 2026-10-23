@@ -3,7 +3,7 @@ function pipecompare_open_summary(root,outDir)
 if ~isfolder(outDir),mkdir(outDir);end
 folders=dir(fullfile(root,'public-validation-*'));
 folders=folders(~cellfun('isempty',regexp({folders.name},'^public-validation-[0-5]$','once')));
-S=pipecompare_record_summary();C=table();sourceHeads={};
+S=pipecompare_record_summary();C=table();sourceHeads={};sourceTimers={};
 metrics={'blink','spectral','stretches','recordings','real_erp'};
 components=struct();sourceFailures=0;coverage=table();
 for k=1:numel(metrics)
@@ -28,6 +28,7 @@ for j=1:numel(folders)
     if isfile(fullfile(folder,'metadata.json'))
         meta=jsondecode(fileread(fullfile(folder,'metadata.json')));
         sourceHeads{end+1}=meta.commit; %#ok<AGROW>
+        sourceTimers{end+1}=pipecompare.utils.fieldOr(meta,'fitTimer','implicit'); %#ok<AGROW>
     end
     if isfile(fullfile(folder,'execution.json'))
         execution=jsondecode(fileread(fullfile(folder,'execution.json')));
@@ -47,6 +48,14 @@ for j=1:numel(folders)
     if isfile(fullfile(folder,'calibration.csv'))
         D=readtable(fullfile(folder,'calibration.csv'),'TextType','char');
         if isempty(C),C=D;else,C=[C;D];end %#ok<AGROW>
+    end
+end
+if isfield(components,'recordings')
+    components.recordings.fitTimingAssessed=numel(sourceTimers)==numel(folders)&& ...
+        all(strcmp(sourceTimers,'explicit-tic-handle'));
+    if ~components.recordings.fitTimingAssessed
+        components.recordings.legacyReportedFitSeconds=components.recordings.totalSeconds;
+        components.recordings.totalSeconds=NaN;
     end
 end
 result=struct('commit',getenv('GITHUB_SHA'),'recordsWithScores',numel(S), ...

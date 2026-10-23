@@ -6,7 +6,7 @@ if ~isfolder(outDir), mkdir(outDir); end
 copyfile(fullfile(dataDir,'provenance.json'),fullfile(outDir,'provenance.json'));
 protocol=jsondecode(fileread(fullfile(fileparts(mfilename('fullpath')),'open_data_protocol.json')));
 meta=struct('commit',getenv('GITHUB_SHA'),'run',getenv('GITHUB_RUN_ID'), ...
-    'matlab',version,'eeglab',eeg_getversion,'protocol',protocol,'shard',shard);
+    'matlab',version,'eeglab',eeg_getversion,'fitTimer','explicit-tic-handle','protocol',protocol,'shard',shard);
 writeJson(fullfile(outDir,'metadata.json'),meta);
 failures={}; S=pipecompare_record_summary(); calibration=table();
 allFiles=dir(fullfile(dataDir,'S*.mat'));
@@ -35,9 +35,9 @@ for k=1:numel(files)
             appendCsv(stretchMetrics(EEG,subject),fullfile(outDir,'stretches.csv'));
         catch ex,failures{end+1}=recordFailure(ex,[name ' stretches'],outDir);end %#ok<AGROW>
         [EEG,population,realized,prevalence]=injectedERP(EEG,subject);
-        setBase(EEG); tic;
+        setBase(EEG); fitClock=tic;
         transcript=evalc('[~,~,r]=pop_pipecompare(EEG,''measure'',''P3'',''events'',{''11'',''31''},''reference'',''average'',''show'',''off'');');
-        seconds=toc; saveTranscript(outDir,name,transcript);
+        seconds=toc(fitClock); saveTranscript(outDir,name,transcript);
         feasible=find(strcmp(r.ranking.table.status,'feasible'))';
         C=pipecompare.eval.Calibration.rows(r,feasible,population,realized,subject);
         if ~isempty(C), if isempty(calibration), calibration=C; else, calibration=[calibration;C]; end, end %#ok<AGROW>

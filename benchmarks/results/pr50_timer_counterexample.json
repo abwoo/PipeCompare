@@ -1,0 +1,54 @@
+{
+  "analysisRun": 39956891666,
+  "sourceRun": 39947982777,
+  "sourceShard": 3,
+  "analysisCommit": "76e1d122c7cf17aeaae1cedb43a6699f7a4fc1f7",
+  "measurements": [
+    {
+      "subject": 24,
+      "reportedFitSeconds": 28.347933,
+      "engineElapsedReports": [
+        260.2
+      ],
+      "explicitEngineLowerBoundSeconds": 260.2,
+      "implicitTimerContradiction": true
+    },
+    {
+      "subject": 30,
+      "reportedFitSeconds": 28.313125,
+      "engineElapsedReports": [
+        259.5
+      ],
+      "explicitEngineLowerBoundSeconds": 259.5,
+      "implicitTimerContradiction": true
+    },
+    {
+      "subject": 36,
+      "reportedFitSeconds": 28.486024,
+      "engineElapsedReports": [
+        556.4
+      ],
+      "explicitEngineLowerBoundSeconds": 556.4,
+      "implicitTimerContradiction": true
+    },
+    {
+      "subject": 42,
+      "reportedFitSeconds": 27.812115,
+      "engineElapsedReports": [
+        852.7
+      ],
+      "explicitEngineLowerBoundSeconds": 852.7,
+      "implicitTimerContradiction": true
+    },
+    {
+      "subject": 48,
+      "reportedFitSeconds": 28.098977,
+      "engineElapsedReports": [
+        999.2
+      ],
+      "explicitEngineLowerBoundSeconds": 999.2,
+      "implicitTimerContradiction": true
+    }
+  ],
+  "scope": "Native explicit engine elapsed time is a lower bound for the surrounding fit call; each implicit-clock value contradicts that bound."
+}

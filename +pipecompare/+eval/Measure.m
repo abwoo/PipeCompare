@@ -132,7 +132,7 @@ classdef Measure
             end
             T = pipecompare.eval.Measure.trials(E, contract, true);
             times = E.xmin + (0:E.pnts-1) / E.srate;
-            D = double(E.data);
+            D = double(E.data); D(~isfinite(D))=NaN;
             De = D(ismember(use, eyes), :, :); Dh = [];
             if ~isempty(hl), Dh = D(use == hl, :, :) - D(use == hr, :, :); end
             bsel = false(size(times));
@@ -143,7 +143,7 @@ classdef Measure
                     if ~isempty(Dh), Dh = Dh - mean(Dh(:, bsel, :), 2); end
                 end
             end
-            z = @(v) (v - median(v)) / max(1.4826 * median(abs(v - median(v))), eps);
+            z = @(v) (v - median(v,'omitnan')) / max(1.4826 * median(abs(v - median(v,'omitnan')),'omitnan'), eps);
             perTrial = @(v) reshape(v, [], 1);
             nJ = numel(contract.components); nC = numel(ref.ids);
             info.available = cell(1,nJ);
@@ -154,9 +154,9 @@ classdef Measure
                 comp = contract.components(j);
                 w = times >= comp.window(1) - 1e-9 & times <= comp.window(2) + 1e-9;
                 if ~strcmp(comp.measure, 'mean') || ~any(w), continue; end
-                available=true(E.trials,1);
-                if ~isempty(eyes)
-                    available=reshape(all(all(isfinite(D(ismember(use,eyes),w|bsel,:)),1),2),[],1);
+                available=true(E.trials,1);support=unique([eyes hl hr]);
+                if ~isempty(support)
+                    available=reshape(all(all(isfinite(D(ismember(use,support),w|bsel,:)),1),2),[],1);
                 end
                 K = false(numel(T.epoch), numel(kinds));
                 if ~isempty(De)
@@ -722,9 +722,10 @@ rows = {double(E.data(isEye, :))};
 if any(isL) && any(isR), rows{2} = double(E.data(isL, :)) - double(E.data(isR, :)); end
 w = round(0.05 * E.srate); M = zeros(numel(rows), E.pnts);
 for k = 1:numel(rows)
-    Y = rows{k} - movmedian(rows{k}, round(E.srate), 2);
-    Y = abs(Y - median(Y, 2));
-    on = any(Y > 5 * max(1.4826 * median(Y, 2), eps), 1) | pipecompare.eval.Hmm.events(rows{k}, E.srate);
+    Y = rows{k};Y(~isfinite(Y))=NaN;
+    Y = Y - movmedian(Y, round(E.srate), 2, 'omitnan');
+    Y = abs(Y - median(Y, 2, 'omitnan'));
+    on = any(Y > 5 * max(1.4826 * median(Y, 2, 'omitnan'), eps), 1) | pipecompare.eval.Hmm.events(rows{k}, E.srate);
     M(k, :) = conv(double(on), ones(1, 2 * w + 1), 'same') > 0;
 end
 H = E; H.data = single(M); H.nbchan = size(M, 1);

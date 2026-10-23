@@ -196,3 +196,9 @@ The recovered CSV source had a score-checkpoint initialization error, so this re
 contains no group-prior or native-replay validation. The checkpointed source run retains
 per-candidate scores for that separate evaluation. Execution and scientific calibration
 remain separate outcomes.
+
+Earlier public-fit timings used an implicit tic/toc clock that nested native calls reset.
+A saved five-record shard reports approximately 28 seconds per fit while its explicit engine
+clocks report 259–999 seconds. The runner now uses its own timer handle and records that method
+in provenance. Summaries mark older fit-timing totals unassessed; calibration and detection
+metrics are separate from those clock readings. See the saved timer counterexample JSON.

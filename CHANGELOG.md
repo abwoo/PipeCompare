@@ -5,6 +5,8 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- Ocular feature normalization ignores missing observations, so a missing trial does not erase detected events on other observed trials. Horizontal inputs follow the same window coverage check. Public-fit elapsed times use explicit timer handles; old reset-clock totals are unassessed.
+
 - Ocular observation coverage follows each component's window/baseline and trial identity. Keeping a trial with unavailable ocular evidence leaves bias unassessed; removing that trial restores assessment on the remaining observations.
 
 - A declared ocular input containing no finite samples is unassessed through reference, measurement and ranking; it cannot become quiet evidence with a zero artifact penalty. Ranking text distinguishes fitted-model scores from independently calibrated measurement error.
