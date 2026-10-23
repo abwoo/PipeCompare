@@ -28,8 +28,12 @@ for k=1:numel(files)
     try
         D=load(fullfile(files(k).folder,name));
         EEG=backgroundEEG(D);
-        appendCsv(spectralMetrics(D,subject),fullfile(outDir,'spectral.csv'));
-        appendCsv(stretchMetrics(EEG,subject),fullfile(outDir,'stretches.csv'));
+        try
+            appendCsv(spectralMetrics(D,subject),fullfile(outDir,'spectral.csv'));
+        catch ex,failures{end+1}=recordFailure(ex,[name ' spectra'],outDir);end %#ok<AGROW>
+        try
+            appendCsv(stretchMetrics(EEG,subject),fullfile(outDir,'stretches.csv'));
+        catch ex,failures{end+1}=recordFailure(ex,[name ' stretches'],outDir);end %#ok<AGROW>
         [EEG,population,realized,prevalence]=injectedERP(EEG,subject);
         setBase(EEG); tic;
         transcript=evalc('[~,~,r]=pop_pipecompare(EEG,''measure'',''P3'',''events'',{''11'',''31''},''reference'',''average'',''show'',''off'');');
@@ -110,7 +114,14 @@ for duration=[2 4 8]
     for band={[8 12],[4 7],[10 10.5]}
         f=band{1}; [actual,info]=pipecompare.eval.Measure.bandScores(X,D.fs,f);
         [H,e]=dpss(n,info.NW,info.tapers);
-        [P,hz]=pmtm(reshape(X,n,nt),H,e,n,D.fs,'unity','DropLastTaper',false);
+        if info.tapers==1
+            % pmtm requires >=2 supplied tapers when DropLastTaper=false.
+            % With one taper the matched independent reference is exactly
+            % its windowed periodogram, using MATLAB's PSD normalization.
+            [P,hz]=periodogram(reshape(X,n,nt),H,n,D.fs);
+        else
+            [P,hz]=pmtm(reshape(X,n,nt),H,e,n,D.fs,'unity','DropLastTaper',false);
+        end
         reference=log10(mean(P(hz>=f(1)&hz<=f(2),:),1))';
         discrepancy=max(abs(actual-reference));
         assert(discrepancy<1e-6,'PipeCompare:Validation','Multitaper reference mismatch: %.9g',discrepancy);
@@ -258,6 +269,14 @@ function EEG=loadPublicSet(path)
 % expects doubles; normalize metadata on the in-memory copy only. Keep the
 % original checksum-verified .set/.fdt files untouched and use native loading.
 D=load(path,'-mat');EEG=D.EEG;
+for field={'setname','filename','filepath','history','ref','comments'}
+    if isfield(EEG,field{1}) && (ischar(EEG.(field{1})) || isstring(EEG.(field{1})))
+        EEG.(field{1})=reshape(char(EEG.(field{1})),1,[]);
+    end
+end
+for k=1:numel(EEG.chanlocs)
+    EEG.chanlocs(k).labels=reshape(char(EEG.chanlocs(k).labels),1,[]);
+end
 for field={'srate','nbchan','pnts','trials','xmin','xmax','times'}
     if isfield(EEG,field{1}),EEG.(field{1})=double(EEG.(field{1}));end
 end
@@ -266,6 +285,11 @@ for field={'latency','duration','urevent','epoch'}
         if isfield(EEG.event,field{1}) && isnumeric(EEG.event(k).(field{1}))
             EEG.event(k).(field{1})=double(EEG.event(k).(field{1}));
         end
+    end
+end
+for k=1:numel(EEG.event)
+    if ischar(EEG.event(k).type) || isstring(EEG.event(k).type)
+        EEG.event(k).type=reshape(char(EEG.event(k).type),1,[]);
     end
 end
 [EEG.filepath,base,ext]=fileparts(path);EEG.filename=[base ext];
