@@ -324,7 +324,7 @@ classdef Group
                 y = log(Y(s,p))'; b = prior.pipelineEffects(p)'; one = ones(numel(p),1);
                 offset = (one'*solve(y-b))/(one'*solve(one));
                 fit = b+offset;
-                theta(s,p) = exp(fit+prior.tau2*solve(y-fit));
+                theta(s,p) = exp(fit+prior.tau2*solve(y-fit))';
                 info.assessed(s)=true;
             end
         end

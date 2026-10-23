@@ -9,7 +9,10 @@ meta=struct('commit',getenv('GITHUB_SHA'),'run',getenv('GITHUB_RUN_ID'), ...
     'matlab',version,'eeglab',eeg_getversion,'protocol',protocol,'shard',shard);
 writeJson(fullfile(outDir,'metadata.json'),meta);
 failures={}; S=struct([]); calibration=table();
-files=dir(fullfile(dataDir,'S??.mat'));
+allFiles=dir(fullfile(dataDir,'S*.mat'));
+files=allFiles(~cellfun('isempty',regexp({allFiles.name},'^S\d\d\.mat$','once')));
+expectedBlink=numel(protocol.blink.test_subjects(shard+1:6:end));
+assert(numel(files)==expectedBlink,'PipeCompare:Validation','Expected %d blink records, found %d.',expectedBlink,numel(files));
 for k=1:numel(files)
     try
         D=load(fullfile(files(k).folder,files(k).name));
@@ -17,7 +20,8 @@ for k=1:numel(files)
         appendCsv(T,fullfile(outDir,'blink.csv'));
     catch ex, failures{end+1}=recordFailure(ex,files(k).name,outDir); end %#ok<AGROW>
 end
-files=dir(fullfile(dataDir,'S???R01.mat'));
+files=allFiles(~cellfun('isempty',regexp({allFiles.name},'^S\d\d\dR01\.mat$','once')));
+assert(numel(files)==5,'PipeCompare:Validation','Expected five EEGMMIDB records, found %d.',numel(files));
 for k=1:numel(files)
     name=files(k).name; subject=sscanf(name,'S%dR01.mat');
     fprintf('[open validation] start %s, source participant %d\n',name,subject);
@@ -52,7 +56,7 @@ end
 files=dir(fullfile(dataDir,'erp_core','*.set'));
 for k=1:numel(files)
     try
-        transcript=evalc('EEG=pop_loadset(''filename'',files(k).name,''filepath'',files(k).folder);'); %#ok<NASGU>
+        EEG=loadPublicSet(fullfile(files(k).folder,files(k).name));
         T=realERP(EEG,files(k).name,outDir); appendCsv(T,fullfile(outDir,'real_erp.csv'));
     catch ex, failures{end+1}=recordFailure(ex,files(k).name,outDir); end %#ok<AGROW>
 end
@@ -139,7 +143,8 @@ for duration=[1 5 10 20]
         repaired=pipecompare.run.Steps.interpStretches(E,oracle);
         before=sqrt(mean((corrupted(truth)-clean(truth)).^2));
         after=sqrt(mean((double(repaired.data(truth))-clean(truth)).^2));
-        boundary=max(abs(diff(double(repaired.data(bad,[interval(1)-1 interval(1) interval(end) interval(end)+1])),1,2)),[],'all');
+        endpoints=double(repaired.data(bad,[interval(1)-1 interval(1) interval(end) interval(end)+1]));
+        jumps=diff(endpoints,1,2);boundary=max(abs(jumps(:,[1 3])),[],'all');
         unchanged=max(abs(double(repaired.data(~truth))-corrupted(~truth)));
         assert(unchanged==0,'PipeCompare:Validation','Interpolation changed samples outside its declared intervals.');
         % Test additivity on the actual montage/operator, including the
@@ -149,10 +154,12 @@ for duration=[1 5 10 20]
         replay=max(abs(double(repaired.data)-double(A.data)-double(B.data)),[],'all');
         assert(replay<1e-8,'PipeCompare:Validation','Interpolation operator is not replayable.');
         erpBias=mean(double(repaired.data(pz,interval))-clean(pz,interval));
-        rows(end+1,:)={subject,duration,adjacent,check.assessed,check.reason,recall,fp,before,after,boundary,erpBias,replay}; %#ok<AGROW>
+        spectralChange=pipecompare.eval.Measure.bandScores(double(repaired.data(pz,interval)),EEG.srate,[8 12])- ...
+            pipecompare.eval.Measure.bandScores(clean(pz,interval),EEG.srate,[8 12]);
+        rows(end+1,:)={subject,duration,adjacent,check.assessed,check.reason,recall,fp,before,after,boundary,erpBias,spectralChange,replay}; %#ok<AGROW>
     end
 end
-T=cell2table(rows,'VariableNames',{'subject','faultSeconds','adjacent','assessed','reason','sampleRecall','falsePositiveShare','corruptedRMSE','oracleRepairRMSE','boundaryJumpUv','meanBiasUv','replayMaxError'});
+T=cell2table(rows,'VariableNames',{'subject','faultSeconds','adjacent','assessed','reason','sampleRecall','falsePositiveShare','corruptedRMSE','oracleRepairRMSE','boundaryJumpUv','meanBiasUv','alphaChangeLog10PSD','replayMaxError'});
 end
 
 function [EEG,population,realized,prevalence]=injectedERP(EEG,subject)
@@ -244,6 +251,25 @@ end
 
 function setBase(EEG)
 assignin('base','EEG',EEG);assignin('base','ALLEEG',EEG);assignin('base','CURRENTSET',1);
+end
+
+function EEG=loadPublicSet(path)
+% This distribution stores integer scalar metadata. EEGLAB's arithmetic
+% expects doubles; normalize metadata on the in-memory copy only. Keep the
+% original checksum-verified .set/.fdt files untouched and use native loading.
+D=load(path,'-mat');EEG=D.EEG;
+for field={'srate','nbchan','pnts','trials','xmin','xmax','times'}
+    if isfield(EEG,field{1}),EEG.(field{1})=double(EEG.(field{1}));end
+end
+for field={'latency','duration','urevent','epoch'}
+    for k=1:numel(EEG.event)
+        if isfield(EEG.event,field{1}) && isnumeric(EEG.event(k).(field{1}))
+            EEG.event(k).(field{1})=double(EEG.event(k).(field{1}));
+        end
+    end
+end
+[EEG.filepath,base,ext]=fileparts(path);EEG.filename=[base ext];
+transcript=evalc('EEG=eeg_checkset(EEG,''loaddata'');'); %#ok<NASGU>
 end
 
 function appendCsv(T,path)

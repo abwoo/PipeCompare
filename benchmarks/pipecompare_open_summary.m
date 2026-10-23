@@ -28,9 +28,9 @@ result=struct('commit',getenv('GITHUB_SHA'),'recordsWithScores',numel(S), ...
 if ~isempty(C)
     writetable(C,fullfile(outDir,'calibration.csv'));
     result.all=pipecompare.eval.Calibration.summarize(C);
-    result.selected=pipecompare.eval.Calibration.summarize(C(C.selected,:));
+    result.selected=pipecompare.eval.Calibration.summarize(C(C.selected==1,:));
     fprintf('%s\n',pipecompare.eval.Calibration.describe(C,'all candidates'));
-    fprintf('%s\n',pipecompare.eval.Calibration.describe(C(C.selected,:),'selected candidates'));
+    fprintf('%s\n',pipecompare.eval.Calibration.describe(C(C.selected==1,:),'selected candidates'));
     % Raw errors are separate accuracy targets, not a relabeling of the
     % gain-corrected reported uncertainty as a calibrated raw-data SE.
     R=C;R.actualError=C.rawError;result.rawAccuracy=pipecompare.eval.Calibration.summarize(R);
@@ -82,10 +82,10 @@ for j=1:n
     [present,loc]=ismember(keys,S(j).keys);
     valid=false(1,p);valid(present)=strcmp(S(j).table.status(loc(present)),'feasible');
     C{j}=nan(p);if ~any(valid),continue;end
-    Y(j,valid)=S(j).table.objective(loc(valid));
+    Y(j,valid)=S(j).table.objective(loc(valid))';
     options=S(j).ranking.options;
     options.seed=pipecompare.Group.recordingSeeds({S(j).name},options.seed);
     boot=pipecompare.eval.Rank.bootstrap(S(j).cands(loc(valid)),S(j).ref,options,{S(j).ranking.objective});
-    C{j}(valid,valid)=cov(boot{1}');V(j,valid)=diag(C{j}(valid,valid));
+    C{j}(valid,valid)=cov(boot{1}');V(j,valid)=diag(C{j}(valid,valid))';
 end
 end

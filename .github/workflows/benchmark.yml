@@ -13,7 +13,7 @@ on:
       suite:
         description: 'Public independent EEG validation or known-truth simulations'
         type: choice
-        options: [public, synthetic]
+        options: [public, synthetic, summarize-synthetic]
         default: public
       recordings:
         description: 'number of simulated recordings'
@@ -21,10 +21,17 @@ on:
       first_seed:
         description: 'first seed (use a fresh range for validation)'
         default: '20001'
+      source_run:
+        description: 'Completed simulation run to summarize without repeating ICA (summary mode only)'
+        required: false
+
+permissions:
+  contents: read
+  actions: read
 
 jobs:
   public:
-    if: inputs.suite != 'synthetic'
+    if: inputs.suite == 'public' || inputs.suite == ''
     uses: ./.github/workflows/open-validation.yml
 
   benchmark:
@@ -82,16 +89,20 @@ jobs:
           path: PipeCompare/bench_out
 
   synthetic-summary:
-    if: always() && inputs.suite == 'synthetic'
+    if: always() && (inputs.suite == 'synthetic' || inputs.suite == 'summarize-synthetic')
     needs: benchmark
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      PIPECOMPARE_BENCH_N: ${{ inputs.recordings || '30' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           pattern: benchmark-*
           path: synthetic_results
+          run-id: ${{ inputs.source_run || github.run_id }}
+          github-token: ${{ github.token }}
       - uses: matlab-actions/setup-matlab@v2
         with:
           release: R2026a
@@ -99,7 +110,7 @@ jobs:
         with:
           command: |
             addpath(pwd); addpath(fullfile(pwd,'benchmarks'));
-            pipecompare_synthetic_summary(fullfile(pwd,'synthetic_results'),fullfile(pwd,'synthetic_summary'),str2double('${{ inputs.recordings }}'));
+            pipecompare_synthetic_summary(fullfile(pwd,'synthetic_results'),fullfile(pwd,'synthetic_summary'),str2double(getenv('PIPECOMPARE_BENCH_N')));
       - uses: actions/upload-artifact@v4
         if: always()
         with:
