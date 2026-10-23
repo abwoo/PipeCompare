@@ -99,6 +99,48 @@ for band = {[0 0.1],[127.9 128]}
 end
 end
 
+function testFrozenGroupPriorDoesNotPoolNewParticipants(tc)
+rs=RandStream('mt19937ar','Seed',6701);
+Y=exp(0.2*randn(rs,12,3)+[0 0.1 -0.1]); V=(0.1*Y).^2;
+[~,~,~,prior]=pipecompare.Group.twoLevel(Y,V);
+x=[1.2 0.9 1.1]; v=(0.08*x).^2;
+[a,info]=pipecompare.Group.applyPrior(prior,x,v);
+b=pipecompare.Group.applyPrior(prior,[x;1000 1 1e-3],[v;ones(1,3)]);
+verifyEqual(tc,b(1,:),a,'AbsTol',1e-12);
+verifyFalse(tc,info.priorRefitted); verifyTrue(tc,info.assessed);
+verifyFalse(tc,info.fullyHeldOut);
+scaled=pipecompare.Group.applyPrior(prior,10*x,100*v);
+verifyEqual(tc,scaled,10*a,'AbsTol',1e-10);
+end
+
+function testFrozenGroupPriorPreservesExactPairedContrasts(tc)
+Y=[1 1.1;1.3 1.2;0.9 1.15;1.2 1.1]; V=(0.2*Y).^2;
+C=arrayfun(@(s) 0.2^2*(Y(s,:)'*Y(s,:)),(1:4)','UniformOutput',false);
+[~,~,~,prior]=pipecompare.Group.twoLevel(Y,V,C);
+x=[1.05 1.02]; v=(0.2*x).^2;
+[a,info]=pipecompare.Group.applyPrior(prior,x,v,{0.2^2*(x'*x)});
+verifyTrue(tc,info.assessed);
+verifyEqual(tc,a(2)/a(1),x(2)/x(1),'AbsTol',1e-9);
+end
+
+function testFrozenGroupPriorRejectsDisconnectedScales(tc)
+Y=nan(4);Y(1:2,1:2)=[1 2;2 1];Y(3:4,3:4)=[1 2;2 1];
+[~,~,~,prior]=pipecompare.Group.twoLevel(Y,0.01*ones(4));
+x=[1 2 3 4];[a,info]=pipecompare.Group.applyPrior(prior,x,0.01*ones(1,4));
+verifyEqual(tc,a,x);verifyFalse(tc,info.assessed);verifyNotEmpty(tc,info.reason{1});
+end
+
+function testMultitaperRejectsAliasedBand(tc)
+verifyError(tc,@()pipecompare.eval.Measure.bandScores(ones(1,256),256,[120 140]),'PipeCompare:Measure');
+verifyError(tc,@()pipecompare.eval.Measure.bandScores(ones(1,256),256,[-1 10]),'PipeCompare:Measure');
+end
+
+function testBadStretchMissingSamplesAreUnassessed(tc)
+rs=RandStream('mt19937ar','Seed',6702);X=randn(rs,8,3000);X(1,100)=NaN;
+[st,check]=pipecompare.run.Steps.badStretches(X,50);
+verifyEmpty(tc,st);verifyFalse(tc,check.assessed);verifyEqual(tc,check.reason,'nonfinite input samples');
+end
+
 function testHmmKeepsFiniteEventsWhenASampleIsMissing(tc)
 rs=RandStream('mt19937ar','Seed',317); fs=250; t=(0:30*fs-1)/fs;
 X=0.2*randn(rs,size(t));

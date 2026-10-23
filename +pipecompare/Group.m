@@ -227,7 +227,10 @@ classdef Group
             model = struct('scope','observed-recordings','fullyHeldOut',false, ...
                 'pairedCovariance',paired,'cells',m,'components',0,'df',0,'varianceAssessed',false);
             if m == 0, return; end
-            [D, components] = groupDesign(record,pipeline,nR,nP);
+            [D, components, columns, component] = groupDesign(record,pipeline,nR,nP);
+            model.pipelineEffects = nan(1,nP);
+            model.pipelineComponents = component(nR+(1:nP));
+            model.tau2 = NaN;
             model.components = components; model.df = m-size(D,2);
             model.varianceAssessed = model.df > 0;
             y = log(Y(ok)); residual = y-D*(D\y);
@@ -267,7 +270,11 @@ classdef Group
                 cols = find(any(D(rows,:),1));
                 Z(rows,cols) = L\full(D(rows,cols)); z(rows) = L\y(rows);
             end
-            fit = D*(Z\z); estimate = fit; kept = 0;
+            beta = Z\z;
+            effects = zeros(nR+nP,1); effects(columns) = beta;
+            model.pipelineEffects(unique(pipeline)) = effects(nR+unique(pipeline));
+            model.tau2 = tau2;
+            fit = D*beta; estimate = fit; kept = 0;
             for s = unique(record)'
                 rows = ix{s}; L = cholC{s};
                 gain = tau2*(L'\(L\eye(numel(rows))));
@@ -275,6 +282,51 @@ classdef Group
                 kept = kept+trace(gain);
             end
             theta(ok) = exp(estimate); share = kept/m;
+        end
+
+        function [theta, info] = applyPrior(prior, Y, V, covariance)
+            % Apply a prior fitted by twoLevel on OTHER participants. The
+            % pipeline effects and interaction variance are frozen; only a
+            % new recording's nuisance scale and posterior are estimated.
+            % This permits independent-recording adaptation, not inference
+            % on unseen trials. Unseen/disconnected candidates are not
+            % compared using arbitrary gauges and retain their raw scores.
+            assert(isequal(size(Y),size(V)), 'PipeCompare:Group', 'Objectives and variances must have the same size.');
+            [nR,nP] = size(Y); theta = Y;
+            assert(isfield(prior,'pipelineEffects') && numel(prior.pipelineEffects)==nP, ...
+                'PipeCompare:Group', 'Prior pipeline order must match the new observations.');
+            paired = nargin >= 4;
+            if paired, assert(iscell(covariance) && numel(covariance)==nR, 'PipeCompare:Group', 'Supply one covariance matrix per recording.'); end
+            info = struct('scope','new-recording-with-frozen-prior','fullyHeldOut',false, ...
+                'priorRefitted',false,'assessed',false(nR,1),'reason',{repmat({''},nR,1)});
+            for s = 1:nR
+                p = find(isfinite(Y(s,:)) & Y(s,:)>0 & isfinite(V(s,:)) & V(s,:)>=0);
+                if ~prior.varianceAssessed || ~isfinite(prior.tau2)
+                    info.reason{s}='training interaction variance unassessed'; continue;
+                end
+                if isempty(p) || any(~isfinite(prior.pipelineEffects(p)))
+                    info.reason{s}='candidate absent from training'; continue;
+                end
+                if numel(unique(prior.pipelineComponents(p)))~=1
+                    info.reason{s}='training candidates have disconnected scales'; continue;
+                end
+                raw = diag(V(s,p));
+                if paired
+                    assert(isequal(size(covariance{s}),[nP nP]), 'PipeCompare:Group', 'Covariance matrix has the wrong size.');
+                    raw = covariance{s}(p,p);
+                    assert(all(isfinite(raw(:))) && max(abs(diag(raw)-V(s,p)'))<=1e-10*max([V(s,p),realmin]), ...
+                        'PipeCompare:Group', 'Covariance diagonal must match V and be finite.');
+                end
+                C = groupCovariance(raw./(Y(s,p)'*Y(s,p)))+prior.tau2*eye(numel(p));
+                [L,failed] = chol(C,'lower');
+                if failed, L=chol(C+max(eps,1e-12*max(diag(C)))*eye(numel(p)),'lower'); end
+                solve = @(x) L'\(L\x);
+                y = log(Y(s,p))'; b = prior.pipelineEffects(p)'; one = ones(numel(p),1);
+                offset = (one'*solve(y-b))/(one'*solve(one));
+                fit = b+offset;
+                theta(s,p) = exp(fit+prior.tau2*solve(y-fit));
+                info.assessed(s)=true;
+            end
         end
 
         function print(G)
@@ -329,7 +381,7 @@ classdef Group
     end
 end
 
-function [D, components] = groupDesign(record,pipeline,nR,nP)
+function [D, components, active, component] = groupDesign(record,pipeline,nR,nP)
 % One gauge per connected component; missing candidate patterns can split
 % the recording/pipeline graph, so rank is not always nR+nP-1.
 m = numel(record); rows = (1:m)';

@@ -296,6 +296,9 @@ classdef Measure
             % density averaged over the tapers of Measure.tapers, the band's
             % bins and the ROI channels).
             [~, n, nt] = size(X);
+            assert(isscalar(fs) && isfinite(fs) && fs>0 && numel(band)==2 && all(isfinite(band)) && ...
+                band(1)>=0 && band(1)<band(2) && band(2)<=fs/2, ...
+                'PipeCompare:Measure', 'A one-sided PSD band must lie between zero and Nyquist.');
             [H, resolution] = pipecompare.eval.Measure.tapers(n, fs, band);
             f = (0:n-1) * fs / n;
             sel = f >= band(1) & f <= band(2);

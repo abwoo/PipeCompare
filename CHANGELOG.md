@@ -17,6 +17,9 @@ release has a git tag `vX.Y.Z`.
 - Numerical regressions cover weight normalization, physical bootstrap replication, paired
   group contrasts, disconnected candidate patterns, missing HMM inputs and spectral endpoints.
 - From PR #50, current CI is pinned to MATLAB R2026a and EEGLAB 2026.0.0; numerical and GUI suites are retained without the legacy compatibility matrix.
+- Add a frozen-prior group API for new recordings, without refitting training effects or interaction variance on them; disconnected/unseen candidates are explicitly unassessed.
+- Mark bad-stretch detection unassessed on nonfinite inputs, validate interpolation intervals, and reject aliased one-sided PSD bands.
+- Add checksum-pinned public EEG evaluation in GitHub Actions, with annotated blink detection, channel faults, spectral references, complete real-background signal-injection refits and participant-held-out group transfer.
 
 - CI jobs allow two hours for the full GUI/ICA suite, which can exceed one hour on hosted
   runners. Virtual displays reuse installed Xvfb and bound package-download and startup waits.

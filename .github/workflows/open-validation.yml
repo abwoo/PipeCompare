@@ -1,0 +1,95 @@
+name: independent public EEG validation
+
+# Scientific evaluation is deliberately separate from compatibility testing.
+# Every shard uses the single supported CI pair requested from PR #50 onward.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Public EEG shard ${{ matrix.shard }} (R2026a / EEGLAB 2026)
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5]
+    steps:
+      - name: Checkout frozen PipeCompare revision
+        uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+
+      - name: Prepare Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pinned data readers
+        run: python -m pip install numpy==2.2.6 scipy==1.15.3
+
+      - name: Download and checksum public data
+        timeout-minutes: 20
+        run: python PipeCompare/benchmarks/fetch_open_data.py --shard ${{ matrix.shard }} --out public_data
+
+      - name: Checkout EEGLAB 2026.0.0
+        run: git clone --depth 1 --branch 2026.0.0 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
+
+      - name: Start a virtual display
+        timeout-minutes: 10
+        run: bash PipeCompare/.github/scripts/start-display.sh
+
+      - name: Set up MATLAB R2026a
+        uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+          products: Signal_Processing_Toolbox
+
+      - name: Run independent measurements and complete per-recording refits
+        timeout-minutes: 270
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab')); eeglab nogui;
+            addpath(fullfile(pwd,'PipeCompare')); addpath(fullfile(pwd,'PipeCompare','benchmarks'));
+            pipecompare_open_validation(fullfile(pwd,'public_data'),fullfile(pwd,'results'),${{ matrix.shard }});
+
+      - name: Keep metrics and provenance, including unsuccessful evaluations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-validation-${{ matrix.shard }}
+          path: results
+          retention-days: 90
+
+  summarize:
+    name: Record-level calibration and participant-held-out group validation
+    if: always()
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: public-validation-*
+          path: public_results
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+      - name: Summarize all records and leave whole participants out
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(pwd); addpath(fullfile(pwd,'benchmarks'));
+            pipecompare_open_summary(fullfile(pwd,'public_results'),fullfile(pwd,'validation_summary'));
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: public-validation-summary
+          path: validation_summary
+          retention-days: 90

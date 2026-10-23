@@ -403,6 +403,7 @@ classdef Steps
             st = struct('row', {}, 'samples', {});
             [nc, n] = size(X); w = round(srate); nw = floor(n / w);
             check = struct('assessed',false,'reason','','windows',nw,'channels',nc);
+            if any(~isfinite(X(:))), check.reason='nonfinite input samples'; return; end
             if nc < 8, check.reason='fewer than 8 eligible channels'; return; end
             if nw < 30, check.reason='fewer than 30 one-second windows'; return; end
             Xs = double(X(:, 1:max(1, ceil(n / 2e5)):end)); Xs = Xs - median(Xs, 2);
@@ -455,6 +456,9 @@ classdef Steps
             if isempty(st), return; end
             [~, ch] = ismember(lower({st.channel}), lower({EEG.chanlocs.labels}));
             S = reshape([st.samples], 2, [])';
+            assert(all(ch>0) && all(isfinite(S(:))) && all(S(:)==round(S(:))) && ...
+                all(S(:,1)>=1 & S(:,2)<=EEG.pnts & S(:,1)<=S(:,2)), ...
+                'PipeCompare:Interpolate', 'Stretch labels and integer sample ranges must belong to this recording.');
             edges = unique([S(:, 1); S(:, 2) + 1; 1; EEG.pnts + 1])';
             done = containers.Map('KeyType', 'char', 'ValueType', 'any');
             for k = 1:numel(edges) - 1
