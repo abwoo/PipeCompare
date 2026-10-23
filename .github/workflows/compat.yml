@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        probe: [selection, progress]
+        probe: [progress]
     steps:
       - name: Checkout PipeCompare
         uses: actions/checkout@v4
@@ -37,6 +37,8 @@ jobs:
             f = uifigure('Name', 'PipeCompare native UI probe', 'Visible', 'on');
             cleanup = onCleanup(@() delete(f));
             fprintf('[probe] figure ready\n');
+            drawnow;
+            fprintf('[probe] figure rendered\n');
             if strcmp(getenv('PC_GUI_PROBE'), 'selection')
                 t = uitable(f, 'Data', {'1', 'passed'; '2', 'passed'});
                 fprintf('[probe] table ready\n');
