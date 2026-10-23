@@ -9,6 +9,8 @@ release has a git tag `vX.Y.Z`.
   runners. Virtual displays reuse installed Xvfb and bound package-download and startup waits.
   Results windows populate controls before enabling selection callbacks or becoming visible;
   legacy MATLAB gets an early results-window check, and logs name each test as it starts.
+- The initial result-window steps use the known recommendation without reading selection
+  from a web table that has not been shown yet; CI logs each control-initialization stage.
 - CI follow-up: the results-window regression checks the conditional-validation wording.
   Scripted channel edits now retain their changes and replayable history with EEGLAB 2022.0,
   which returns no command string. Test summaries distinguish skips from failures. New PR

@@ -31,6 +31,7 @@ classdef SimpleResults < handle
         function obj = SimpleResults(result, parent, host)
             obj.Result = result;
             ownWindow = nargin < 2 || isempty(parent);
+            traceUi('create result window');
             if ownWindow
                 obj.Fig = uifigure('Name', 'Pipeline comparison', 'Visible', 'off', ...
                     'Position', pipecompare.utils.onScreen([220 100 900 600]));
@@ -42,14 +43,21 @@ classdef SimpleResults < handle
             if nargin > 2, obj.Host = host; end
             % the recommendation has a fixed height and scrolls: with all its
             % notes it would otherwise squeeze the table of pipelines
+            traceUi('create grid');
             g = uigridlayout(parent, [5 1]); g.RowHeight = {100, '1x', 22, 150, 30};
             obj.Root = pipecompare.utils.ternary(parent == obj.Fig, obj.Fig, g);
+            traceUi('create headline');
             obj.Headline = uitextarea(g, 'Value', obj.headline(), 'Editable', 'off', 'FontWeight', 'bold');
+            traceUi('create pipeline table');
             obj.Table = uitable(g, 'RowName', {});
             obj.showRows();
+            traceUi('create steps');
             uilabel(g, 'Text', obj.shared(), 'FontColor', [0.3 0.3 0.3]);
             obj.Steps = uitextarea(g, 'Editable', 'off');
-            obj.showSteps();
+            % The initial row is known; do not query a web control while
+            % building a hidden window.
+            obj.showSteps(result.ranking.recommended);
+            traceUi('create action controls');
             b = uigridlayout(g, [1 4]); b.Padding = [0 0 0 0]; b.ColumnWidth = {'1x', 150, 140, 120};
             uilabel(b, 'Text', 'Select a row to see its steps or to use it instead.', 'FontColor', [0.4 0.4 0.4]);
             obj.AllBox = uicheckbox(b, 'Text', 'Show all pipelines', 'ValueChangedFcn', @(~, ~) obj.showRows());
@@ -58,7 +66,9 @@ classdef SimpleResults < handle
             % Populate the table before enabling events: the callback needs
             % the Steps control, and older web-based UIs may dispatch early.
             obj.Table.SelectionChangedFcn = @(~, ~) obj.showSteps();
+            traceUi('show result window');
             if ownWindow, obj.Fig.Visible = 'on'; end
+            traceUi('result window ready');
         end
 
         function t = headline(obj)
@@ -135,9 +145,9 @@ classdef SimpleResults < handle
             if ~isempty(wt), t = sprintf('%s %s', t, wt); end
         end
 
-        function showSteps(obj)
+        function showSteps(obj, k)
             % the steps of the selected pipeline (else the recommended one)
-            k = obj.chosen();
+            if nargin < 2, k = obj.chosen(); end
             lines = pipecompare.simple.Presets.stepsText(obj.Result, k);
             if isempty(lines), obj.Steps.Value = {''}; return; end
             v = [{sprintf('Pipeline %d, step by step:', k)} lines]; obj.Steps.Value = v(:);
@@ -148,7 +158,13 @@ classdef SimpleResults < handle
             [data, cols] = obj.rows(showAll);
             w = {60, 70, 120, 80, 90, 'auto'};
             if showAll, w = [w {'auto'}]; end
-            obj.Table.Data = data; obj.Table.ColumnName = cols; obj.Table.ColumnWidth = w;
+            traceUi('set pipeline data');
+            obj.Table.Data = data;
+            traceUi('set pipeline column names');
+            obj.Table.ColumnName = cols;
+            traceUi('set pipeline column widths');
+            obj.Table.ColumnWidth = w;
+            traceUi('pipeline table ready');
         end
 
         function [data, cols] = rows(obj, showAll)
@@ -292,6 +308,13 @@ classdef SimpleResults < handle
             end
         end
     end
+end
+
+function traceUi(stage)
+% Only CI needs control-level startup diagnostics; no dataset values are logged.
+if strcmp(getenv('GITHUB_ACTIONS'), 'true')
+    fprintf('[PipeCompare CI] SimpleResults: %s\n', stage);
+end
 end
 
 function t = statusText(s)
