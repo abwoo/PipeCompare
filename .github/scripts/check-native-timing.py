@@ -9,7 +9,7 @@ with (root/'recordings.csv').open(encoding='utf-8-sig',newline='') as stream:
 for row in rows:
     subject=int(float(row['subject']))
     transcript=(root/f'S{subject:03d}R01.mat.log').read_text(errors='replace')
-    values=[float(v) for v in re.findall(r'Finished in ([0-9.]+) s\\.',transcript)]
+    values=[float(v) for v in re.findall(r'Finished in ([0-9.]+) s',transcript)]
     reported=float(row['seconds'])
     lower=max(values) if values else None
     result.append(dict(subject=subject,reportedFitSeconds=reported,engineElapsedReports=values,
