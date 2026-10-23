@@ -1,8 +1,14 @@
-# Manual check: native EEGLAB dialogs from the panel
+# Manual check: native dialogs and progress windows
 
 The automated tests cover what the panel does with a dialog's result (the command EEGLAB returns,
 the copy it ran on). They cannot click inside an EEGLAB dialog. This check takes about 10 minutes.
 Run it when no other process is driving MATLAB.
+
+On R2022b/R2023a under Xvfb, CI adds `tests/shims` to the path for alert and progress
+dialog stand-ins. It still runs the real selection, pipeline replay, adoption and script
+export. It does not verify native dialog rendering or interaction on those releases.
+For this desktop check, do not add `tests/shims` (remove it from the path if already added).
+Check the native progress windows on R2022b/R2023a as well as the current MATLAB release.
 
 ```matlab
 cd /path/to/PipeCompare; addpath(pwd, fullfile(pwd, 'tests'));
@@ -36,7 +42,7 @@ error. The History list must keep 1 row unless the step says *Apply now*.
 | 18 | Start *Run search* on a plan that takes a while, then close the panel window while it runs. | No error in the Command Window when the search ends; the result is in `pipecompare_result`. Same for closing during *Inspect selected* and *Adopt selected*. |
 | 19 | EEGLAB > Tools > PipeCompare > *Compare pipelines…* | Data `Continuous data with 2 event types: ERP measures or band power.`; Measure `(choose)` with ERP components, *your own window and electrodes*, bands and *your own band and electrodes*; no event selected; Compare: all steps ticked (bad channels, ICA, high-pass, low-pass, epoch rejection), the reference *as recorded*, *Epochs and baseline* ticked and greyed; *Run* greyed. |
 | 20 | Select `11` and `31`, Measure `P3`, Compare *Filters only*; *Run* | Count `12 pipelines will be compared`; a progress window counts `n of 12 pipelines done, about … left` (from the third); then a window `Pipeline comparison` whose first line starts `Use pipeline n: high-pass … Hz, low-pass … Hz`, with the recommendation first (`*`); ALLCOM gains `EEG = pop_pipecompare(EEG, ...)`. |
-| 21 | In the result window: *Save script…*, then *Use this pipeline*, then tick *Show all pipelines* | A `.m` file is written whose header says it runs on any dataset (`pipecompare.PipeCompare.apply`); while building, a progress window says the pipeline is built from the start; then `Pipeline n is now the current EEGLAB dataset. It is not saved yet…` and a new EEGLAB dataset appears; the table lists every pipeline with a *why excluded* column. |
+| 21 | In the result window: *Save script…*, then *Use this pipeline*, then tick *Show all pipelines* | A `.m` file is written whose header says it runs on any dataset (`pipecompare.PipeCompare.apply`); while building, a progress window says the pipeline is built from the start and closes when adoption finishes; then `Pipeline n is now the current EEGLAB dataset. It is not saved yet…` and a new EEGLAB dataset appears; the table lists every pipeline with a *why excluded* column. |
 | 22 | *Compare pipelines…* again, Compare *Standard*; *Run*, then *Stop* after a few pipelines | Count `12 pipelines will be compared (1 ICA decomposition)`; after *Stop* the result window starts `Stopped after n of 12 pipelines` and lists the finished ones; pipelines not run show `not run`. |
 | 23 | *Compare pipelines…* again, Compare *Standard*; then *Advanced…* | The panel opens with conditions, epoch, baseline, the P3 component and the standard plan (bad channels, ICA, filters, …) filled in. |
 | 24 | On a dataset where one event type has fewer than 10 events: select only that type, Measure `P3`, Compare *Filters only*; then select a second type; then tick *Score the selected event types as one condition* | First `… has n events; each condition needs at least 10.` with *Run* greyed; with two types the message suggests the tick box; after ticking, *Run* is on. |
@@ -45,4 +51,6 @@ error. The History list must keep 1 row unless the step says *Apply now*.
 | 27 | After row 22, *Advanced…* and look at the `badchannels` and `reject_threshold` steps | `badchannels` shows `detectHighpass` 1 and `exclude` with the EOG channels (e.g. `VEOG`, `HEOG`); `reject_threshold` shows the same `exclude`. |
 | 28 | *Compare pipelines…*, Measure `P3`, events `11` and `31`; untick *ICA*; then *Filters only*; then Reference *average*; then *as recorded* | `12 pipelines will be compared` without ICA; after *Filters only* `12 pipelines` with only the filters ticked; with *average* the bad-channel box is ticked and greyed (*always before an average reference*); with *as recorded* it is unticked again. On an epoched dataset the two filter boxes are greyed with *the data are already epoched*. |
 
+Also check *Inspect selected* > plot and *6. Group* > run a comparison: their native
+progress windows must appear without blocking, and close on completion or an error.
 Report any row whose result differs from the expected column.

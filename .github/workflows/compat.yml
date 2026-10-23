@@ -96,7 +96,8 @@ jobs:
           products: Signal_Processing_Toolbox
 
       - name: Check the legacy MATLAB results window
-        # These releases stopped producing output while constructing this window.
+        # Native uialert/uiprogressdlg block on legacy Xvfb; keep the real
+        # selection/adoption/export regression and use CI-only dialog stand-ins.
         if: matrix.matlab == 'R2022b' || matrix.matlab == 'R2023a'
         timeout-minutes: 10
         uses: matlab-actions/run-command@v2
@@ -105,6 +106,10 @@ jobs:
             addpath(fullfile(pwd, 'eeglab')); eeglab nogui;
             cd PipeCompare; addpath(pwd); addpath(fullfile(pwd, 'tests'));
             addpath(fullfile(pwd, 'tests', 'shims'));
+            assert(contains(which('uiprogressdlg'), [filesep 'tests' filesep 'shims' filesep]));
+            f = uifigure('Visible', 'off');
+            d = uiprogressdlg(f, 'Title', 'Lifecycle', 'Message', 'Check close', 'Indeterminate', 'on');
+            assert(isvalid(d)); close(d); assert(~isvalid(d)); delete(f);
             s = matlab.unittest.TestSuite.fromFile(fullfile(pwd, 'tests', 'test_simple.m'));
             s = s(endsWith({s.Name}, '/testResultsWindow'));
             assert(numel(s) == 1, 'PipeCompare:CI', 'Results-window test was not found');
@@ -119,7 +124,7 @@ jobs:
           command: |
             disp(version); addpath(fullfile(pwd, 'eeglab')); eeglab nogui;
             cd PipeCompare; addpath(pwd); addpath(fullfile(pwd, 'tests'));
-            % R2022b and R2023a: MATLAB's uialert never returns on this virtual display
+            % Native alert/progress dialogs block on these releases under Xvfb.
             if any(strcmp(version('-release'), {'2022b', '2023a'})), addpath(fullfile(pwd, 'tests', 'shims')); end
             r = run_all({'test_history', 'test_plan', 'test_panel_text', 'test_statistics', 'test_methodology', 'test_invariants', ...
                          'test_simple', 'test_main', 'test_eeglab', 'test_signal', 'test_engine'});
