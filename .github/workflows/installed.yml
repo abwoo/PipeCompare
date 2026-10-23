@@ -29,16 +29,23 @@ jobs:
         include:
           - { matlab: R2026a, eeglab: '2026.0.0' }
     steps:
+      - name: Checkout CI helpers
+        uses: actions/checkout@v4
+        with:
+          path: PipeCompare_CI
+          sparse-checkout: .github/scripts
+
+      - name: Bound MATLAB dependency downloads
+        if: runner.os == 'Linux'
+        run: bash PipeCompare_CI/.github/scripts/prepare-matlab.sh
+
       - name: Checkout EEGLAB ${{ matrix.eeglab }}
         run: git clone --depth 1 --branch ${{ matrix.eeglab }} --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
 
       - name: Start a virtual display
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update -q
-          sudo apt-get install -y -q xvfb
-          Xvfb :99 -screen 0 1920x1080x24 &
-          echo "DISPLAY=:99" >> "$GITHUB_ENV"
+        timeout-minutes: 10
+        run: bash PipeCompare_CI/.github/scripts/start-display.sh
 
       - name: Set up MATLAB
         uses: matlab-actions/setup-matlab@v2

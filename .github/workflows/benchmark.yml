@@ -3,11 +3,12 @@ name: benchmark
 # The ground-truth benchmark (benchmarks/pipecompare_benchmark.m): simulated
 # recordings with a known P3, measured by the pipeline PipeCompare
 # recommends and by common fixed pipelines. Long (an ICA per pipeline and
-# recording, hours for 8 recordings), so it runs by hand only (Actions >
-# benchmark > Run workflow). The results are written after every recording
+# recording, hours for 8 recordings). Manual runs and marked PR commits
+# request scientific evaluation. Results are written after every recording
 # and kept even when the run stops early.
 
 on:
+  pull_request:
   workflow_dispatch:
     inputs:
       suite:
@@ -30,8 +31,39 @@ permissions:
   actions: read
 
 jobs:
+  request:
+    name: Check whether a full public validation was requested
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      run_public: ${{ steps.request.outputs.run_public }}
+    steps:
+      - id: request
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.setOutput('run_public','false');
+            if (context.eventName!=='pull_request') return;
+            const sha=context.payload.pull_request.head.sha;
+            const commit=await github.rest.repos.getCommit({...context.repo,ref:sha});
+            if (!commit.data.commit.message.includes('[public-validation]')) return;
+            for (let n=0;n<75;n++) {
+              const runs=await github.rest.actions.listWorkflowRuns({
+                ...context.repo,workflow_id:'matlab-tests.yml',head_sha:sha,event:'pull_request',per_page:10
+              });
+              const run=runs.data.workflow_runs.find(r=>r.head_sha===sha);
+              if (run&&run.status==='completed') {
+                if (run.conclusion!=='success') throw new Error('Fast numerical/checkpoint tests did not pass');
+                core.setOutput('run_public','true');return;
+              }
+              if (n%6===0) core.info('Waiting for the fast numerical/checkpoint tests');
+              await new Promise(resolve=>setTimeout(resolve,20000));
+            }
+            throw new Error('Fast numerical/checkpoint tests did not finish in time');
+
   public:
-    if: inputs.suite == 'public' || inputs.suite == ''
+    needs: request
+    if: (github.event_name == 'workflow_dispatch' && (inputs.suite == 'public' || inputs.suite == '')) || needs.request.outputs.run_public == 'true'
     uses: ./.github/workflows/open-validation.yml
 
   benchmark:
@@ -57,11 +89,13 @@ jobs:
       - name: Checkout EEGLAB
         run: git clone --depth 1 --branch 2026.0.0 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
 
+      - name: Bound MATLAB dependency downloads
+        if: runner.os == 'Linux'
+        run: bash PipeCompare/.github/scripts/prepare-matlab.sh
+
       - name: Start a virtual display
-        run: |
-          sudo apt-get update -q
-          sudo apt-get install -y -q xvfb
-          Xvfb :99 -screen 0 1920x1080x24 &
+        timeout-minutes: 10
+        run: bash PipeCompare/.github/scripts/start-display.sh
 
       - name: Set up MATLAB
         uses: matlab-actions/setup-matlab@v2
@@ -103,6 +137,10 @@ jobs:
           path: synthetic_results
           run-id: ${{ inputs.source_run || github.run_id }}
           github-token: ${{ github.token }}
+      - name: Bound MATLAB dependency downloads
+        if: runner.os == 'Linux'
+        run: bash ./.github/scripts/prepare-matlab.sh
+
       - uses: matlab-actions/setup-matlab@v2
         with:
           release: R2026a

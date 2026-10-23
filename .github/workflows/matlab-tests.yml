@@ -27,6 +27,10 @@ jobs:
       - name: Checkout EEGLAB
         run: git clone --depth 1 --branch 2026.0.0 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
 
+      - name: Bound MATLAB dependency downloads
+        if: runner.os == 'Linux'
+        run: bash PipeCompare/.github/scripts/prepare-matlab.sh
+
       - name: Set up MATLAB
         uses: matlab-actions/setup-matlab@v2
         with:

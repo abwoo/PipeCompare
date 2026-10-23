@@ -154,3 +154,11 @@ log/Jensen bias and taper leakage are retained rather than retuned on these outc
 The declared pilot precision target is a record-bootstrap RMS-ratio relative half-width of 10%,
 with at least 30 assessable records. A narrow interval around a biased ratio is not evidence
 of calibration, and this precision target cannot establish stability under distribution shifts.
+
+
+The runner saves one compact score checkpoint per recording before updating the combined score
+file. A regression exercises two independent records through checkpoint save/load and the
+actual group-ranking path. A MATLAB Code Analyzer check rejects syntax errors in benchmark
+scripts before expensive evaluation. A PR commit containing [public-validation] requests a
+full public-data rerun; it starts only after the fast numerical/checkpoint suites pass. Other
+PR updates do not restart the long scientific experiment.

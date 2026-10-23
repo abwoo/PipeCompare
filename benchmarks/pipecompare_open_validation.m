@@ -8,7 +8,7 @@ protocol=jsondecode(fileread(fullfile(fileparts(mfilename('fullpath')),'open_dat
 meta=struct('commit',getenv('GITHUB_SHA'),'run',getenv('GITHUB_RUN_ID'), ...
     'matlab',version,'eeglab',eeg_getversion,'protocol',protocol,'shard',shard);
 writeJson(fullfile(outDir,'metadata.json'),meta);
-failures={}; S=struct([]); calibration=table();
+failures={}; S=pipecompare_record_summary(); calibration=table();
 allFiles=dir(fullfile(dataDir,'S*.mat'));
 files=allFiles(~cellfun('isempty',regexp({allFiles.name},'^S\d\d\.mat$','once')));
 expectedBlink=numel(protocol.blink.test_subjects(shard+1:6:end));
@@ -42,7 +42,9 @@ for k=1:numel(files)
         C=pipecompare.eval.Calibration.rows(r,feasible,population,realized,subject);
         if ~isempty(C), if isempty(calibration), calibration=C; else, calibration=[calibration;C]; end, end %#ok<AGROW>
         writetable(calibration,fullfile(outDir,'calibration.csv'));
-        S(end+1)=compact(r,name); %#ok<AGROW>
+        item=pipecompare_record_summary(r,name);
+        save(fullfile(outDir,sprintf('score_%03d.mat',subject)),'item','-v7');
+        S(end+1)=item; %#ok<AGROW>
         save(fullfile(outDir,'derived_scores.mat'),'S','-v7');
         replayError=NaN; pick=r.ranking.recommended;
         if ~isempty(pick)
@@ -214,13 +216,6 @@ z=1/0.3; ampFactor=0.5*erfc(-z/sqrt(2))+0.3*exp(-z^2/2)/sqrt(2*pi);
 wide=sqrt(sigma^2+0.04^2); shape=sigma/wide*exp(-0.5*((tt/fs-0.4)/wide).^2);
 p=correctedTopo(at)*amp*ampFactor*(1+0.3*prevalence)*(mean(shape(window))-mean(shape(base)));
 population=[p p/3];
-end
-
-function S=compact(r,name)
-keep=intersect(fieldnames(r.cands),{'id','key','stratum','status','m','signal','interpolatedFraction'});
-cands=rmfield(r.cands,setdiff(fieldnames(r.cands),keep)); [~,order]=sort([cands.id]);cands=cands(order);
-S=struct('name',name,'keys',{{r.leaves.key}},'labels',{r.labels},'table',r.ranking.table, ...
-    'cands',{cands},'ref',r.ref,'ranking',rmfield(r.ranking,setdiff(fieldnames(r.ranking),{'objective','options'})));
 end
 
 function T=realERP(EEG,name,outDir)
