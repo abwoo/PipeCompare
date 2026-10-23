@@ -1,11 +1,7 @@
 name: matlab-tests
 
-# Two jobs: the suites that need no window (plan enumeration, history
-# parsing, the panel's text parsing, statistics, invariants), and the
-# suites that open windows or run whole searches (EEGLAB integration and
-# the panel, end-to-end searches, signal preservation, simple mode) on a
-# virtual display. Clicking inside EEGLAB's own dialogs is still checked
-# by hand (tests/MANUAL_GUI_CHECK.md).
+# Fast numerical suites. Native EEGLAB, GUI and end-to-end suites run in
+# compat.yml on the same pinned MATLAB R2026a / EEGLAB 2026.0.0 pair.
 
 on:
   push:
@@ -29,12 +25,16 @@ jobs:
           path: PipeCompare
 
       - name: Checkout EEGLAB
-        run: git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
+        run: git clone --depth 1 --branch 2026.0.0 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
+
+      - name: Bound MATLAB dependency downloads
+        if: runner.os == 'Linux'
+        run: bash PipeCompare/.github/scripts/prepare-matlab.sh
 
       - name: Set up MATLAB
         uses: matlab-actions/setup-matlab@v2
         with:
-          release: latest
+          release: R2026a
 
       - name: Run tests
         uses: matlab-actions/run-command@v2
@@ -44,39 +44,3 @@ jobs:
             cd PipeCompare; addpath(pwd); addpath(fullfile(pwd, 'tests'));
             r = run_all({'test_history', 'test_plan', 'test_panel_text', 'test_statistics', 'test_methodology', 'test_invariants'});
             assert(~any([r.Failed]), 'PipeCompare:CI', '%d test(s) failed', sum([r.Failed]));
-
-  gui-tests:
-    name: MATLAB tests with windows
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
-    env:
-      DISPLAY: ":99"
-    steps:
-      - name: Checkout PipeCompare
-        uses: actions/checkout@v4
-        with:
-          path: PipeCompare
-
-      - name: Checkout EEGLAB
-        run: git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
-
-      - name: Start a virtual display
-        timeout-minutes: 10
-        run: bash PipeCompare/.github/scripts/start-display.sh
-
-      - name: Set up MATLAB
-        uses: matlab-actions/setup-matlab@v2
-        with:
-          release: latest
-          products: Signal_Processing_Toolbox   # ASR's filter at 250 Hz (the synthetic data)
-
-      - name: Run tests
-        timeout-minutes: 105
-        uses: matlab-actions/run-command@v2
-        with:
-          command: |
-            addpath(fullfile(pwd, 'eeglab')); eeglab nogui;
-            cd PipeCompare; addpath(pwd); addpath(fullfile(pwd, 'tests'));
-            r = run_all({'test_simple', 'test_main', 'test_eeglab', 'test_signal', 'test_engine'});
-            assert(~any([r.Failed]), 'PipeCompare:CI', '%d test(s) failed', sum([r.Failed]));
-

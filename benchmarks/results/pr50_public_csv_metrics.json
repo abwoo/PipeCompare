@@ -1,0 +1,273 @@
+{
+  "analysisRun": 39952806287,
+  "analysisCommit": "ee30a5638cde774573b80c5836da6cdef55e5a14",
+  "sourceHead": "3af3d0a2712bb9ab1ed637d8699c62dd5d58061d",
+  "sourceRun": 39938907558,
+  "scope": "Recovered CSV metrics; source score-checkpoint errors prevent group/replay validation. No threshold or pipeline was refitted or tuned.",
+  "calibration": {
+    "assessableRecords": 20,
+    "rows": 762,
+    "ratio": 3.277249316769849,
+    "actualRMS": 5.069818569748018,
+    "reportedRMS": 1.5469737208595948,
+    "independentPythonRecordBootstrap95": [
+      2.1690372029983966,
+      4.467204845923403
+    ]
+  },
+  "selectedCalibration": {
+    "assessableRecords": 20,
+    "rows": 40,
+    "ratio": 3.7029926800560133,
+    "actualRMS": 2.3816877538913053,
+    "reportedRMS": 0.6431791687622992,
+    "independentPythonRecordBootstrap95": [
+      1.1412527625238134,
+      5.574113608079172
+    ]
+  },
+  "selectedAccuracy": {
+    "actualError": {
+      "records": 20,
+      "rmse": 2.3816877538913053,
+      "bias": -0.507820181820749
+    },
+    "rawError": {
+      "records": 20,
+      "rmse": 2.374429481687287,
+      "bias": -0.5209446510169417
+    },
+    "conditionalError": {
+      "records": 20,
+      "rmse": 2.4716344179966496,
+      "bias": -0.5176212748264419
+    },
+    "rawConditionalError": {
+      "records": 20,
+      "rmse": 2.464255896351202,
+      "bias": -0.5307457440226353
+    }
+  },
+  "blink": {
+    "records": 15,
+    "annotations": 430,
+    "macroPrecision": 0.8127449855225881,
+    "macroRecall": 0.968122621305417,
+    "macroF1": 0.8792613616009827,
+    "macroF1RecordBootstrap95": [
+      0.8464172687878547,
+      0.9087272254542574
+    ],
+    "f1Range": [
+      0.727272727272727,
+      0.945454545454545
+    ],
+    "unassessed": 0,
+    "meanFalseBlinkPredictionsPerMinute": 4.119772060724816
+  },
+  "spectral": {
+    "participants": 30,
+    "rows": 810,
+    "maxMatchedReferenceAbsError": 3.01092484278342e-13,
+    "unresolvedRows": 90
+  },
+  "stretches": {
+    "participants": 30,
+    "cases": [
+      {
+        "seconds": 1,
+        "adjacent": false,
+        "participants": 30,
+        "assessed": 30,
+        "sampleRecallIncludingUnassessed": 0,
+        "falsePositiveShare": 0.0008205128205128233,
+        "corruptedRMSE": 99.80911925112886,
+        "oracleRepairRMSE": 3.822925861360317,
+        "maximumBoundaryJumpUv": 26.0812352464431,
+        "meanBiasUv": -0.4288880841303054,
+        "meanAlphaChangeLog10PSD": -0.08021399211933947
+      },
+      {
+        "seconds": 1,
+        "adjacent": true,
+        "participants": 30,
+        "assessed": 30,
+        "sampleRecallIncludingUnassessed": 0,
+        "falsePositiveShare": 0.00082135523613963,
+        "corruptedRMSE": 100.28895350529635,
+        "oracleRepairRMSE": 4.910102142192232,
+        "maximumBoundaryJumpUv": 27.7852801296761,
+        "meanBiasUv": -0.004267669783939917,
+        "meanAlphaChangeLog10PSD": -0.09511569730928629
+      },
+      {
+        "seconds": 5,
+        "adjacent": false,
+        "participants": 30,
+        "assessed": 30,
+        "sampleRecallIncludingUnassessed": 0,
+        "falsePositiveShare": 0,
+        "corruptedRMSE": 99.56693227698301,
+        "oracleRepairRMSE": 4.1731288582332215,
+        "maximumBoundaryJumpUv": 22.8648525683127,
+        "meanBiasUv": 0.42840082320485495,
+        "meanAlphaChangeLog10PSD": -0.06157022717065051
+      },
+      {
+        "seconds": 5,
+        "adjacent": true,
+        "participants": 30,
+        "assessed": 30,
+        "sampleRecallIncludingUnassessed": 0,
+        "falsePositiveShare": 0,
+        "corruptedRMSE": 99.70039389399497,
+        "oracleRepairRMSE": 4.690863414793828,
+        "maximumBoundaryJumpUv": 23.7946544722308,
+        "meanBiasUv": 0.5548425918331545,
+        "meanAlphaChangeLog10PSD": -0.08626037089901557
+      },
+      {
+        "seconds": 10,
+        "adjacent": false,
+        "participants": 30,
+        "assessed": 30,
+        "sampleRecallIncludingUnassessed": 1,
+        "falsePositiveShare": 0.0010351966873706,
+        "corruptedRMSE": 99.4294594200071,
+        "oracleRepairRMSE": 4.184212265211977,
+        "maximumBoundaryJumpUv": 22.8648525683127,
+        "meanBiasUv": 0.4735074267052817,
+        "meanAlphaChangeLog10PSD": -0.0615962401386418
+      },
+      {
+        "seconds": 10,
+        "adjacent": true,
+        "participants": 30,
+        "assessed": 30,
+        "sampleRecallIncludingUnassessed": 1,
+        "falsePositiveShare": 0.008716875871687584,
+        "corruptedRMSE": 100.05291104708279,
+        "oracleRepairRMSE": 4.5885971212831675,
+        "maximumBoundaryJumpUv": 23.7946544722308,
+        "meanBiasUv": 0.4780978915580468,
+        "meanAlphaChangeLog10PSD": -0.08627580970551911
+      },
+      {
+        "seconds": 20,
+        "adjacent": false,
+        "participants": 30,
+        "assessed": 30,
+        "sampleRecallIncludingUnassessed": 1,
+        "falsePositiveShare": 0.0006973500697350067,
+        "corruptedRMSE": 100.34041300979271,
+        "oracleRepairRMSE": 3.944124454773487,
+        "maximumBoundaryJumpUv": 22.8648525683127,
+        "meanBiasUv": 0.35890540659415104,
+        "meanAlphaChangeLog10PSD": -0.07298864815511336
+      },
+      {
+        "seconds": 20,
+        "adjacent": true,
+        "participants": 30,
+        "assessed": 30,
+        "sampleRecallIncludingUnassessed": 1,
+        "falsePositiveShare": 0,
+        "corruptedRMSE": 100.05257385028436,
+        "oracleRepairRMSE": 4.641327609522222,
+        "maximumBoundaryJumpUv": 23.7946544722308,
+        "meanBiasUv": 0.3422728575102046,
+        "meanAlphaChangeLog10PSD": -0.10046005235526809
+      }
+    ]
+  },
+  "realERP": {
+    "participants": 6,
+    "selectedParticipants": 6,
+    "meanSelectedRawRareMinusFrequentUv": 2.050470592824442
+  },
+  "prevalence": [
+    {
+      "prevalence": 0,
+      "planned": 6,
+      "selected": {
+        "assessableRecords": 6,
+        "rows": 12,
+        "ratio": 1.158137149076683,
+        "actualRMS": 0.5163009413239346,
+        "reportedRMS": 0.44580293597830967,
+        "independentPythonRecordBootstrap95": [
+          0.5934791316367274,
+          1.814869155362397
+        ]
+      }
+    },
+    {
+      "prevalence": 0.3,
+      "planned": 6,
+      "selected": {
+        "assessableRecords": 6,
+        "rows": 12,
+        "ratio": 1.0842944008778281,
+        "actualRMS": 0.7308498441784015,
+        "reportedRMS": 0.674032664548223,
+        "independentPythonRecordBootstrap95": [
+          0.8363086218187633,
+          1.3220240427595118
+        ]
+      }
+    },
+    {
+      "prevalence": 0.7,
+      "planned": 6,
+      "selected": {
+        "assessableRecords": 6,
+        "rows": 12,
+        "ratio": 1.7690566719581216,
+        "actualRMS": 1.1164690707738816,
+        "reportedRMS": 0.6311098386339946,
+        "independentPythonRecordBootstrap95": [
+          0.9026182530875241,
+          2.6600055074431554
+        ]
+      }
+    },
+    {
+      "prevalence": 0.95,
+      "planned": 6,
+      "selected": {
+        "assessableRecords": 2,
+        "rows": 4,
+        "ratio": 7.174430263243128,
+        "actualRMS": 7.112153790669273,
+        "reportedRMS": 0.9913196629852385,
+        "independentPythonRecordBootstrap95": [
+          2.2332760327370664,
+          7.850037948210406
+        ]
+      }
+    },
+    {
+      "prevalence": 1,
+      "planned": 6,
+      "selected": {
+        "assessableRecords": 0,
+        "rows": 0,
+        "ratio": null
+      }
+    }
+  ],
+  "exploratoryReadoutOnlySensitivity": {
+    "unshrunkAssociation": {
+      "assessableRecords": 20,
+      "rows": 40,
+      "ratio": 0.9743533380226852,
+      "actualRMS": 2.3816877538913053,
+      "reportedRMS": 2.4443778873120197,
+      "independentPythonRecordBootstrap95": [
+        0.5888526871363655,
+        1.0253386043529864
+      ]
+    },
+    "scope": "Post-hoc diagnostic at unchanged selected pipelines; association can include real neural activity and is not causal artifact bias. Not a validated replacement scoring rule."
+  }
+}

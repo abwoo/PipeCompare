@@ -5,6 +5,30 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- Undefined paired-bootstrap maxima retain their tail mass as unbounded uncertainty, including sequential equivalence tests. All-missing samples cannot certify equivalence. The factorial prior no longer fits covariance after discarding incomplete paired draws; stability counts unavailable draws.
+
+- Ocular feature normalization ignores missing observations, so a missing trial does not erase detected events on other observed trials. Horizontal inputs follow the same window coverage check. Public-fit elapsed times use explicit timer handles; old reset-clock totals are unassessed.
+
+- Ocular observation coverage follows each component's window/baseline and trial identity. Keeping a trial with unavailable ocular evidence leaves bias unassessed; removing that trial restores assessment on the remaining observations.
+
+- A declared ocular input containing no finite samples is unassessed through reference, measurement and ranking; it cannot become quiet evidence with a zero artifact penalty. Ranking text distinguishes fitted-model scores from independently calibrated measurement error.
+
+- Follow-up methodology audit: artifact-bias uncertainty is invariant to the normalization
+  of trial weights; bootstrap multiplicities are separate from reliability weights.
+- Group empirical Bayes retains paired covariance across pipelines, subtracts projected
+  observation noise from the interaction variance, and fits additive effects by GLS. Missing
+  candidate patterns use one gauge per connected component and expose variance identifiability.
+- HMMs marginalize missing emissions and estimate their parameters from finite observations;
+  one missing eye-channel sample no longer disables event detection on the whole recording.
+- One-sided multitaper spectra leave DC and Nyquist undoubled. Calibration exports raw and
+  gain-corrected readouts separately; group RMS error is not described as group-mean uncertainty.
+- Numerical regressions cover weight normalization, physical bootstrap replication, paired
+  group contrasts, disconnected candidate patterns, missing HMM inputs and spectral endpoints.
+- From PR #50, current CI is pinned to MATLAB R2026a and EEGLAB 2026.0.0; numerical and GUI suites are retained without the legacy compatibility matrix.
+- Add a frozen-prior group API for new recordings, without refitting training effects or interaction variance on them; disconnected/unseen candidates are explicitly unassessed.
+- Mark bad-stretch detection unassessed on nonfinite inputs, validate interpolation intervals, and reject aliased one-sided PSD bands.
+- Add checksum-pinned public EEG evaluation in GitHub Actions, with annotated blink detection, channel faults, spectral references, complete real-background signal-injection refits and participant-held-out group transfer.
+
 - CI jobs allow two hours for the full GUI/ICA suite, which can exceed one hour on hosted
   runners. Virtual displays reuse installed Xvfb and bound package-download and startup waits.
   Logs name each test as it starts. R2022b/R2023a get an early results-window check and a

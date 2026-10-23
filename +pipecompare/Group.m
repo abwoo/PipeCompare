@@ -16,9 +16,9 @@ classdef Group
     %   - Its group objective is the root mean square over the recordings
     %     of its total error (Rank step 3b: the gain-corrected SME with the
     %     bias of what blinks add and of the signal's unknown shape).
-    %     Measurement error adds the mean of the squared SMEs, divided by
-    %     the number of recordings, to the variance of a group mean, so
-    %     this is what the group-level test loses to noise (and bias).
+    %     This summarizes individual measurement errors in the observed
+    %     group. It is not the MSE of a group mean: same-direction bias
+    %     across recordings does not average away like independent noise.
     %   - Its uncertainty is that of each recording's paired bootstrap of
     %     its trials (Rank.bootstrap, as one recording's ranking), combined
     %     the same way; the pipelines not distinguished from the best and
@@ -41,15 +41,16 @@ classdef Group
     %   empirical Bayes, Group.twoLevel): the log of each pipeline's
     %   objective on each recording is a recording effect plus a pipeline
     %   effect (fitted over all recordings) plus what this pipeline does on
-    %   this recording beyond them. That last part is shrunk towards 0 by
-    %   tau^2 / (tau^2 + v), v its bootstrap variance and tau^2 how much the
-    %   recordings really differ in it (method of moments). Each recording
+    %   this recording beyond them. Its posterior gain retains the full
+    %   within-recording paired bootstrap covariance (the scalar factor
+    %   tau^2/(tau^2+v) when that covariance is diagonal). tau^2 is fitted
+    %   after projecting out recording and pipeline effects. Each recording
     %   gets the pipeline lowest by this estimate among those passing on it.
-    %   With tau^2 = 0 every recording gets the same pipeline; with
+    %   With tau^2 = 0 recordings with the same eligible options get the
+    %   same pipeline; with
     %   precise recordings each gets its own best. G.own: a table (recording,
     %   id, pipeline, sameAsGroup); G.ownShrunk (recordings x pipelines);
-    %   G.share: the share of the differences between recordings kept (the
-    %   mean shrinkage factor, 0 = one pipeline fits all).
+    %   G.share: the mean diagonal of the posterior gain matrices.
     %
     %   pipecompare.Group.writeScript(G, file) writes the recommended
     %   pipeline as a function to run on each recording (its decisions are
@@ -127,7 +128,7 @@ classdef Group
             nd = false(nK, 1); eq = false(nK, 1);
             F = find(feas);
             % each recording's bootstrap of the pipelines passing on it
-            Fm = false(nU, nK); V = nan(nU, nK); boots = cell(1, nU);
+            Fm = false(nU, nK); V = nan(nU, nK); boots = cell(1, nU); covariance = cell(nU, 1);
             baseOpts = pipecompare.utils.withDefaults(S(1).ranking.options, pipecompare.eval.Rank.defaults());
             seeds = pipecompare.Group.recordingSeeds({S.name}, baseOpts.seed);
             G.bootstrapSeeds = seeds(u);
@@ -139,11 +140,13 @@ classdef Group
                 b = pipecompare.eval.Rank.bootstrap(s.cands(loc(Fm(j, :))), s.ref, bootOpts, {s.ranking.objective});
                 boots{j} = nan(nK, size(b{1}, 2)); boots{j}(Fm(j, :), :) = b{1};
                 V(j, Fm(j, :)) = var(b{1}, 0, 2)';
+                covariance{j} = nan(nK);
+                covariance{j}(Fm(j,:), Fm(j,:)) = cov(b{1}');
             end
             G.own = table(); G.ownShrunk = nan(nU, nK); G.share = NaN;
             if nU >= 2
                 Y = G.perRecording; Y(~Fm) = NaN;
-                [G.ownShrunk, G.share] = pipecompare.Group.twoLevel(Y, V);
+                [G.ownShrunk, G.share, ~, G.twoLevelModel] = pipecompare.Group.twoLevel(Y, V, covariance);
                 th = G.ownShrunk; th(~Fm) = Inf;
                 [best, own] = min(th, [], 2); own(~isfinite(best)) = NaN;
                 G.ownChoice = own;
@@ -197,7 +200,7 @@ classdef Group
             end
         end
 
-        function [theta, share, tau2] = twoLevel(Y, V)
+        function [theta, share, tau2, model] = twoLevel(Y, V, covariance)
             % Two-level empirical Bayes estimate of each recording's
             % objective for each pipeline (see the class help). Y, V:
             % recordings x pipelines objectives and their bootstrap
@@ -205,24 +208,127 @@ classdef Group
             % estimates (NaN where Y is); share: the mean shrinkage factor
             % over the cells; tau2: the variance between recordings of what
             % a pipeline does beyond the two effects (log scale).
-            ok = isfinite(Y) & Y > 0 & isfinite(V);
-            L = nan(size(Y)); L(ok) = log(Y(ok));
-            VL = nan(size(Y)); VL(ok) = V(ok) ./ Y(ok) .^ 2;   % variance of the log (delta method)
-            [nR, nP] = size(Y);
-            a = zeros(nR, 1); b = zeros(1, nP);   % recording and pipeline effects: alternating means over the cells
-            for it = 1:50
-                a0 = a; b0 = b;
-                R = L - b; R(~ok) = NaN; a = mean(R, 2, 'omitnan'); a(~isfinite(a)) = 0;
-                R = L - a; R(~ok) = NaN; b = mean(R, 1, 'omitnan'); b(~isfinite(b)) = 0;
-                if max(abs([a - a0; (b - b0)'])) < 1e-12, break; end
+            % covariance (optional): one pipelines x pipelines raw-objective
+            % covariance per recording, from its PAIRED bootstrap. With no
+            % covariance supplied, V defines a diagonal observation model.
+            % Effects use GLS; residual uncertainty and posterior gains keep
+            % the covariance. This is a plug-in model for observed records,
+            % not independent validation on unseen participants.
+            assert(isequal(size(Y),size(V)), 'PipeCompare:Group', 'Objectives and variances must have the same size.');
+            paired = nargin >= 3;
+            if paired
+                assert(iscell(covariance) && numel(covariance)==size(Y,1), ...
+                    'PipeCompare:Group', 'Supply one covariance matrix per recording.');
             end
-            fit = a + b; r = L - fit; r(~ok) = 0;
-            df = sum(ok(:)) - (sum(any(ok, 2)) + sum(any(ok, 1)) - 1);   % cells less the effects fitted
-            tau2 = 0;
-            if df > 0, tau2 = max(0, sum(r(ok) .^ 2) / df - mean(VL(ok))); end
-            w = zeros(size(Y)); if tau2 > 0, w(ok) = tau2 ./ (tau2 + VL(ok)); end
-            theta = nan(size(Y)); theta(ok) = exp(fit(ok) + w(ok) .* r(ok));
-            share = mean(w(ok));
+            ok = isfinite(Y) & Y > 0 & isfinite(V) & V >= 0;
+            [nR, nP] = size(Y);
+            [record, pipeline] = find(ok); m = numel(record);
+            theta = nan(size(Y)); share = NaN; tau2 = 0;
+            model = struct('scope','observed-recordings','fullyHeldOut',false, ...
+                'pairedCovariance',paired,'cells',m,'components',0,'df',0,'varianceAssessed',false, ...
+                'pipelineEffects',nan(1,nP),'pipelineComponents',nan(1,nP),'tau2',NaN);
+            if m == 0, return; end
+            [D, components, columns, component] = groupDesign(record,pipeline,nR,nP);
+            model.pipelineEffects = nan(1,nP);
+            model.pipelineComponents = component(nR+(1:nP));
+            model.tau2 = NaN;
+            model.components = components; model.df = m-size(D,2);
+            model.varianceAssessed = model.df > 0;
+            y = log(Y(ok)); residual = y-D*(D\y);
+            C = cell(nR,1); ix = cell(nR,1);
+            for s = unique(record)'
+                ix{s} = find(record==s); p = pipeline(ix{s});
+                raw = diag(V(s,p));
+                if paired
+                    assert(isequal(size(covariance{s}),[nP nP]), 'PipeCompare:Group', 'Covariance matrix has the wrong size.');
+                    raw = covariance{s}(p,p);
+                    assert(all(isfinite(raw(:))), 'PipeCompare:Group', 'Covariance contains nonfinite observed entries.');
+                    tolerance = 1e-10*max([V(s,p),realmin]);
+                    assert(max(abs(diag(raw)-V(s,p)')) <= tolerance, 'PipeCompare:Group', 'Covariance diagonal must match V.');
+                end
+                C{s} = groupCovariance(raw./(Y(s,p)'*Y(s,p)));
+            end
+            if model.df == 0
+                theta(ok) = Y(ok); share = 0; return;
+            end
+            % E||R y||^2 = tau^2 tr(R)+tr(R Sigma). Diagonal variances
+            % alone over-subtract noise shared by a recording's pipelines.
+            normal = decomposition(D'*D,'chol'); noise = 0;
+            for s = unique(record)'
+                Ds = D(ix{s},:); Hss = Ds*(normal\Ds');
+                noise = noise+trace(C{s})-trace(Hss*C{s});
+            end
+            tau2 = max(0,(sum(residual.^2)-max(noise,0))/model.df);
+            Z = sparse(size(D,1),size(D,2)); z = zeros(m,1); cholC = cell(nR,1);
+            for s = unique(record)'
+                rows = ix{s}; np = numel(rows); S = C{s}+tau2*eye(np);
+                [L,failed] = chol(S,'lower');
+                if failed
+                    jitter = max(eps,1e-12*max(diag(S)));
+                    L = chol(S+jitter*eye(np),'lower');
+                end
+                cholC{s} = L;
+                cols = find(any(D(rows,:),1));
+                Z(rows,cols) = L\full(D(rows,cols)); z(rows) = L\y(rows);
+            end
+            beta = Z\z;
+            effects = zeros(nR+nP,1); effects(columns) = beta;
+            model.pipelineEffects(unique(pipeline)) = effects(nR+unique(pipeline));
+            model.tau2 = tau2;
+            fit = D*beta; estimate = fit; kept = 0;
+            for s = unique(record)'
+                rows = ix{s}; L = cholC{s};
+                gain = tau2*(L'\(L\eye(numel(rows))));
+                estimate(rows) = fit(rows)+gain*(y(rows)-fit(rows));
+                kept = kept+trace(gain);
+            end
+            theta(ok) = exp(estimate); share = kept/m;
+        end
+
+        function [theta, info] = applyPrior(prior, Y, V, covariance)
+            % Apply a prior fitted by twoLevel on OTHER participants. The
+            % pipeline effects and interaction variance are frozen; only a
+            % new recording's nuisance scale and posterior are estimated.
+            % This permits independent-recording adaptation, not inference
+            % on unseen trials. Unseen/disconnected candidates are not
+            % compared using arbitrary gauges and retain their raw scores.
+            assert(isequal(size(Y),size(V)), 'PipeCompare:Group', 'Objectives and variances must have the same size.');
+            [nR,nP] = size(Y); theta = nan(size(Y));
+            observed=isfinite(Y)&Y>0&isfinite(V)&V>=0;theta(observed)=Y(observed);
+            assert(isfield(prior,'pipelineEffects') && numel(prior.pipelineEffects)==nP, ...
+                'PipeCompare:Group', 'Prior pipeline order must match the new observations.');
+            paired = nargin >= 4;
+            if paired, assert(iscell(covariance) && numel(covariance)==nR, 'PipeCompare:Group', 'Supply one covariance matrix per recording.'); end
+            info = struct('scope','new-recording-with-frozen-prior','fullyHeldOut',false, ...
+                'priorRefitted',false,'assessed',false(nR,1),'reason',{repmat({''},nR,1)});
+            for s = 1:nR
+                p = find(isfinite(Y(s,:)) & Y(s,:)>0 & isfinite(V(s,:)) & V(s,:)>=0);
+                if ~prior.varianceAssessed || ~isfinite(prior.tau2)
+                    info.reason{s}='training interaction variance unassessed'; continue;
+                end
+                if isempty(p) || any(~isfinite(prior.pipelineEffects(p)))
+                    info.reason{s}='candidate absent from training'; continue;
+                end
+                if numel(unique(prior.pipelineComponents(p)))~=1
+                    info.reason{s}='training candidates have disconnected scales'; continue;
+                end
+                raw = diag(V(s,p));
+                if paired
+                    assert(isequal(size(covariance{s}),[nP nP]), 'PipeCompare:Group', 'Covariance matrix has the wrong size.');
+                    raw = covariance{s}(p,p);
+                    assert(all(isfinite(raw(:))) && max(abs(diag(raw)-V(s,p)'))<=1e-10*max([V(s,p),realmin]), ...
+                        'PipeCompare:Group', 'Covariance diagonal must match V and be finite.');
+                end
+                C = groupCovariance(raw./(Y(s,p)'*Y(s,p)))+prior.tau2*eye(numel(p));
+                [L,failed] = chol(C,'lower');
+                if failed, L=chol(C+max(eps,1e-12*max(diag(C)))*eye(numel(p)),'lower'); end
+                solve = @(x) L'\(L\x);
+                y = log(Y(s,p))'; b = prior.pipelineEffects(p)'; one = ones(numel(p),1);
+                offset = (one'*solve(y-b))/(one'*solve(one));
+                fit = b+offset;
+                theta(s,p) = exp(fit+prior.tau2*solve(y-fit))';
+                info.assessed(s)=true;
+            end
         end
 
         function print(G)
@@ -247,7 +353,7 @@ classdef Group
             O = G.own; ok = isfinite(O.id);
             if ~any(ok), return; end
             t = sprintf(['Each recording''s own pipeline, its estimate helped by the others (two-level empirical ', ...
-                'Bayes; %.0f%% of the differences between recordings kept): '], 100 * G.share);
+                'Bayes; mean posterior gain %.0f%%): '], 100 * G.share);
             if ~isempty(G.recommended) && all(O.sameAsGroup(ok))
                 t = [t sprintf('every recording gets the group''s pipeline %d, so one pipeline fits them all.', G.recommended)];
             else
@@ -275,6 +381,31 @@ classdef Group
             pipecompare.PipeCompare.writeScript(G.first, idx, file);
         end
     end
+end
+
+function [D, components, active, component] = groupDesign(record,pipeline,nR,nP)
+% One gauge per connected component; missing candidate patterns can split
+% the recording/pipeline graph, so rank is not always nR+nP-1.
+m = numel(record); rows = (1:m)';
+D = sparse([rows;rows],[record;nR+pipeline],ones(2*m,1),m,nR+nP);
+component = conncomp(graph(record,nR+pipeline,[],nR+nP));
+active = false(1,nR+nP); active(unique([record;nR+pipeline])) = true;
+labels = unique(component(nR+pipeline)); components = numel(labels);
+for c = labels(:)'
+    at = find(component(nR+pipeline)==c,1);
+    active(nR+pipeline(at)) = false;
+end
+D = D(:,active);
+end
+
+function C = groupCovariance(C)
+% Covariances from paired bootstraps may have tiny negative eigenvalues
+% from rounding; reject larger violations instead of inventing precision.
+scale = max(norm(C,'fro'),realmin);
+assert(norm(C-C','fro')<=1e-10*scale, 'PipeCompare:Group', 'Covariance must be symmetric.');
+C = (C+C')/2; [U,E] = eig(C); v = diag(E);
+assert(min(v)>=-1e-10*scale, 'PipeCompare:Group', 'Covariance must be positive semidefinite.');
+if any(v<0), C = U*diag(max(v,0))*U'; C = (C+C')/2; end
 end
 
 function s = saveBase()

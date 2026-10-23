@@ -14,12 +14,13 @@ classdef Hmm
             y = double(y(:)');
             n = numel(y);
             active = false(1, n);
-            m = struct('mu', [], 'sd', [], 'A', [], 'pi', [], 'valid', false, 'reason', 'insufficient finite samples');
-            if n < 10 || ~any(isfinite(y)), return; end
-            y(~isfinite(y)) = median(y(isfinite(y)));
-            q = sort(y);
-            mu = [q(ceil(0.5 * n)) q(ceil(0.99 * n))];
-            sd = [std(y) / 2 std(y)] + eps;
+            observed = isfinite(y); nf = nnz(observed); finiteY = y(observed);
+            m = struct('mu', [], 'sd', [], 'A', [], 'pi', [], 'valid', false, ...
+                'reason', 'insufficient finite samples', 'missingSamples', n-nf);
+            if n < 10 || nf < 10, return; end
+            q = sort(finiteY);
+            mu = [q(ceil(0.5 * nf)) q(ceil(0.99 * nf))];
+            sd = [std(finiteY) / 2 std(finiteY)] + eps;
             A = [0.98 0.02; 0.1 0.9]; p0 = [0.9 0.1];
             if any(~isfinite(sd)), m.reason = 'nonfinite initial scale'; return; end
             ll = -inf;
@@ -33,8 +34,10 @@ classdef Hmm
                 % with negligible occupancy from becoming a zero row.
                 xi = xi + 1e-12;
                 A = xi ./ sum(xi, 2);
-                mu = [sum(g1 .* y) / max(sum(g1), eps), sum(g2 .* y) / max(sum(g2), eps)];
-                sd = sqrt([sum(g1 .* (y - mu(1)).^2) / max(sum(g1), eps), sum(g2 .* (y - mu(2)).^2) / max(sum(g2), eps)]) + 1e-6;
+                a = g1(observed); b = g2(observed);
+                mu = [sum(a .* finiteY) / max(sum(a), eps), sum(b .* finiteY) / max(sum(b), eps)];
+                sd = sqrt([sum(a .* (finiteY - mu(1)).^2) / max(sum(a), eps), ...
+                    sum(b .* (finiteY - mu(2)).^2) / max(sum(b), eps)]) + 1e-6;
                 p0 = [g1(1) g2(1)] + 1e-6; p0 = p0 / sum(p0);
                 if llNew - ll < 1e-6 * abs(llNew), break; end
                 ll = llNew;
@@ -42,9 +45,10 @@ classdef Hmm
             if any(~isfinite([mu sd A(:)' p0])) || any(sd <= 0)
                 m.reason = 'nonfinite fitted parameters'; return;
             end
-            m = struct('mu', mu, 'sd', sd, 'A', A, 'pi', p0, 'valid', true, 'reason', '');
+            m = struct('mu', mu, 'sd', sd, 'A', A, 'pi', p0, 'valid', true, 'reason', '', 'missingSamples',n-nf);
             [~, hi] = max(mu);
             active = viterbi(y, A, mu, sd, p0) == hi;
+            active(~observed) = false; % missing observations are never detected events
             d = diff([0 active 0]); s = find(d == 1); e = find(d == -1) - 1;
             for k = 1:numel(s)
                 if e(k) - s(k) + 1 < minLen || max(y(s(k):e(k))) < peak, active(s(k):e(k)) = false; end
@@ -63,20 +67,26 @@ classdef Hmm
             % samples (logical row).
             n = size(X, 2);
             hit = false(1, n);
-            model = struct('mu',[],'sd',[],'A',[],'pi',[],'valid',false,'reason','insufficient finite samples');
+            missing = nnz(~isfinite(X));
+            model = struct('mu',[],'sd',[],'A',[],'pi',[],'valid',false, ...
+                'reason','insufficient finite samples','missingSamples',missing,'inputMissingSamples',missing);
             if isempty(X) || n < 2 * srate, return; end
             d = max(1, floor(srate / 25));
             Z = zeros(size(X, 1), numel(1:d:n));
             for k = 1:size(X, 1)
-                r = double(X(k, :)) - movmedian(double(X(k, :)), round(srate), 2);
-                s = movmean(r, max(1, round(srate / 16)), 2);
+                v = double(X(k,:)); v(~isfinite(v)) = NaN;
+                r = v - movmedian(v, round(srate), 2, 'omitnan');
+                s = movmean(r, max(1, round(srate / 16)), 2, 'omitnan');
+                s(~isfinite(v)) = NaN;
                 s = s(1:d:end);
-                a = abs(s - median(s));
-                Z(k, :) = a / max(1.4826 * median(a), eps);
+                a = abs(s - median(s,'omitnan'));
+                Z(k, :) = a / max(1.4826 * median(a,'omitnan'), eps);
             end
-            [on, model] = pipecompare.eval.Hmm.segment(max(Z, [], 1), pipecompare.eval.Hmm.PeakZ, ...
+            [on, model] = pipecompare.eval.Hmm.segment(max(Z, [], 1, 'omitnan'), pipecompare.eval.Hmm.PeakZ, ...
                 max(1, round(pipecompare.eval.Hmm.MinSeconds * srate / d)));
             hit = repelem(on, d); hit = hit(1:n);
+            hit(~any(isfinite(X),1)) = false;
+            model.inputMissingSamples = missing;
         end
     end
 
@@ -92,6 +102,9 @@ function [g1, xi, ll] = forwardBackward(y, A, mu, sd, p0)
 n = numel(y);
 L1 = -0.5 * ((y - mu(1)) / sd(1)).^2 - log(sd(1));
 L2 = -0.5 * ((y - mu(2)) / sd(2)).^2 - log(sd(2));
+% Marginalize a missing emission (likelihood 1 in either state). Missing
+% values do not enter the M-step or become artificial quiet observations.
+L1(~isfinite(y)) = 0; L2(~isfinite(y)) = 0;
 % Scale BEFORE exponentiation: dividing two already-underflowed Gaussian
 % densities by realmin leaves both zero and poisons the entire EM fit.
 s = max(L1, L2); L1 = exp(L1 - s); L2 = exp(L2 - s);
@@ -123,6 +136,7 @@ function path = viterbi(y, A, mu, sd, p0)
 n = numel(y);
 L1 = -0.5 * ((y - mu(1)) / sd(1)).^2 - log(sd(1));
 L2 = -0.5 * ((y - mu(2)) / sd(2)).^2 - log(sd(2));
+L1(~isfinite(y)) = 0; L2(~isfinite(y)) = 0;
 lA = log(max(A, realmin));
 d1 = log(max(p0(1), realmin)) + L1(1); d2 = log(max(p0(2), realmin)) + L2(1);
 from1 = false(1, n); from2 = false(1, n);   % true: came from state 2

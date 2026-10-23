@@ -89,7 +89,7 @@ PipeCompare makes this choice from the data, in these steps:
 4. **It runs each pipeline** with EEGLAB's own functions, on your data.
 5. **It removes pipelines that harm the data.** A pipeline is excluded when it keeps too few
    trials, interpolates too many channels, or changes the brain signal. To check the last point,
-   a known artificial signal is added to a copy of the data and carried through the same pipeline;
+   a noise-free copy carrying a known artificial signal replays the fitted pipeline decisions;
    if it comes out smaller, shifted or reshaped, the pipeline is excluded.
 6. **It ranks the rest by precision.** The measure is the standardized measurement error (SME;
    Luck et al., 2021): how much your averaged value would vary if the experiment were repeated.
@@ -360,16 +360,11 @@ epochs) from each recording's own data.
 | EEGLAB plugins | firfilt (bundled with EEGLAB); ICLabel for IC removal; clean_rawdata for ASR |
 | Optional | Parallel Computing Toolbox, for parallel execution; Signal Processing Toolbox, for ASR at sampling rates other than 100, 128, 200, 256, 300, 500 and 512 Hz and for faster low-frequency high-pass filtering |
 
-MATLAB R2026a with EEGLAB 2026.0.0 is the combination run by hand
-([docs/COVERAGE.md](docs/COVERAGE.md)). Continuous integration runs the full automated test suite
-on every MATLAB release from R2021b to R2026a and the latest release with EEGLAB 2026.0.0, and on
-every EEGLAB release from 2022.0 to 2025.1.0 with both MATLAB R2022a and the latest MATLAB. It also
-runs it on Windows (the latest MATLAB with EEGLAB 2026.0.0, and R2022a with EEGLAB 2022.0) and on
-macOS (the latest MATLAB with EEGLAB 2026.0.0 and 2022.0; on GitHub's Mac test machines the windows
-of older MATLAB releases close by themselves, so those are not tested there). On
-R2022b and R2023a, MATLAB's own message box (`uialert`) never returns on the test machines'
-virtual display, even in an empty window, so there the tests use a stand-in that prints the
-message instead of drawing the box.
+MATLAB R2026a with EEGLAB 2026.0.0 is the current tested combination
+([docs/COVERAGE.md](docs/COVERAGE.md)). From PR #50 onward, continuous integration,
+installation checks and benchmarks use this pinned pair. Numerical, native EEGLAB,
+GUI and end-to-end suites are retained. Earlier releases were tested by the historical
+compatibility matrix through PR #49; they are no longer checked on each change.
 
 Two known problems of older EEGLAB releases, which PipeCompare works around or reports:
 
@@ -1342,25 +1337,23 @@ pipecompare.Group.writeScript(G, 'sub02_pipeline.m', 2);  % the own pipeline of 
    rejected epochs and its automatic limits.
 2. A pipeline counts for the group only when it **passes on every recording**. A recording on
    which no pipeline passes is left out and named (`G.leftOut`); look at it on its own.
-3. The pipelines are ranked by the **root mean square of their noise over the recordings**: noise
-   in each participant's average adds the mean of the squared SMEs to the variance of the group
-   average, so this is what your group-level test loses to noise.
+3. The pipelines are ranked by the **root mean square of individual total errors over the
+   recordings**. This summarizes the observed group's measurements; it is not the uncertainty
+   of a group mean. Systematic bias shared across participants need not average away.
 4. Which pipelines cannot be told apart from the best, and which are within 5 % of it, come from
    each recording's bootstrap of its trials, combined the same way. Among those that cannot be told
-   apart, the one that keeps the most trials in its worst recording is recommended, as for one
-   recording.
+   apart, the group rule recommends the one that keeps the most trials in its worst recording.
 5. **Each recording's own pipeline** is also given (`G.own`: recording, pipeline, and whether it
    is the group's). Picking on one recording alone is unreliable with a few dozen trials, and one
    pipeline for all ignores real differences between recordings. So each pipeline's error on a
    recording is estimated together with the others: a part common to the whole group (how good
    the pipeline is on average, and how noisy the recording is), plus what is particular to this
-   recording, kept only as far as it is larger than its own bootstrap noise (two-level empirical
-   Bayes). How far the recordings differ is estimated from the data: when they hardly differ, all
-   recordings get the group's pipeline; when they differ a lot, each its own. In simulation (20
-   recordings, 12 pipelines) this was best or tied in every case, while choosing on each
-   recording alone or using one pipeline for all each failed clearly in one case. The Command
-   Window shows the own pipelines and the share of a recording's own differences that is kept
-   (`G.share`, 0 = one pipeline fits all; `G.ownShrunk` the estimated errors).
+   recording, estimated with the full paired bootstrap covariance (two-level empirical Bayes).
+   Correlated estimation noise can cancel between pipelines; it is not treated as independent
+   evidence against individual differences. Missing candidate patterns use the actual design
+   rank. The Command Window shows own pipelines and the average posterior gain (`G.share`);
+   `G.ownShrunk` contains the estimates and `G.twoLevelModel` describes the fitted design.
+   This fits the observed group; benefit for new participants still needs independent validation.
 
 The Command Window shows each recording's comparison, then the group's recommendation. `G` is also
 stored in the variable `pipecompare_group`; `G.perRecording` has each pipeline's noise on each
@@ -1434,8 +1427,9 @@ and constraints and ranking options in `help pipecompare.eval.Rank`.
    high-pass for a broad P3. This saves the filtering of the whole recording and everything after
    it for those pipelines. It is done for ERP measures on continuous data, when no resampling or
    epoching comes before the last filter; `'filterCheck', false` turns it off.
-2. **Total error.** Feasible pipelines are scored by how far their measure is from the truth on
-   average: the noise and the bias together, √(noise² + bias²).
+2. **Estimated total error.** Feasible pipelines are ranked by a fitted-model error proxy,
+   √(noise² + bias²), for the gain-corrected measure. Its calibration against independent
+   known truth is a separate experiment.
    - The **noise** is the SME divided by the gain each pipeline applies to the known signal. This
      makes the comparison one of signal-to-noise ratio, so a pipeline cannot appear more precise
      just by attenuating everything (Zhang, Garrett & Luck, 2024).
@@ -1454,7 +1448,9 @@ and constraints and ranking options in `help pipecompare.eval.Rank`.
      its mean (their share times the difference of their mean from the other trials'). The
      Command Window shows the share of trials with each kind. A pipeline that
      removed the eye activity, by ICA or by rejecting those trials, adds about nothing. The
-     estimate's own noise is taken off its square, so a bias the data do not show counts about 0.
+     association is soft-thresholded by two of its estimated standard errors, so weak evidence
+     contributes zero to the penalty. Neural changes associated with blinking also enter this
+     association; a zero penalty does not establish zero artifact bias.
      Second, what the signal's shape changes: the gain is measured with one known shape, and a
      filter changes the gain of a broad, slow component more than that of a narrow one. So each
      pipeline's filters are also run on bumps 0.5, 1 and 2 times as wide as the window, and the
@@ -1466,9 +1462,10 @@ and constraints and ranking options in `help pipecompare.eval.Rank`.
      no eye channel to check blinks with. In the table of the ranking: `objective` (total error),
      `noise`, `bias`, and per measure `eyeBias_…` (µV, the condition where it is largest) and
      `shapeSpread_…`.
-3. **Uncertainty.** A paired bootstrap over trials, with simultaneous intervals across all pairs
-   of candidates (White, 2000; Romano & Wolf, 2005), finds the set of pipelines that the data
-   cannot distinguish from the best.
+3. **Conditional uncertainty.** A paired bootstrap over trials, with simultaneous intervals across
+   all candidate pairs (White, 2000; Romano & Wolf, 2005), compares fitted-model scores.
+   Preprocessing, eligibility and shrinkage fitted on these trials remain fixed. These score
+   intervals alone do not validate measurement-error calibration or prediction on new trials.
 4. **Equivalence.** *Not distinguished* can mean that the pipelines are equally good or that there
    are too few trials to tell. A pipeline is called *equivalent* to the best only when the upper
    bound of its difference from the best is within 5 % of the best's objective

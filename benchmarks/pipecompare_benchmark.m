@@ -120,6 +120,8 @@ if ~isempty(calib)
     lines{end+1} = sprintf(['Does the reported error tell the truth? actual / reported error (root mean squares; ', ...
         'above 1 = reported error understated), against population P3, over %d recordings:'], nDone);
     lines = [lines calibrationLines(C)];
+    lines{end+1} = ['Calibration concerns gain-corrected means (estimate/gain). Raw adopted-data means ', ...
+        'are not automatically divided by this diagnostic gain; rawError and rawConditionalError are also exported.'];
 end
 txt = strjoin(lines, newline);
 fprintf('%s\n', txt);

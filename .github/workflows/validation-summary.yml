@@ -1,0 +1,139 @@
+name: validation result summaries
+
+# Reprocess saved scientific outputs without repeating data downloads or ICA.
+# PR #50 runs use the frozen source runs below; later manual runs accept IDs.
+on:
+  pull_request:
+    paths:
+      - 'benchmarks/pipecompare_open_summary.m'
+      - 'benchmarks/pipecompare_synthetic_summary.m'
+      - 'benchmarks/validation_*.m'
+      - 'benchmarks/pipecompare_spectral_validation.m'
+      - '+pipecompare/+eval/Calibration.m'
+      - '.github/workflows/validation-summary.yml'
+  workflow_dispatch:
+    inputs:
+      public_run:
+        description: 'Public EEG source run ID'
+        default: '39969962494'
+      synthetic_run:
+        description: 'Independent simulation source run ID'
+        default: '39969962494'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  public:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.number == 50
+    name: Public EEG metrics and independent participant test
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      VALIDATION_SOURCE_RUN: ${{ inputs.public_run || '39969962494' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bound MATLAB dependency downloads
+        if: runner.os == 'Linux'
+        run: bash ./.github/scripts/prepare-matlab.sh
+
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+      - name: Measure prespecified known-spectrum bias without waiting for ICA
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(pwd);addpath(fullfile(pwd,'benchmarks'));
+            pipecompare_spectral_validation(fullfile(pwd,'validation_summary'));
+      - name: Wait for the frozen source run to finish
+        timeout-minutes: 335
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const id=Number(process.env.VALIDATION_SOURCE_RUN);
+            if (!Number.isSafeInteger(id)||id<=0) throw new Error('Invalid source run ID');
+            for (let n=0;n<660;n++) {
+              const r=await github.rest.actions.getWorkflowRun({...context.repo,run_id:id});
+              if (r.data.status==='completed') { core.info('Source conclusion: '+r.data.conclusion); return; }
+              const jobs=await github.paginate(github.rest.actions.listJobsForWorkflowRun,{...context.repo,run_id:id,filter:'latest',per_page:100});
+              const native=jobs.filter(j=>/^public \/ Public EEG shard [0-5] /.test(j.name));
+              if(native.length===6&&native.every(j=>j.status==='completed')) { core.info('All public source shards completed');return; }
+              if (n%10===0) core.info('Waiting for source '+id+': '+r.data.status);
+              await new Promise(resolve=>setTimeout(resolve,30000));
+            }
+            throw new Error('Source run did not complete within the declared wait');
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: public-validation-[0-5]
+          path: public_results
+          run-id: ${{ env.VALIDATION_SOURCE_RUN }}
+          github-token: ${{ github.token }}
+      - name: Compute source-aware public EEG summaries
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(pwd);addpath(fullfile(pwd,'benchmarks'));
+            pipecompare_open_summary(fullfile(pwd,'public_results'),fullfile(pwd,'validation_summary'));
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: public-validation-analysis
+          path: validation_summary
+          retention-days: 90
+
+  synthetic:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.number == 50
+    name: Known-truth simulation calibration and fixed comparators
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      VALIDATION_SOURCE_RUN: ${{ inputs.synthetic_run || '39969962494' }}
+    steps:
+      - name: Wait for the frozen simulation source run to finish
+        timeout-minutes: 335
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const id=Number(process.env.VALIDATION_SOURCE_RUN);
+            if (!Number.isSafeInteger(id)||id<=0) throw new Error('Invalid source run ID');
+            for (let n=0;n<660;n++) {
+              const r=await github.rest.actions.getWorkflowRun({...context.repo,run_id:id});
+              if (r.data.status==='completed') { core.info('Source conclusion: '+r.data.conclusion); return; }
+              const jobs=await github.paginate(github.rest.actions.listJobsForWorkflowRun,{...context.repo,run_id:id,filter:'latest',per_page:100});
+              const native=jobs.filter(j=>/^Ground-truth benchmark record /.test(j.name));
+              if(native.length===30&&native.every(j=>j.status==='completed')) { core.info('All simulation records completed');return; }
+              if (n%10===0) core.info('Waiting for source '+id+': '+r.data.status);
+              await new Promise(resolve=>setTimeout(resolve,30000));
+            }
+            throw new Error('Source run did not complete within the declared wait');
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: benchmark-*
+          path: synthetic_results
+          run-id: ${{ env.VALIDATION_SOURCE_RUN }}
+          github-token: ${{ github.token }}
+      - name: Bound MATLAB dependency downloads
+        if: runner.os == 'Linux'
+        run: bash ./.github/scripts/prepare-matlab.sh
+
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+      - uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(pwd);addpath(fullfile(pwd,'benchmarks'));
+            pipecompare_synthetic_summary(fullfile(pwd,'synthetic_results'),fullfile(pwd,'synthetic_summary'),30);
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: synthetic-validation-analysis
+          path: synthetic_summary
+          retention-days: 90
