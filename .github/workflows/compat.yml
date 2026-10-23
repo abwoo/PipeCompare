@@ -1,56 +1,47 @@
-name: legacy-window-diagnostic
+name: legacy-window-fixed-diagnostic
 
 on:
   workflow_dispatch:
 
 jobs:
   probe:
-    name: Native R2023a ${{ matrix.probe }} probe
+    name: Legacy ${{ matrix.matlab }} result window with CI dialog stand-in
     runs-on: ubuntu-22.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        probe: [progress]
+        matlab: [R2022b, R2023a]
     steps:
       - name: Checkout PipeCompare
         uses: actions/checkout@v4
         with:
           path: PipeCompare
+      - name: Checkout EEGLAB
+        run: git clone --depth 1 --branch 2026.0.0 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
       - name: Start display
         timeout-minutes: 10
         run: bash PipeCompare/.github/scripts/start-display.sh
       - name: Set up MATLAB
-        timeout-minutes: 10
+        timeout-minutes: 15
         uses: matlab-actions/setup-matlab@v2
         with:
-          release: R2023a
-      - name: Probe native UI component
-        timeout-minutes: 3
-        env:
-          PC_GUI_PROBE: ${{ matrix.probe }}
+          release: ${{ matrix.matlab }}
+      - name: Test actual results window and replay
+        timeout-minutes: 10
         uses: matlab-actions/run-command@v2
         with:
           command: |
-            disp(version);
-            fprintf('[probe] creating figure\n');
-            f = uifigure('Name', 'PipeCompare native UI probe', 'Visible', 'on');
-            cleanup = onCleanup(@() delete(f));
-            fprintf('[probe] figure ready\n');
-            drawnow;
-            fprintf('[probe] figure rendered\n');
-            if strcmp(getenv('PC_GUI_PROBE'), 'selection')
-                t = uitable(f, 'Data', {'1', 'passed'; '2', 'passed'});
-                fprintf('[probe] table ready\n');
-                t.Selection = [2 1];
-                fprintf('[probe] selection set\n');
-                selection = t.Selection;
-                assert(isequal(selection, [2 1]), 'Unexpected selection');
-                fprintf('[probe] selection read\n');
-            else
-                fprintf('[probe] creating progress dialog\n');
-                d = uiprogressdlg(f, 'Title', 'Probe', 'Message', 'Testing native progress', 'Indeterminate', 'on');
-                fprintf('[probe] progress dialog ready\n');
-                close(d);
-                fprintf('[probe] progress dialog closed\n');
-            end
+            addpath(fullfile(pwd, 'eeglab')); eeglab nogui;
+            cd PipeCompare; addpath(pwd); addpath(fullfile(pwd, 'tests'));
+            addpath(fullfile(pwd, 'tests', 'shims'));
+            assert(contains(which('uiprogressdlg'), [filesep 'tests' filesep 'shims' filesep]));
+            f = uifigure('Visible', 'off');
+            d = uiprogressdlg(f, 'Title', 'Lifecycle', 'Message', 'Check close', 'Indeterminate', 'on');
+            assert(isvalid(d)); close(d); assert(~isvalid(d)); delete(f);
+            s = matlab.unittest.TestSuite.fromFile(fullfile(pwd, 'tests', 'test_simple.m'));
+            s = s(endsWith({s.Name}, '/testResultsWindow'));
+            assert(isscalar(s));
+            runner = matlab.unittest.TestRunner.withTextOutput('OutputDetail', 3);
+            r = runner.run(s);
+            assert(all([r.Passed]), 'PipeCompare:CI', 'Results-window test did not pass');

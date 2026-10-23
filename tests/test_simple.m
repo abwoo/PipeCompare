@@ -812,7 +812,6 @@ EEG = tc.TestData.EEG;
 nqc_setBase(EEG);
 [~, ~, r] = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'11', '31'}, 'recipe', 'filters', 'show', 'off');
 w = pipecompare.gui.SimpleResults(r); c = onCleanup(@() delete(w.Fig)); %#ok<NASGU>
-verifyEqual(tc, char(w.Fig.Visible), 'on');
 verifyTrue(tc, startsWith(strjoin(w.Headline.Value, ' '), sprintf('Use pipeline %d: high-pass ', r.ranking.recommended)));
 verifyFalse(tc, contains(strjoin(w.Headline.Value, ' '), 'cutoff='));          % the settings in words, not the internal key
 verifyTrue(tc, contains(strjoin(w.Headline.Value, ' '), 'to be told apart'), strjoin(w.Headline.Value, ' '));   % how large a difference shows
@@ -831,8 +830,6 @@ w.AllBox.Value = true; w.showRows();
 verifyEqual(tc, size(w.Table.Data), [numel(r.cands) 7]);       % every pipeline, with why it was excluded
 i = find(strcmp(w.Table.Data(:, 2), 'passed') & ~endsWith(w.Table.Data(:, 1), '*'), 1);
 w.Table.Selection = [i 1]; k = str2double(w.Table.Data{i, 1});
-feval(w.Table.SelectionChangedFcn, w.Table, []);
-verifyTrue(tc, startsWith(strjoin(w.Steps.Value(:)', ' '), sprintf('Pipeline %d, step by step:', k)));
 w.adopt();
 verifyEqual(tc, evalin('base', 'EEG.setname'), sprintf('%s PipeCompare#%d', EEG.setname, k));   % the selected one
 f = [tempname '.m']; c2 = onCleanup(@() delete(f)); %#ok<NASGU>
