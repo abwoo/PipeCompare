@@ -376,3 +376,21 @@ R=pipecompare.eval.Rank.run(candidate,ref,opts);
 verifyEmpty(tc,R.recommended);
 verifyTrue(tc,contains(R.table.reason{1},'artifact bias unassessed'));
 end
+
+function testOcularMissingWindowIsAssessedOnlyAfterItsTrialIsRemoved(tc)
+EEG=nqc_synth(struct('seconds',90,'nPerCond',20,'artifactTrials',0,'blinkRate',0));
+eyes=pipecompare.eval.Injection.eyeChannels(EEG.chanlocs);EEG.data(eyes,:,:)=0;
+c=nqc_contract();
+[~,EEG]=evalc('pop_epoch(EEG,c.allEvents(),c.epoch,''epochinfo'',''yes'')');
+times=EEG.xmin+(0:EEG.pnts-1)/EEG.srate;
+EEG.data(eyes,times>=0.3&times<=0.6,1)=NaN;
+ref=pipecompare.eval.Measure.reference(EEG,c);
+m=pipecompare.eval.Measure.candidate(EEG,c,ref);
+verifyTrue(tc,all(isfinite(m.objectives.estimate)));
+verifyFalse(tc,any(m.objectives.eyeBiasAssessed));
+verifyTrue(tc,all(isnan(m.objectives.eyeBiasSq)));
+[~,remaining]=evalc('pop_select(EEG,''notrial'',1)');
+m=pipecompare.eval.Measure.candidate(remaining,c,ref);
+verifyTrue(tc,all(m.objectives.eyeBiasAssessed));
+verifyTrue(tc,all(isfinite(m.objectives.eyeBiasSq)));
+end

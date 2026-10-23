@@ -106,7 +106,7 @@ classdef Measure
             % kindShare (components x kinds).
             kinds = {'blinks', 'eye movements', 'muscle'};
             B = {}; info = struct('channels', {{}}, 'horizontal', '', 'share', [], 'kinds', {kinds}, 'kindShare', [], ...
-                'invalidEyeInput', false, 'reason', '');
+                'invalidEyeInput', false, 'reason', '', 'available', {{}});
             if ~strcmp(contract.analysis, 'erp') || isempty(contract.components), return; end
             labs = lower({EEG.chanlocs.labels});
             roi = find(ismember(labs, lower(contract.allRoi())));
@@ -146,12 +146,18 @@ classdef Measure
             z = @(v) (v - median(v)) / max(1.4826 * median(abs(v - median(v))), eps);
             perTrial = @(v) reshape(v, [], 1);
             nJ = numel(contract.components); nC = numel(ref.ids);
+            info.available = cell(1,nJ);
             B = cell(1, nJ); info.share = nan(1, nJ); info.kindShare = nan(nJ, numel(kinds));
             for j = 1:nJ
                 B{j} = arrayfun(@(c) false(ref.n(c), 1), 1:nC, 'UniformOutput', false);
+                info.available{j} = arrayfun(@(c) false(ref.n(c),1),1:nC,'UniformOutput',false);
                 comp = contract.components(j);
                 w = times >= comp.window(1) - 1e-9 & times <= comp.window(2) + 1e-9;
                 if ~strcmp(comp.measure, 'mean') || ~any(w), continue; end
+                available=true(E.trials,1);
+                if ~isempty(eyes)
+                    available=reshape(all(all(isfinite(D(ismember(use,eyes),w|bsel,:)),1),2),[],1);
+                end
                 K = false(numel(T.epoch), numel(kinds));
                 if ~isempty(De)
                     v = perTrial(max(abs(mean(De(:, w, :), 2)), [], 1)); K(:, 1) = z(v(T.epoch)) > pipecompare.eval.Measure.BlinkZ;
@@ -176,6 +182,7 @@ classdef Measure
                     rr = find(T.cond == c);
                     [tf, loc] = ismember(T.id(rr), ref.ids{c});
                     B{j}{c}(loc(tf)) = isB(rr(tf));
+                    info.available{j}{c}(loc(tf)) = available(T.epoch(rr(tf)));
                 end
                 info.share(j) = mean(isB); info.kindShare(j, :) = mean(K, 1);
             end
@@ -288,9 +295,16 @@ classdef Measure
                         K = ones(ref.n(c), 1); if ~isempty(w), K = w; K(isnan(K)) = 0; end
                         [o.eyeBias(c), o.eyeBiasSq(c), o.eyeBiasAssessed(c)] = pipecompare.eval.Measure.eyeBias(X(:, 1), blink{k}{c}, K);
                     end
-                    if strcmp(o.kind, 'scalar') && isfield(ref, 'blinkInfo') && ...
-                            pipecompare.utils.fieldOr(ref.blinkInfo, 'invalidEyeInput', false)
-                        o.eyeBias(c)=NaN; o.eyeBiasSq(c)=NaN; o.eyeBiasAssessed(c)=false;
+                    if strcmp(o.kind, 'scalar') && isfield(ref, 'blinkInfo')
+                        invalid=pipecompare.utils.fieldOr(ref.blinkInfo,'invalidEyeInput',false);
+                        if isfield(ref.blinkInfo,'available') && numel(ref.blinkInfo.available)>=k && ...
+                                ~isempty(ref.blinkInfo.available{k})
+                            kept=isfinite(X(:,1));if ~isempty(w),kept=kept&w>0;end
+                            invalid=invalid||any(kept&~ref.blinkInfo.available{k}{c}(:));
+                        end
+                        if invalid
+                            o.eyeBias(c)=NaN;o.eyeBiasSq(c)=NaN;o.eyeBiasAssessed(c)=false;
+                        end
                     end
                 end
                 o.agg = sqrt(mean(o.sme .^ 2));
