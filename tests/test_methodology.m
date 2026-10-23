@@ -354,3 +354,25 @@ for q=1:size(cases,1)
     verifyEqual(tc,pipecompare.eval.Measure.bandScores(X,fs,band),expected,'AbsTol',1e-10);
 end
 end
+
+function testMissingEyeChannelsCannotBecomeQuietEvidence(tc)
+EEG=nqc_synth(struct('seconds',90,'nPerCond',20,'artifactTrials',0,'blinkRate',0));
+eyes=pipecompare.eval.Injection.eyeChannels(EEG.chanlocs);
+assert(~isempty(eyes));
+c=nqc_contract();
+quiet=EEG;quiet.data(eyes,:,:)=0;
+refQuiet=pipecompare.eval.Measure.reference(quiet,c);
+mQuiet=pipecompare.eval.Measure.candidate(quiet,c,refQuiet);
+verifyTrue(tc,all(isfinite(mQuiet.objectives.eyeBiasSq)));
+EEG.data(eyes,:,:)=NaN;
+ref=pipecompare.eval.Measure.reference(EEG,c);
+m=pipecompare.eval.Measure.candidate(EEG,c,ref);
+verifyTrue(tc,all(isfinite(m.objectives.estimate)));
+verifyFalse(tc,any(m.objectives.eyeBiasAssessed));
+verifyTrue(tc,all(isnan(m.objectives.eyeBiasSq)));
+candidate=nqc_cand(m.objectives.X{1});candidate.m=m;
+opts=pipecompare.eval.Rank.defaults();opts.nBoot=99;opts.nSplits=0;
+R=pipecompare.eval.Rank.run(candidate,ref,opts);
+verifyEmpty(tc,R.recommended);
+verifyTrue(tc,contains(R.table.reason{1},'artifact bias unassessed'));
+end

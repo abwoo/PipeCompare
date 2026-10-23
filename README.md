@@ -1427,8 +1427,9 @@ and constraints and ranking options in `help pipecompare.eval.Rank`.
    high-pass for a broad P3. This saves the filtering of the whole recording and everything after
    it for those pipelines. It is done for ERP measures on continuous data, when no resampling or
    epoching comes before the last filter; `'filterCheck', false` turns it off.
-2. **Total error.** Feasible pipelines are scored by how far their measure is from the truth on
-   average: the noise and the bias together, √(noise² + bias²).
+2. **Estimated total error.** Feasible pipelines are ranked by a fitted-model error proxy,
+   √(noise² + bias²), for the gain-corrected measure. Its calibration against independent
+   known truth is a separate experiment.
    - The **noise** is the SME divided by the gain each pipeline applies to the known signal. This
      makes the comparison one of signal-to-noise ratio, so a pipeline cannot appear more precise
      just by attenuating everything (Zhang, Garrett & Luck, 2024).
@@ -1447,7 +1448,9 @@ and constraints and ranking options in `help pipecompare.eval.Rank`.
      its mean (their share times the difference of their mean from the other trials'). The
      Command Window shows the share of trials with each kind. A pipeline that
      removed the eye activity, by ICA or by rejecting those trials, adds about nothing. The
-     estimate's own noise is taken off its square, so a bias the data do not show counts about 0.
+     association is soft-thresholded by two of its estimated standard errors, so weak evidence
+     contributes zero to the penalty. Neural changes associated with blinking also enter this
+     association; a zero penalty does not establish zero artifact bias.
      Second, what the signal's shape changes: the gain is measured with one known shape, and a
      filter changes the gain of a broad, slow component more than that of a narrow one. So each
      pipeline's filters are also run on bumps 0.5, 1 and 2 times as wide as the window, and the
@@ -1459,9 +1462,10 @@ and constraints and ranking options in `help pipecompare.eval.Rank`.
      no eye channel to check blinks with. In the table of the ranking: `objective` (total error),
      `noise`, `bias`, and per measure `eyeBias_…` (µV, the condition where it is largest) and
      `shapeSpread_…`.
-3. **Uncertainty.** A paired bootstrap over trials, with simultaneous intervals across all pairs
-   of candidates (White, 2000; Romano & Wolf, 2005), finds the set of pipelines that the data
-   cannot distinguish from the best.
+3. **Conditional uncertainty.** A paired bootstrap over trials, with simultaneous intervals across
+   all candidate pairs (White, 2000; Romano & Wolf, 2005), compares fitted-model scores.
+   Preprocessing, eligibility and shrinkage fitted on these trials remain fixed. These score
+   intervals alone do not validate measurement-error calibration or prediction on new trials.
 4. **Equivalence.** *Not distinguished* can mean that the pipelines are equally good or that there
    are too few trials to tell. A pipeline is called *equivalent* to the best only when the upper
    bound of its difference from the best is within 5 % of the best's objective

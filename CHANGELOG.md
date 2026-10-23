@@ -5,6 +5,8 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- A declared ocular input containing no finite samples is unassessed through reference, measurement and ranking; it cannot become quiet evidence with a zero artifact penalty. Ranking text distinguishes fitted-model scores from independently calibrated measurement error.
+
 - Follow-up methodology audit: artifact-bias uncertainty is invariant to the normalization
   of trial weights; bootstrap multiplicities are separate from reliability weights.
 - Group empirical Bayes retains paired covariance across pipelines, subtracts projected

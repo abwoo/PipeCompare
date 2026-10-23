@@ -105,7 +105,8 @@ classdef Measure
             % ''), share (of the trials, per component), kinds and
             % kindShare (components x kinds).
             kinds = {'blinks', 'eye movements', 'muscle'};
-            B = {}; info = struct('channels', {{}}, 'horizontal', '', 'share', [], 'kinds', {kinds}, 'kindShare', []);
+            B = {}; info = struct('channels', {{}}, 'horizontal', '', 'share', [], 'kinds', {kinds}, 'kindShare', [], ...
+                'invalidEyeInput', false, 'reason', '');
             if ~strcmp(contract.analysis, 'erp') || isempty(contract.components), return; end
             labs = lower({EEG.chanlocs.labels});
             roi = find(ismember(labs, lower(contract.allRoi())));
@@ -114,6 +115,13 @@ classdef Measure
             use = unique([eyes hl hr roi]);
             if isempty(use), return; end
             info.channels = {EEG.chanlocs(eyes).labels};
+            if ~isempty(eyes) && ~any(isfinite(EEG.data(eyes,:,:)), 'all')
+                % A declared eye channel with no observations is unavailable
+                % evidence, rather than observed absence of ocular events.
+                info.invalidEyeInput = true;
+                info.reason = 'no finite eye-channel samples';
+                return;
+            end
             if ~isempty(hl), info.horizontal = sprintf('%s-%s', EEG.chanlocs(hl).labels, EEG.chanlocs(hr).labels); end
             E = EEG; E.icaact = []; E.icaweights = []; E.icasphere = []; E.icawinv = []; E.icachansind = [];
             [~, E] = evalc('pop_select(E, ''channel'', use)');
@@ -279,6 +287,10 @@ classdef Measure
                     if strcmp(o.kind, 'scalar') && numel(blink) >= k && ~isempty(blink{k})
                         K = ones(ref.n(c), 1); if ~isempty(w), K = w; K(isnan(K)) = 0; end
                         [o.eyeBias(c), o.eyeBiasSq(c), o.eyeBiasAssessed(c)] = pipecompare.eval.Measure.eyeBias(X(:, 1), blink{k}{c}, K);
+                    end
+                    if strcmp(o.kind, 'scalar') && isfield(ref, 'blinkInfo') && ...
+                            pipecompare.utils.fieldOr(ref.blinkInfo, 'invalidEyeInput', false)
+                        o.eyeBias(c)=NaN; o.eyeBiasSq(c)=NaN; o.eyeBiasAssessed(c)=false;
                     end
                 end
                 o.agg = sqrt(mean(o.sme .^ 2));
