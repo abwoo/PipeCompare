@@ -80,7 +80,7 @@ if ~isempty(C)
     result.noSelectedCalibration=30-numel(unique(C.recording(C.selected==1)));
     result.calibrationByPrevalence=prevalenceCalibration(C,coverage);
 end
-rows={};
+rows={};groupCoverage={};
 if numel(S)>=3
     for held=1:numel(S)
         train=setdiff(1:numel(S),held);keys=S(train(1)).keys;
@@ -91,8 +91,11 @@ if numel(S)>=3
         [~,~,~,prior]=pipecompare.Group.twoLevel(Y,V,covariance);
         [y,v,c]=groupInputs(S(held),keys);
         [theta,info]=pipecompare.Group.applyPrior(prior,y,v,c);
-        valid=find(isfinite(y)&y>0);if isempty(valid),continue;end
-        [~,a]=min(y(valid));a=valid(a);[~,b]=min(theta(valid));b=valid(b);
+        [a,b,valid]=validation_group_choices(y,v,theta);
+        groupCoverage(end+1,:)={S(held).name,nnz(isfinite(y)&y>0), ...
+            nnz(isfinite(y)&y>0&isfinite(v)&v>=0),numel(valid),info.assessed,info.reason{1}}; %#ok<AGROW>
+        if isempty(valid),continue;end
+        assert(info.assessed||a==b,'PipeCompare:Validation','Unassessed prior changed a matched-support raw choice.');
         T=S(held).table;[~,f]=min(T.shrunk(loc(valid)));f=valid(f);
         errors=nan(1,numel(keys));
         for p=valid
@@ -104,6 +107,13 @@ if numel(S)>=3
             errors(a),errors(f),errors(b),oracle,recommended,inFamily, ...
             errors(b)-recommended,errors(b)-errors(a),a,b}; %#ok<AGROW>
     end
+end
+if ~isempty(groupCoverage)
+    coverageTable=cell2table(groupCoverage,'VariableNames',{'recording','pointEligibleCandidates', ...
+        'finiteCovarianceCandidates','comparableCandidates','priorAssessed','reason'});
+    writetable(coverageTable,fullfile(outDir,'participant_held_out_coverage.csv'));
+    result.groupNoComparableScore=nnz(coverageTable.comparableCandidates==0);
+    result.groupPriorAssessedRecords=nnz(coverageTable.priorAssessed);
 end
 if ~isempty(rows)
     T=cell2table(rows,'VariableNames',{'recording','trainingParticipants','eligibleCandidates','priorAssessed', ...
@@ -232,19 +242,32 @@ for j=train(2:end),keys=intersect(keys,S(j).keys,'stable');end
 if isempty(keys),return;end
 [Y,V,Cov]=groupInputs(S(train),keys);
 [~,~,~,prior]=pipecompare.Group.twoLevel(Y,V,Cov);
-result.trainingObserved=nnz(any(isfinite(Y),2));
-rows={};
+result.trainingWithPointScores=nnz(any(isfinite(Y)&Y>0,2));
+result.trainingObserved=nnz(any(isfinite(Y)&Y>0&isfinite(V)&V>=0,2));
+rows={};coverageRows={};
 for j=test(:)'
-    [y,v,covariance]=groupInputs(S(j),keys);valid=find(isfinite(y)&y>0);
-    if isempty(valid),continue;end
+    [y,v,covariance]=groupInputs(S(j),keys);
     [theta,info]=pipecompare.Group.applyPrior(prior,y,v,covariance);
-    [~,a]=min(y(valid));a=valid(a);[~,b]=min(theta(valid));b=valid(b);
+    [a,b,valid]=validation_group_choices(y,v,theta);
+    [recommended,recommendedContrast,inFamily]=validation_recommended_loss(C,S(j),keys);
+    coverageRows(end+1,:)={id(j),nnz(isfinite(y)&y>0), ...
+        nnz(isfinite(y)&y>0&isfinite(v)&v>=0),numel(valid),info.assessed, ...
+        isfinite(recommended),info.reason{1}}; %#ok<AGROW>
+    if isempty(valid),continue;end
+    assert(info.assessed||a==b,'PipeCompare:Validation','Unassessed prior changed a matched-support raw choice.');
     [~,loc]=ismember(keys,S(j).keys);
     [raw,rawContrast]=candidateLoss(C,S(j),loc(a));
     [group,groupContrast]=candidateLoss(C,S(j),loc(b));
-    [recommended,recommendedContrast,inFamily]=validation_recommended_loss(C,S(j),keys);
     rows(end+1,:)={id(j),info.assessed,numel(valid),a,b,raw,group,group-raw, ...
         rawContrast,groupContrast,recommended,recommendedContrast,inFamily,group-recommended}; %#ok<AGROW>
+end
+if ~isempty(coverageRows)
+    coverageTable=cell2table(coverageRows,'VariableNames',{'subject','pointEligibleCandidates', ...
+        'finiteCovarianceCandidates','comparableCandidates','priorAssessed','actualRecommendationAvailable','reason'});
+    writetable(coverageTable,fullfile(outDir,'frozen_prior_independent_test_coverage.csv'));
+    result.testWithPointScores=nnz(coverageTable.pointEligibleCandidates>0);
+    result.testNoComparableScore=nnz(coverageTable.comparableCandidates==0);
+    result.actualRecommendationsAvailableOverall=nnz(coverageTable.actualRecommendationAvailable);
 end
 if isempty(rows),return;end
 T=cell2table(rows,'VariableNames',{'subject','priorAssessed','candidates','rawChoice','groupChoice', ...
@@ -261,6 +284,8 @@ result.actualRecommendationsInTrainingFamily=nnz(T.recommendationInTrainingFamil
 result.changedChoicesVersusRawMinimum=nnz(T.rawChoice~=T.groupChoice);
 result.harmfulChangesVersusRawMinimum=nnz(T.groupMinusRawMinimumMSE>0&T.rawChoice~=T.groupChoice);
 result.harmfulChangesVersusRecommendation=nnz(T.groupMinusRecommendationMSE>0);
+result.assessedOnlyMeanGroupMinusRawMinimumMSE=mean(T.groupMinusRawMinimumMSE(T.priorAssessed==1),'omitnan');
+result.assessedOnlyMeanGroupMinusRecommendationMSE=mean(T.groupMinusRecommendationMSE(T.priorAssessed==1),'omitnan');
 result.comparisonScope='Raw-minimum comparison uses the training-supported family; actual recommendations use the original full per-record family.';
 a=mod(T.subject,2)==1;b=~a;
 if any(a)&&any(b)

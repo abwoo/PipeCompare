@@ -415,3 +415,19 @@ C.selected(:)=false;
 [missing,contrast,inFamily]=validation_recommended_loss(C,S,{'a','b'});
 verifyTrue(tc,isnan(missing));verifyTrue(tc,isnan(contrast));verifyFalse(tc,inFamily);
 end
+
+function testUnassessedCovarianceCannotCreateAnApparentPriorChange(tc)
+oldPath=path;cleanup=onCleanup(@()path(oldPath)); %#ok<NASGU>
+addpath(fullfile(fileparts(mfilename('fullpath')),'..','benchmarks'));
+Y=[1 1.2;1.1 1.1;0.9 1.3];V=0.01*ones(size(Y));
+[~,~,~,prior]=pipecompare.Group.twoLevel(Y,V);
+y=[1 2];v=[NaN 0.01];
+[theta,~]=pipecompare.Group.applyPrior(prior,y,v);
+[a,b,eligible]=validation_group_choices(y,v,theta);
+verifyEqual(tc,a,2);verifyEqual(tc,b,2);verifyEqual(tc,eligible,2);
+v(:)=NaN;
+[theta,info]=pipecompare.Group.applyPrior(prior,y,v);
+[a,b,eligible]=validation_group_choices(y,v,theta);
+verifyEmpty(tc,eligible);verifyTrue(tc,isnan(a));verifyTrue(tc,isnan(b));
+verifyFalse(tc,info.assessed);
+end

@@ -209,3 +209,11 @@ use candidates outside that restricted family. Both loss differences and that co
 exported; a raw-minimum comparison is not labeled as improvement over the actual recommendation.
 A regression deliberately makes the selected pipeline differ from the raw minimum and verifies
 that the actual selected truth rows are used, including unavailable recommendations.
+
+Group comparisons require finite positive point scores, finite nonnegative bootstrap variances,
+and finite group scores on the same candidates. A point score can exist while its paired
+bootstrap covariance is unavailable (for example, resamples with no clean comparison trials).
+An all-missing group row returns no choice. Coverage tables retain every held-out participant's
+point/covariance counts and reason; training point coverage is separate from covariance support.
+Unassessed-prior fallback cannot change a choice on matched support. Comparisons conditional on
+this support and the assessed-only subset are reported separately.
