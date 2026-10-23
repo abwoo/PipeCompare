@@ -1251,3 +1251,17 @@ covers widths, not every shape.
 - Zhang, G., Garrett, D. R., & Luck, S. J. (2024). Optimal filters for ERP research I: A general
   approach for selecting filter settings. *Psychophysiology, 61*(6), e14531.
 
+
+## Missing paired bootstrap replicates
+
+A simultaneous maximum uses the original number of resampling draws. If a candidate comparison
+is unavailable in a draw, that family's maximum for the draw is positive infinity. Sequential
+equivalence tests use the same rule for their pair. The upper quantile includes those infinities:
+missing tail mass cannot narrow a bound or establish equivalence. With insufficient supported
+tail probability, the bound is unbounded. The identity comparison with the candidate itself is zero.
+
+The factorial empirical-Bayes covariance fit requires complete paired support for its modeled
+candidates; otherwise it returns the unshrunk point scores. Selection frequencies use all draws
+as their denominator and separately retain the share with no assessed recommendation. These
+rules concern conditional comparisons of the fitted candidate family and do not establish
+independent calibration of measurement error.

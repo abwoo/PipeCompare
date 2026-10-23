@@ -3,7 +3,7 @@ function pipecompare_open_summary(root,outDir)
 if ~isfolder(outDir),mkdir(outDir);end
 folders=dir(fullfile(root,'public-validation-*'));
 folders=folders(~cellfun('isempty',regexp({folders.name},'^public-validation-[0-5]$','once')));
-S=pipecompare_record_summary();C=table();sourceHeads={};sourceTimers={};
+S=pipecompare_record_summary();C=table();sourceHeads={};sourceTimers={};expectedSubjects=[];trainingSubjects=[];testSubjects=[];
 metrics={'blink','spectral','stretches','recordings','real_erp'};
 components=struct();sourceFailures=0;coverage=table();
 for k=1:numel(metrics)
@@ -29,6 +29,18 @@ for j=1:numel(folders)
         meta=jsondecode(fileread(fullfile(folder,'metadata.json')));
         sourceHeads{end+1}=meta.commit; %#ok<AGROW>
         sourceTimers{end+1}=pipecompare.utils.fieldOr(meta,'fitTimer','implicit'); %#ok<AGROW>
+        subjects=sort([meta.protocol.physionet.files.subject]);
+        if isempty(expectedSubjects)
+            expectedSubjects=subjects;
+            if isfield(meta.protocol,'group_independent_test')
+                trainingSubjects=meta.protocol.group_independent_test.training_subjects(:)';
+                testSubjects=meta.protocol.group_independent_test.test_subjects(:)';
+            else
+                trainingSubjects=subjects(1:10);testSubjects=subjects(11:end);
+            end
+        else
+            assert(isequal(expectedSubjects,subjects),'PipeCompare:Validation','Mixed source participant cohorts.');
+        end
     end
     if isfile(fullfile(folder,'execution.json'))
         execution=jsondecode(fileread(fullfile(folder,'execution.json')));
@@ -127,15 +139,17 @@ if ~isempty(rows)
     result.actualRecommendationsInTrainingFamily=nnz(T.recommendationInTrainingFamily);
 end
 result.sourceRun=getenv('VALIDATION_SOURCE_RUN');result.sourceCommits=unique(sourceHeads);
+result.sourceParticipantIds=expectedSubjects;result.trainingSubjectIds=trainingSubjects;result.testSubjectIds=testSubjects;
 result.groupFamilyScope='Raw minima and oracle use training-supported keys; actual recommendations may use the full per-record candidate family.';
-result.fixedPriorTest=fixedPriorEvaluation(S,C,outDir);
+result.fixedPriorTest=fixedPriorEvaluation(S,C,outDir,trainingSubjects,testSubjects);
 fid=fopen(fullfile(outDir,'summary.json'),'w');fprintf(fid,'%s\n',jsonencode(result));fclose(fid);
 fprintf('PIPECOMPARE_VALIDATION_JSON %s\n',jsonencode(result));
 assert(numel(S)==30 && numel(unique({S.name}))==30,'PipeCompare:Validation', ...
     'Only %d of 30 planned records have saved scores.',numel(S));
 assert(sourceFailures==0,'PipeCompare:Validation','%d source shards recorded execution/invariant failures.',sourceFailures);
 ids=arrayfun(@(s)sscanf(s.name,'S%dR01.mat'),S);
-assert(isequal(sort(ids(:))',(21:50)),'PipeCompare:Validation','Source participants differ from the frozen cohort.');
+assert(numel(expectedSubjects)==30&&numel(unique(expectedSubjects))==30&&isequal(sort(ids(:))',expectedSubjects), ...
+    'PipeCompare:Validation','Source participants differ from the frozen metadata cohort.');
 expected={'blink','records',15;'spectral','participants',30;'stretches','participants',30; ...
     'recordings','participants',30;'real_erp','participants',6};
 for k=1:size(expected,1)
@@ -227,12 +241,11 @@ end
 loss=mean(e.^2);contrast=e(1)-e(2);
 end
 
-function result=fixedPriorEvaluation(S,C,outDir)
-% This split is declared before inspecting any group loss: subjects 21-30
-% train the prior; 31-50 are independent test participants. Intervals are
+function result=fixedPriorEvaluation(S,C,outDir,trainingSubjects,testSubjects)
+% The participant split comes from frozen source metadata. Intervals are
 % conditional on that fitted training prior, not on new training cohorts.
 id=arrayfun(@(s)sscanf(s.name,'S%dR01.mat'),S);
-train=find(id>=21&id<=30);test=find(id>=31&id<=50);
+train=find(ismember(id,trainingSubjects));test=find(ismember(id,testSubjects));
 train=train(:)';test=test(:)';
 result=struct('trainingRequested',10,'testRequested',20,'trainingObserved',0, ...
     'testCovered',0,'scope','Independent test participants conditional on a frozen training prior');

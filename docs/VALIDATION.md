@@ -217,3 +217,16 @@ An all-missing group row returns no choice. Coverage tables retain every held-ou
 point/covariance counts and reason; training point coverage is separate from covariance support.
 Unassessed-prior fallback cannot change a choice on matched support. Comparisons conditional on
 this support and the assessed-only subset are reported separately.
+
+The paired-bootstrap audit found three pre-repair counterexamples: all-missing draws could
+certify equivalence, sequential tests dropped missing tail mass, and the factorial variance
+fit conditioned on complete draws. Undefined maxima now contribute positive infinity at the
+original bootstrap sample size; the factorial covariance fit requires complete paired support.
+Recommendation frequencies count all draws and retain an unavailable share.
+
+Participants 21–50 and seeds 20001–20030 are audit/development inputs after these discoveries.
+Fresh confirmation fixes EEGMMIDB participants 51–80, prior training 51–60, testing 61–80,
+and simulation seeds 20031–20060 before inspecting their outcomes. The earlier numerical
+results in this section describe the pre-repair audit, not independent confirmation of the
+revised procedure. Unchanged EEG-IO and ERP CORE component controls are reused without counting
+them as extra participants. Both versioned protocols and source hashes are retained.

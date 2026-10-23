@@ -60,6 +60,9 @@ jobs:
             for (let n=0;n<660;n++) {
               const r=await github.rest.actions.getWorkflowRun({...context.repo,run_id:id});
               if (r.data.status==='completed') { core.info('Source conclusion: '+r.data.conclusion); return; }
+              const jobs=await github.paginate(github.rest.actions.listJobsForWorkflowRun,{...context.repo,run_id:id,filter:'latest',per_page:100});
+              const native=jobs.filter(j=>/^public \/ Public EEG shard [0-5] /.test(j.name));
+              if(native.length===6&&native.every(j=>j.status==='completed')) { core.info('All public source shards completed');return; }
               if (n%10===0) core.info('Waiting for source '+id+': '+r.data.status);
               await new Promise(resolve=>setTimeout(resolve,30000));
             }
@@ -101,6 +104,9 @@ jobs:
             for (let n=0;n<660;n++) {
               const r=await github.rest.actions.getWorkflowRun({...context.repo,run_id:id});
               if (r.data.status==='completed') { core.info('Source conclusion: '+r.data.conclusion); return; }
+              const jobs=await github.paginate(github.rest.actions.listJobsForWorkflowRun,{...context.repo,run_id:id,filter:'latest',per_page:100});
+              const native=jobs.filter(j=>/^Ground-truth benchmark record /.test(j.name));
+              if(native.length===30&&native.every(j=>j.status==='completed')) { core.info('All simulation records completed');return; }
               if (n%10===0) core.info('Waiting for source '+id+': '+r.data.status);
               await new Promise(resolve=>setTimeout(resolve,30000));
             }

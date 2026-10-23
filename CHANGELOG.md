@@ -5,6 +5,8 @@ release has a git tag `vX.Y.Z`.
 
 ## Unreleased
 
+- Undefined paired-bootstrap maxima retain their tail mass as unbounded uncertainty, including sequential equivalence tests. All-missing samples cannot certify equivalence. The factorial prior no longer fits covariance after discarding incomplete paired draws; stability counts unavailable draws.
+
 - Ocular feature normalization ignores missing observations, so a missing trial does not erase detected events on other observed trials. Horizontal inputs follow the same window coverage check. Public-fit elapsed times use explicit timer handles; old reset-clock totals are unassessed.
 
 - Ocular observation coverage follows each component's window/baseline and trial identity. Keeping a trial with unavailable ocular evidence leaves bias unassessed; removing that trial restores assessment on the remaining observations.

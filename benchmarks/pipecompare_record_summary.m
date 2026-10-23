@@ -7,5 +7,5 @@ keep=intersect(fieldnames(r.cands),{'id','key','stratum','status','m','signal','
 cands=rmfield(r.cands,setdiff(fieldnames(r.cands),keep));
 [~,order]=sort([cands.id]);cands=cands(order);
 S=struct('name',name,'keys',{{r.leaves.key}},'labels',{r.labels},'table',r.ranking.table, ...
-    'cands',{cands},'ref',r.ref,'ranking',rmfield(r.ranking,setdiff(fieldnames(r.ranking),{'objective','options'})));
+    'cands',{cands},'ref',r.ref,'ranking',rmfield(r.ranking,setdiff(fieldnames(r.ranking),{'objective','options','byStratum'})));
 end

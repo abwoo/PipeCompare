@@ -21,7 +21,7 @@ on:
         default: '30'
       first_seed:
         description: 'first seed (use a fresh range for validation)'
-        default: '20001'
+        default: '20031'
       source_run:
         description: 'Completed simulation run to summarize without repeating ICA (summary mode only)'
         required: false
@@ -32,21 +32,33 @@ permissions:
 
 jobs:
   request:
-    name: Check whether a full public validation was requested
+    name: Plan scientific records and check requested validation
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
       run_public: ${{ steps.request.outputs.run_public }}
+      run_synthetic: ${{ steps.request.outputs.run_synthetic }}
+      records: ${{ steps.request.outputs.records }}
+      recordings: ${{ steps.request.outputs.recordings }}
+      first_seed: ${{ steps.request.outputs.first_seed }}
     steps:
       - id: request
         uses: actions/github-script@v7
         with:
           script: |
-            core.setOutput('run_public','false');
+            core.setOutput('run_public','false');core.setOutput('run_synthetic','false');
+            const input=context.payload.inputs||{};
+            const total=Number(input.recordings||30),first=Number(input.first_seed||20031);
+            if(!Number.isSafeInteger(total)||total<1||total>256||!Number.isSafeInteger(first)||first<1)
+              throw new Error('Record count must be 1-256 and first seed a positive integer');
+            core.setOutput('records',JSON.stringify(Array.from({length:total},(_,i)=>i)));
+            core.setOutput('recordings',String(total));core.setOutput('first_seed',String(first));
             if (context.eventName!=='pull_request') return;
             const sha=context.payload.pull_request.head.sha;
             const commit=await github.rest.repos.getCommit({...context.repo,ref:sha});
-            if (!commit.data.commit.message.includes('[public-validation]')) return;
+            const publicRequested=commit.data.commit.message.includes('[public-validation]');
+            const syntheticRequested=commit.data.commit.message.includes('[synthetic-validation]');
+            if (!publicRequested&&!syntheticRequested) return;
             for (let n=0;n<75;n++) {
               const runs=await github.rest.actions.listWorkflowRuns({
                 ...context.repo,workflow_id:'matlab-tests.yml',head_sha:sha,event:'pull_request',per_page:10
@@ -54,7 +66,8 @@ jobs:
               const run=runs.data.workflow_runs.find(r=>r.head_sha===sha);
               if (run&&run.status==='completed') {
                 if (run.conclusion!=='success') throw new Error('Fast numerical/checkpoint tests did not pass');
-                core.setOutput('run_public','true');return;
+                core.setOutput('run_public',String(publicRequested));
+                core.setOutput('run_synthetic',String(syntheticRequested));return;
               }
               if (n%6===0) core.info('Waiting for the fast numerical/checkpoint tests');
               await new Promise(resolve=>setTimeout(resolve,20000));
@@ -67,19 +80,20 @@ jobs:
     uses: ./.github/workflows/open-validation.yml
 
   benchmark:
-    if: inputs.suite == 'synthetic'
-    name: Ground-truth benchmark shard ${{ matrix.shard }}
+    needs: request
+    if: inputs.suite == 'synthetic' || needs.request.outputs.run_synthetic == 'true'
+    name: Ground-truth benchmark record ${{ matrix.record }}
     runs-on: ubuntu-latest
     timeout-minutes: 340
     strategy:
       fail-fast: false
-      max-parallel: 6
+      max-parallel: 10
       matrix:
-        shard: [0, 1, 2, 3, 4, 5]
+        record: ${{ fromJSON(needs.request.outputs.records) }}
     env:
       DISPLAY: ":99"
-      PIPECOMPARE_BENCH_N: ${{ inputs.recordings || '30' }}
-      PIPECOMPARE_BENCH_FIRST: ${{ inputs.first_seed || '20001' }}
+      PIPECOMPARE_BENCH_N: ${{ needs.request.outputs.recordings }}
+      PIPECOMPARE_BENCH_FIRST: ${{ needs.request.outputs.first_seed }}
     steps:
       - name: Checkout PipeCompare
         uses: actions/checkout@v4
@@ -109,26 +123,24 @@ jobs:
           command: |
             addpath(fullfile(pwd, 'eeglab')); eeglab nogui;
             cd PipeCompare; addpath(pwd); addpath(fullfile(pwd, 'benchmarks'));
-            mkdir('bench_out'); total=str2double(getenv('PIPECOMPARE_BENCH_N'));
-            validateattributes(total,{'numeric'},{'scalar','integer','positive'});
-            count=max(0,min(ceil(total/6),total-${{ matrix.shard }}*ceil(total/6)));
-            first=str2double(getenv('PIPECOMPARE_BENCH_FIRST'))+${{ matrix.shard }}*ceil(total/6);
-            if count>0, pipecompare_benchmark(count,fullfile(pwd,'bench_out'),first);end
+            mkdir('bench_out');
+            first=str2double(getenv('PIPECOMPARE_BENCH_FIRST'))+${{ matrix.record }};
+            pipecompare_benchmark(1,fullfile(pwd,'bench_out'),first);
 
       - name: Keep the results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: benchmark-${{ matrix.shard }}
+          name: benchmark-${{ matrix.record }}
           path: PipeCompare/bench_out
 
   synthetic-summary:
-    if: always() && (inputs.suite == 'synthetic' || inputs.suite == 'summarize-synthetic')
-    needs: benchmark
+    if: always() && (inputs.suite == 'synthetic' || inputs.suite == 'summarize-synthetic' || needs.request.outputs.run_synthetic == 'true')
+    needs: [request, benchmark]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      PIPECOMPARE_BENCH_N: ${{ inputs.recordings || '30' }}
+      PIPECOMPARE_BENCH_N: ${{ needs.request.outputs.recordings }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4

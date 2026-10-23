@@ -1,161 +1,163 @@
 {
-  "version": 2,
+  "version": 3,
   "physionet": {
     "version": "1.0.0",
     "doi": "10.13026/C28G6P",
     "license": "ODC-By-1.0",
     "files": [
       {
-        "subject": 21,
-        "path": "S021/S021R01.edf",
-        "sha256": "983781fb39c3a747051a04f23484164de485b97ba43a7fd63fd8fe3d7f6f6f3c"
+        "subject": 51,
+        "path": "S051/S051R01.edf",
+        "sha256": "47fed7512d9d7d87c2f85deae9f5c8e80c9734b44352ade28655e8a27ba0ecca"
       },
       {
-        "subject": 22,
-        "path": "S022/S022R01.edf",
-        "sha256": "496fc1ca74a265ea0f888b9334ac8b16168ab201dfec3eb7d932e68a5348edc5"
+        "subject": 52,
+        "path": "S052/S052R01.edf",
+        "sha256": "8346bfe5bae53f3a82438211538a6482d4e1c885b5b70953b862a4d30fc0bc26"
       },
       {
-        "subject": 23,
-        "path": "S023/S023R01.edf",
-        "sha256": "3dc49252e5969854b3c0b9126058e3a9f28efcddd61a6f570702ee3043fec0fb"
+        "subject": 53,
+        "path": "S053/S053R01.edf",
+        "sha256": "72184f7aad1257f85cc97ea9afbe7c6e80b4cc3c202403a1323a648955d2d327"
       },
       {
-        "subject": 24,
-        "path": "S024/S024R01.edf",
-        "sha256": "abd9b141d8e2853e30a126a891929bf99f22661e27f571f02d5f6a415b40841a"
+        "subject": 54,
+        "path": "S054/S054R01.edf",
+        "sha256": "329625cd03103c4162f6de3c409f3664c68481979263f56e50b8dae272e27f7f"
       },
       {
-        "subject": 25,
-        "path": "S025/S025R01.edf",
-        "sha256": "d630db7ef42ec83068197a587f93bd71e218e3d592e190e79111b414633d7fed"
+        "subject": 55,
+        "path": "S055/S055R01.edf",
+        "sha256": "38df022c18db1a69e74261fefd85f397b0b55b457384c4c7208ef00f7f6231c6"
       },
       {
-        "subject": 26,
-        "path": "S026/S026R01.edf",
-        "sha256": "2c4c52f3afd7dc4742bc1b009744da1172bb9c4f45546acee2fef230931d411b"
+        "subject": 56,
+        "path": "S056/S056R01.edf",
+        "sha256": "29f8a7a25c02b872dbbf0cb52475ed55b45fd3b5a90e2fc5025691ff389b04b3"
       },
       {
-        "subject": 27,
-        "path": "S027/S027R01.edf",
-        "sha256": "16ae12914a9c301b652d64f1d6337e6e31edbc4f64f9c222c3670dd7157ecf21"
+        "subject": 57,
+        "path": "S057/S057R01.edf",
+        "sha256": "0b5b499f95a86f7c04d63cef9489f04a81a335eac0c80ec8897eace504c0205a"
       },
       {
-        "subject": 28,
-        "path": "S028/S028R01.edf",
-        "sha256": "7aefa2fd7d92490654beb7deb417dd5e04c9d7c924716c16a48ee3d73ad6c3ce"
+        "subject": 58,
+        "path": "S058/S058R01.edf",
+        "sha256": "6a3d55038d5198b06772b43243f2009436a23c41696e98b57d8d98acd2008df1"
       },
       {
-        "subject": 29,
-        "path": "S029/S029R01.edf",
-        "sha256": "48641d0db6e810c96273d8c26d52510132ae503badf74471558b7c12306265b2"
+        "subject": 59,
+        "path": "S059/S059R01.edf",
+        "sha256": "b8b6001fbd9853ab9cf3cc7dc2c40fe0547fd8904044d4bb5b654a083d6f1584"
       },
       {
-        "subject": 30,
-        "path": "S030/S030R01.edf",
-        "sha256": "3b0b3d390a9d15b30f95230729a24d5b8a2a55b22ae6ab9ee0c18653068d22e8"
+        "subject": 60,
+        "path": "S060/S060R01.edf",
+        "sha256": "ae25d2c837966144341798b0bd0cbcba1b0eddd28a6b31502f813a41fd6ad1d5"
       },
       {
-        "subject": 31,
-        "path": "S031/S031R01.edf",
-        "sha256": "55d1e8e8145b8eb6778468b55020662275d152d34f33e18c2893b70605175fa3"
+        "subject": 61,
+        "path": "S061/S061R01.edf",
+        "sha256": "b0728cf10eb1885b0d5cbb9fadc43dc1625dcd892b043f05f7a55a375ad1a3eb"
       },
       {
-        "subject": 32,
-        "path": "S032/S032R01.edf",
-        "sha256": "ba99cf38dc94b4408469708227736b388eab4cee0a0fb27ecba353ac4348757e"
+        "subject": 62,
+        "path": "S062/S062R01.edf",
+        "sha256": "3a2d4ed688479495bf9312be25dcd3ffbf393ba786f185700b611e9b95dbd4ef"
       },
       {
-        "subject": 33,
-        "path": "S033/S033R01.edf",
-        "sha256": "5801c97826b681eddd76641707c479385742b0fa35e5fae0935a81fd139fc646"
+        "subject": 63,
+        "path": "S063/S063R01.edf",
+        "sha256": "19e89fec35b5227c3ddd5a031668a7311264610cde156def93771adc15685af6"
       },
       {
-        "subject": 34,
-        "path": "S034/S034R01.edf",
-        "sha256": "62814a71a5926f51efe322e6f959b0c6a7b18da7603474a4daa3de3cd4ac2718"
+        "subject": 64,
+        "path": "S064/S064R01.edf",
+        "sha256": "e208a4c403cb3597ee704d7b59918e86faf195fdaa28587b84efc86708109219"
       },
       {
-        "subject": 35,
-        "path": "S035/S035R01.edf",
-        "sha256": "c3f65f266df7240a795efc209424b75cd86a30823f63795b51a62deb095f4700"
+        "subject": 65,
+        "path": "S065/S065R01.edf",
+        "sha256": "2f6d0594f0207077831c620c299d84ad49cfa36c12af43a32bdbc129f0d9d703"
       },
       {
-        "subject": 36,
-        "path": "S036/S036R01.edf",
-        "sha256": "dbdda796236e1262d7dd1758d7b4c80762b1865047b8bd2b28d59d273fc4f789"
+        "subject": 66,
+        "path": "S066/S066R01.edf",
+        "sha256": "6511edb550c0b24d34f0fdd8ce50bd61202130524099c1e087aa92e258bdacb9"
       },
       {
-        "subject": 37,
-        "path": "S037/S037R01.edf",
-        "sha256": "51182f52a9316783ef7d393bc1354efcac916524dfa826b3519b132bf516f7db"
+        "subject": 67,
+        "path": "S067/S067R01.edf",
+        "sha256": "7a869d87fe690e94b63ae466a2f8a888d8baf3a028c1be35b6d7fc2b80cb5eb9"
       },
       {
-        "subject": 38,
-        "path": "S038/S038R01.edf",
-        "sha256": "cf352ddee891d1f3f6c6aa3fb4e947ae0c89b9dcb2edd0cb2c75defa5c5eb2e1"
+        "subject": 68,
+        "path": "S068/S068R01.edf",
+        "sha256": "7f528d62c8d4b342ff2f958ec6571d425f7d3926f0832ece121fa162efccab1c"
       },
       {
-        "subject": 39,
-        "path": "S039/S039R01.edf",
-        "sha256": "b1c5ca3e506c3dc0d7dc855f3908b5d4ac3b1839e9fac8e7dd316eaaa50f953e"
+        "subject": 69,
+        "path": "S069/S069R01.edf",
+        "sha256": "8da5f1695c8c03bcc530dc1478ff74749380d579a5ca84d6232e1df1815071f4"
       },
       {
-        "subject": 40,
-        "path": "S040/S040R01.edf",
-        "sha256": "45423b0cfc992bee8cede102265968d424d3731a6a7f2c8fb4a714f4ba3dfe61"
+        "subject": 70,
+        "path": "S070/S070R01.edf",
+        "sha256": "5dbb88fd5e39ce0aae257321765c2b9fd67ee9248993c55fdcccf79605442f23"
       },
       {
-        "subject": 41,
-        "path": "S041/S041R01.edf",
-        "sha256": "5fec76892825c885cb231c16424e497fa7b0bc5d255f15117c2f896da85a27bb"
+        "subject": 71,
+        "path": "S071/S071R01.edf",
+        "sha256": "55ee9a28e1496f5b730ccbeaf859063b2dcc9f11039905e6fbe04fd7fbeb38d2"
       },
       {
-        "subject": 42,
-        "path": "S042/S042R01.edf",
-        "sha256": "34f1adbcb0155953eb68874d9a23cc1a8d7ce57a507bc6ceea9189b410d38439"
+        "subject": 72,
+        "path": "S072/S072R01.edf",
+        "sha256": "7742f6c605fd73b04ca4ddb7dbc1db4a11cae8497107d3720cae64bcf1fa32a3"
       },
       {
-        "subject": 43,
-        "path": "S043/S043R01.edf",
-        "sha256": "49151f1f618da69d7de8bea138e21c0d1f7f9833bdc8b23a9a98c95dbf0120db"
+        "subject": 73,
+        "path": "S073/S073R01.edf",
+        "sha256": "be8473cb11d653152f32965bfc62691bae4b3df7fbc1e193840667f5912cfb73"
       },
       {
-        "subject": 44,
-        "path": "S044/S044R01.edf",
-        "sha256": "ca0199eeca73ce7b30843e2a06baacca5cfcdc4750cd01a1e237af6feec5dccf"
+        "subject": 74,
+        "path": "S074/S074R01.edf",
+        "sha256": "5a9fed173c09eb34df7bfb6e79d6c15b616f2cf95c65bbed6b7b392acfa2ac3a"
       },
       {
-        "subject": 45,
-        "path": "S045/S045R01.edf",
-        "sha256": "99ed18a81e6d86970dcef27b3bf1ad6d4adf01477b4560aa5e198673de2992bf"
+        "subject": 75,
+        "path": "S075/S075R01.edf",
+        "sha256": "79c65d9990c6606d45d9c3be18ae7226cc97e4757955fd8675f313ff8f91b238"
       },
       {
-        "subject": 46,
-        "path": "S046/S046R01.edf",
-        "sha256": "49b18f6779e3fdb549c80551379d76ab5fa7f9faa429e171bf4cd38f121ae5d7"
+        "subject": 76,
+        "path": "S076/S076R01.edf",
+        "sha256": "86659701591d9e676b453556fd006a7501530d9f328050f2860060150b9ee75b"
       },
       {
-        "subject": 47,
-        "path": "S047/S047R01.edf",
-        "sha256": "e9e5061be6fea706fdbf03bbc9d0d8de48476d036553a06ff0117c98b60303c2"
+        "subject": 77,
+        "path": "S077/S077R01.edf",
+        "sha256": "1eed03d32fc8cc2cb57cf28fec4b380d56ce3bef548ad82b045d43d7f0ac82b1"
       },
       {
-        "subject": 48,
-        "path": "S048/S048R01.edf",
-        "sha256": "c614f7a42eee90e494006d410917f21c7cc14e04f6cf86e0728437c636286171"
+        "subject": 78,
+        "path": "S078/S078R01.edf",
+        "sha256": "42899f0af33e3bc857c963066f250f261d4e76d73c0c7700d223b09d13ad495c"
       },
       {
-        "subject": 49,
-        "path": "S049/S049R01.edf",
-        "sha256": "bdfcb91b7c914a621617d59cd6f132c9f3229f64f22084e57904232e84c2eaf9"
+        "subject": 79,
+        "path": "S079/S079R01.edf",
+        "sha256": "5dbffbbbeb71b073533cd280510875199ac7b00e5c6225f95c1b88dcf2fbed1a"
       },
       {
-        "subject": 50,
-        "path": "S050/S050R01.edf",
-        "sha256": "8407057efedd6e133b5e7b13caba82c90654d2697288d35b27b7fc33aeb4f522"
+        "subject": 80,
+        "path": "S080/S080R01.edf",
+        "sha256": "e02ada53d55ff4abf99928b1a5da1773023170f345d2c223a3a73b0362683d62"
       }
-    ]
+    ],
+    "manifest_url": "https://physionet.org/files/eegmmidb/1.0.0/SHA256SUMS.txt",
+    "manifest_sha256": "7f5d16957d8ee7bce86cc7ccba0e5994f63f33781607eb3f838392d49311a208"
   },
   "blink": {
     "source": "https://github.com/meagmohit/BLINK",
@@ -293,12 +295,12 @@
     ]
   },
   "simulation": {
-    "first_seed": 20001,
+    "first_seed": 20031,
     "recordings": 30
   },
-  "scope": "Frozen thresholds; no tuning on evaluation results. Revisions after inspection consume this validation set. Real background is not certified artifact-free neural truth.",
+  "scope": "Frozen thresholds and participant/seed ranges before fresh outcomes; no tuning on confirmation results. Reused unchanged component controls do not add independent participants. Real background is not certified clean human neural truth.",
   "real_background_erp": {
-    "first_seed": 90021,
+    "first_seed": 90051,
     "participants": 30,
     "blink_prevalence": [
       0,
@@ -314,40 +316,40 @@
   },
   "group_independent_test": {
     "training_subjects": [
-      21,
-      22,
-      23,
-      24,
-      25,
-      26,
-      27,
-      28,
-      29,
-      30
+      51,
+      52,
+      53,
+      54,
+      55,
+      56,
+      57,
+      58,
+      59,
+      60
     ],
     "test_subjects": [
-      31,
-      32,
-      33,
-      34,
-      35,
-      36,
-      37,
-      38,
-      39,
-      40,
-      41,
-      42,
-      43,
-      44,
-      45,
-      46,
-      47,
-      48,
-      49,
-      50
+      61,
+      62,
+      63,
+      64,
+      65,
+      66,
+      67,
+      68,
+      69,
+      70,
+      71,
+      72,
+      73,
+      74,
+      75,
+      76,
+      77,
+      78,
+      79,
+      80
     ],
-    "scope": "Training split fixed before inspecting group losses; intervals conditional on the fitted training prior."
+    "scope": "Participant split frozen before fresh outcomes; intervals conditional on the fitted training prior. Observation/covariance coverage reported separately."
   },
   "known_spectrum": {
     "seed": 120001,
@@ -383,5 +385,6 @@
     "relative_rms_ratio_half_width": 0.1,
     "minimum_records": 30,
     "scope": "Pilot precision only, distinct from calibration agreement and stability across settings."
-  }
+  },
+  "validation_stage": "Fresh confirmation after missing-bootstrap inference repair; participants21-50 are consumed audit/development data."
 }

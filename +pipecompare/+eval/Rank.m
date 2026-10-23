@@ -205,7 +205,7 @@ classdef Rank
             lo = nan(n, 1); hi = nan(n, 1); hiKept = nan(n, 1); notDist = false(n, 1); equiv = false(n, 1);
             recommended = []; best = [];
             byStratum = struct('stratum', {}, 'best', {}, 'recommended', {}, 'set', {}, 'crossfit', {}, 'stability', {}, ...
-                'factorial', {});
+                'factorial', {}, 'bootstrapCompleteShare', {}, 'bootstrapUnavailableShare', {});
             chosen = nan(n, 1); shrunk = nan(n, 1);
             strata = unique(stratum(strcmp(status, 'feasible')), 'stable');
             for s = 1:numel(strata)
@@ -226,10 +226,18 @@ classdef Rank
                 biased = double(bias > pipecompare.eval.Rank.BiasShare * noise);
                 rec = feas(choose(keep, th, biased(feas), equiv(feas), minRet(feas), ampStep(ampErr(feas))));
                 cf = pipecompare.eval.Rank.crossfit(cands(feas), ref, opts, objName, pts(ib), F);
-                f = selectionFrequency(boot{1}, crit, minRet(feas), ampStep(ampErr(feas)), biased(feas), equiv(feas), F);
+                [f, unavailableShare] = selectionFrequency(boot{1}, crit, minRet(feas), ampStep(ampErr(feas)), biased(feas), equiv(feas), F);
+                completeShare=mean(all(isfinite(boot{1}),1));
+                if completeShare<1
+                    for q=feas(:)'
+                        note=sprintf('paired bootstrap incomplete in %.1f%% of draws; incomplete maxima are unbounded; covariance fits require complete paired support',100*(1-completeShare));
+                        pieces={notes{q},note};notes{q}=strjoin(pieces(~cellfun(@isempty,pieces)),'; ');
+                    end
+                end
                 chosen(feas) = f;
                 byStratum(end+1) = struct('stratum', strata{s}, 'best', feas(ib), 'recommended', rec, 'set', t, ...
-                    'crossfit', cf, 'stability', f(feas == rec), 'factorial', F); %#ok<AGROW>
+                    'crossfit', cf, 'stability', f(feas == rec), 'factorial', F, ...
+                    'bootstrapCompleteShare',completeShare,'bootstrapUnavailableShare',unavailableShare); %#ok<AGROW>
             end
             if isscalar(byStratum)
                 recommended = byStratum.recommended; best = byStratum.best;
@@ -358,7 +366,7 @@ classdef Rank
             chosen = ib; nEq = 1;
             for i = seq(:)'
                 d = pts(i) - pts(ib);
-                dev = (Bq(i, :) - Bq(ib, :)) - d; dev = dev(isfinite(dev));
+                dev = (Bq(i, :) - Bq(ib, :)) - d; dev(~isfinite(dev))=Inf;
                 if ~isfinite(d) || isempty(dev) || ~(d + upperQuantile(dev, alpha) <= margin * pts(ib)), break; end
                 chosen = i; nEq = nEq + 1;
             end
@@ -476,13 +484,13 @@ classdef Rank
             % (Efron & Morris, 1973; empirical Bayes): the interactions
             % the data show are kept, the rest is taken for noise. F: the
             % pipelines in the model (use), H, s, df; [] when fewer than 4
-            % pipelines are in it or df < 3 (nothing to borrow).
+            % pipelines are in it, df < 3, or paired covariance is unassessed.
             F = [];
             K = numel(pts);
             if numel(levels) ~= K, return; end
             use = find(~cellfun(@isempty, levels(:)'));
             ok = all(isfinite(Bq(use, :)), 1);
-            if numel(use) < 4 || nnz(ok) < 20 || ~all(isfinite(pts(use))), return; end
+            if numel(use) < 4 || size(Bq,2) < 20 || ~all(ok) || ~all(isfinite(pts(use))), return; end
             slots = {};
             for i = use, slots = [slots levels{i}(:, 1)']; end %#ok<AGROW>
             slots = unique(slots, 'stable');
@@ -634,6 +642,10 @@ classdef Rank
                 lab = ''; if ~isempty(b.stratum), lab = sprintf(' [stratum %s]', b.stratum); end
                 pipecompare.utils.log(['Recommended (*)%s: candidate %d (fewest trials lost, then least distortion, among the %d ', ...
                     'not distinguished from the best); best objective: candidate %d.'], lab, b.recommended, numel(b.set), b.best);
+                if isfield(b,'bootstrapCompleteShare')&&isfinite(b.bootstrapCompleteShare)&&b.bootstrapCompleteShare<1
+                    pipecompare.utils.log('Paired bootstrap: %.1f%% complete draws; %.1f%% had no assessed recommendation. Incomplete maxima contribute unbounded uncertainty.', ...
+                        100*b.bootstrapCompleteShare,100*b.bootstrapUnavailableShare);
+                end
                 if isfinite(b.stability)
                     pipecompare.utils.log('Stability: in resamples of the trials, candidate %d is recommended in %.0f%% of them.', ...
                         b.recommended, 100 * b.stability);
@@ -741,15 +753,17 @@ keep(ib) = true;
 % happens to be underestimated (simulation: 40% false "worse" at 30
 % trials and 24 candidates). Raw differences keep the error rate bounded
 % at the cost of power for pairs that differ little.
-B = size(Bq, 2); maxD = -inf(1, B);
+B = size(Bq, 2); maxD = -inf(1, B); complete=all(isfinite(Bq),1);
 Dhat = pts - pts';                             % K x K: i minus j
 for i = 1:K
     D = Bq(i, :) - Bq;                         % K x B: candidate i minus each j
     D(~isfinite(D)) = NaN;
     maxD = max(maxD, max(D - Dhat(i, :)', [], 1, 'omitnan'));
 end
-z = maxD(isfinite(maxD));
-if isempty(z), c = Inf; else, c = upperQuantile(z, alpha); end
+% Preserve all B draws: an undefined family maximum is unbounded.
+% Dropping that draw, or only its unavailable pairs, truncates the tail.
+maxD(~complete)=Inf;
+if B==0, c=Inf; else, c=upperQuantile(maxD,alpha); end
 worse = Dhat > c;
 keep = keep | ~any(worse, 2);
 lo = Dhat(:, ib) - c; hi = Dhat(:, ib) + c;
@@ -763,8 +777,8 @@ for i = k(:)'
     D = Bq(i, :) - Bq(k, :); D(~isfinite(D)) = NaN;
     maxK = max(maxK, max(D - Dhat(i, k)', [], 1, 'omitnan'));
 end
-z = maxK(isfinite(maxK));
-if isempty(z), cK = 0; else, cK = max(upperQuantile(z, alpha), 0); end
+maxK(~all(isfinite(Bq(k,:)),1))=Inf;
+if B==0, cK=Inf; else, cK=max(upperQuantile(maxK,alpha),0); end
 hiEq = Dhat(:, ib) + cK; hiEq(ib) = 0; hiEq(~keep) = Inf;
 end
 
@@ -787,7 +801,7 @@ E = unique([U(eqv(U)); U(j)]);
 k = E(o(1));
 end
 
-function f = selectionFrequency(Bq, c, ret, amp, biased, eqv, F)
+function [f, unavailable] = selectionFrequency(Bq, c, ret, amp, biased, eqv, F)
 % The share of the bootstrap resamples (columns of Bq, K x B) in which
 % each of K candidates is recommended: those within c of the lowest
 % objective of the resample, then the rule of step 5 (choose) on the
@@ -801,8 +815,9 @@ for b = 1:size(Bq, 2)
     k = choose(ok & v - min(v(ok)) <= c, th, biased, eqv, ret, amp);
     cnt(k) = cnt(k) + 1; used = used + 1;
 end
-f = cnt / max(used, 1);
-if used == 0, f(:) = NaN; end
+B=size(Bq,2);f=cnt/max(B,1);unavailable=(B-used)/max(B,1);
+if used==0,f(:)=NaN;end
+if B==0,unavailable=NaN;end
 end
 
 function v = upperQuantile(z, alpha)

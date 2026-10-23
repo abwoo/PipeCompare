@@ -431,3 +431,40 @@ v(:)=NaN;
 verifyEmpty(tc,eligible);verifyTrue(tc,isnan(a));verifyTrue(tc,isnan(b));
 verifyFalse(tc,info.assessed);
 end
+
+function testMissingPairedReplicatesCannotCertifyEquivalence(tc)
+[keep,eqv]=pipecompare.eval.Rank.confidenceSet([1;1],nan(2,99),1,0.02,0.05);
+verifyTrue(tc,all(keep));verifyTrue(tc,eqv(1));verifyFalse(tc,eqv(2));
+B=repmat([1;2],1,99);B(2,1:20)=NaN;
+[keep,eqv]=pipecompare.eval.Rank.confidenceSet([1;2],B,1,0.02,0.05);
+verifyTrue(tc,all(keep));verifyFalse(tc,eqv(2));
+end
+
+function testNestedEquivalencePreservesMissingTailMass(tc)
+pts=[1;1.01];B=repmat(pts,1,99);
+[chosen,nEq]=pipecompare.eval.Rank.fixedSequence(pts,B,1,2,0.02,0.05);
+verifyEqual(tc,[chosen nEq],[2 2]);
+B(2,1:20)=NaN;
+[chosen,nEq]=pipecompare.eval.Rank.fixedSequence(pts,B,1,2,0.02,0.05);
+verifyEqual(tc,[chosen nEq],[1 1]);
+end
+
+function testIncompleteBootstrapCannotFitFactorialVariance(tc)
+rs=RandStream('mt19937ar','Seed',20261023);
+pts=(1:5)';B=pts+0.1*randn(rs,5,99);levels=repmat({{'step','same'}},1,5);
+F=pipecompare.eval.Rank.factorialModel(levels,B,pts);verifyNotEmpty(tc,F);
+B(1,1)=NaN;
+F=pipecompare.eval.Rank.factorialModel(levels,B,pts);verifyEmpty(tc,F);
+verifyEqual(tc,pipecompare.eval.Rank.shrink(F,pts),pts);
+end
+
+function testBootstrapStabilityCountsUnavailableRecommendations(tc)
+b=[false(2,1);true(18,1)];c=nqc_cand([zeros(2,1);10*ones(18,1)]);
+o=c.m.objectives;[o.eyeBias,o.eyeBiasSq,o.eyeBiasAssessed]=pipecompare.eval.Measure.eyeBias(o.X{1},b,ones(20,1));
+c.m.objectives=o;ref=nqc_ref(20);ref.blink={{b}};
+opts=pipecompare.eval.Rank.defaults();opts.nBoot=99;opts.nSplits=0;
+R=pipecompare.eval.Rank.run([c c],ref,opts);
+missing=R.byStratum.bootstrapUnavailableShare;
+verifyGreaterThan(tc,missing,0);verifyLessThan(tc,R.byStratum.bootstrapCompleteShare,1);
+verifyEqual(tc,sum(R.table.chosenShare)+missing,1,'AbsTol',1e-12);
+end
