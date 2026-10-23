@@ -13,6 +13,9 @@ on:
       recordings:
         description: 'number of simulated recordings'
         default: '8'
+      first_seed:
+        description: 'first seed (use a fresh range for validation)'
+        default: '1001'
 
 jobs:
   benchmark:
@@ -22,6 +25,7 @@ jobs:
     env:
       DISPLAY: ":99"
       PIPECOMPARE_BENCH_N: ${{ github.event.inputs.recordings || '8' }}
+      PIPECOMPARE_BENCH_FIRST: ${{ github.event.inputs.first_seed || '1001' }}
     steps:
       - name: Checkout PipeCompare
         uses: actions/checkout@v4
@@ -49,7 +53,7 @@ jobs:
           command: |
             addpath(fullfile(pwd, 'eeglab')); eeglab nogui;
             cd PipeCompare; addpath(pwd); addpath(fullfile(pwd, 'benchmarks'));
-            mkdir('bench_out'); pipecompare_benchmark([], fullfile(pwd, 'bench_out'));
+            mkdir('bench_out'); pipecompare_benchmark([], fullfile(pwd, 'bench_out'), str2double(getenv('PIPECOMPARE_BENCH_FIRST')));
 
       - name: Keep the results
         if: always()
@@ -57,3 +61,4 @@ jobs:
         with:
           name: benchmark
           path: PipeCompare/bench_out
+

@@ -73,6 +73,20 @@ verifyEqual(tc, evalin('base', 'EEG.setname'), 'nqc_synth');
 verifyTrue(tc, any(contains(w.DataText.Value, 'nqc_synth')));
 end
 
+function testChannelEditsCanBeReplayed(tc)
+% EEGLAB 2022.0 returns an empty command for scripted channel edits.
+original = tc.TestData.EEG;
+[edited, com] = pipecompare.gui.Main.editChannels(original, ...
+    'changefield', {1, 'type', 'EOG'}, 'changefield', {2, 'labels', 'TEST2'});
+verifyEqual(tc, edited.chanlocs(1).type, 'EOG');
+verifyEqual(tc, edited.chanlocs(2).labels, 'TEST2');
+verifyNotEmpty(tc, com);
+EEG = original;
+eval(com);
+verifyEqual(tc, EEG.chanlocs, edited.chanlocs);
+verifyEqual(tc, EEG.data, original.data);
+end
+
 function testSimpleRunShowsProgressAndResultsInTheWindow(tc)
 EEG = tc.TestData.EEG;
 nqc_setBase(EEG);

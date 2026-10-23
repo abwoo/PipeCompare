@@ -86,6 +86,8 @@ jobs:
             % open the interactive "new dataset" dialog after a menu step, as EEGLAB's own menus do;
             % the tests use the same strings spelled out, which skip it under DEBUG_EEGLAB_MENUS
             if ~exist('eeglab_new', 'file') && isappdata(0, 'pipecompare_eeglab_strings'), rmappdata(0, 'pipecompare_eeglab_strings'); end
-            r = run_all({'test_history', 'test_plan', 'test_panel_text', 'test_statistics', 'test_invariants', ...
-                         'test_simple', 'test_main', 'test_eeglab', 'test_signal', 'test_engine'});
+            suites = {'test_history', 'test_plan', 'test_panel_text', 'test_statistics', 'test_invariants', ...
+                      'test_simple', 'test_main', 'test_eeglab', 'test_signal', 'test_engine'};
+            if isfile(fullfile(home,'tests','test_methodology.m')), suites{end+1}='test_methodology'; end
+            r = run_all(suites);
             assert(~any([r.Failed]), 'PipeCompare:CI', '%d test(s) failed', sum([r.Failed]));

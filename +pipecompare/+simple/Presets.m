@@ -629,18 +629,12 @@ classdef Presets
             end
             cf = b.crossfit;
             if ~isempty(cf) && isfinite(cf.overstatement)
-                if pipecompare.utils.fieldOr(cf, 'nested', 0) > 0
-                    % its automatic limits, thresholds or components were chosen again on those trials' other half
-                    on = 'trials not used to choose it or to set its automatic settings';
-                else
-                    on = 'trials not used to choose it';
-                end
                 if cf.overstatement < 0.02
-                    u = sprintf('Checked on %s, the best pipeline''s error is as low as it looks here: its advantage is not luck.', on);
+                    u = 'The conditional split check found little selection advantage.';
                 else
-                    u = sprintf(['Checked on %s, the best pipeline''s error is about %.0f%% higher than ', ...
-                        'it looks here: part of its advantage over the others is luck.'], on, 100 * cf.overstatement);
+                    u = sprintf('The conditional split check estimates about %.0f%% more error than the apparent best.',100*cf.overstatement);
                 end
+                u = [u ' Preprocessing and shrinkage used all trials; this does not validate the complete pipeline on independent data.'];
                 t = strtrim(sprintf('%s %s', t, u));
             end
             % how often the same pipeline would be recommended with other trials

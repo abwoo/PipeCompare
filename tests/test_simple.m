@@ -815,7 +815,11 @@ w = pipecompare.gui.SimpleResults(r); c = onCleanup(@() delete(w.Fig)); %#ok<NAS
 verifyTrue(tc, startsWith(strjoin(w.Headline.Value, ' '), sprintf('Use pipeline %d: high-pass ', r.ranking.recommended)));
 verifyFalse(tc, contains(strjoin(w.Headline.Value, ' '), 'cutoff='));          % the settings in words, not the internal key
 verifyTrue(tc, contains(strjoin(w.Headline.Value, ' '), 'to be told apart'), strjoin(w.Headline.Value, ' '));   % how large a difference shows
-verifyTrue(tc, contains(strjoin(w.Headline.Value, ' '), 'Checked on trials not used to choose it'), strjoin(w.Headline.Value, ' '));   % selection check
+headline = strjoin(w.Headline.Value, ' ');
+verifyTrue(tc, contains(headline, 'conditional split check'), headline);
+verifyTrue(tc, contains(headline, 'Preprocessing and shrinkage used all trials'), headline);
+verifyTrue(tc, contains(headline, 'does not validate the complete pipeline on independent data'), headline);
+verifyFalse(tc, contains(headline, 'Checked on trials not used to choose it'), headline);
 s = strjoin(w.Steps.Value(:)', ' ');                              % the recommended pipeline, step by step
 verifyTrue(tc, startsWith(s, sprintf('Pipeline %d, step by step: 1. High-pass filter', r.ranking.recommended)), s);
 verifyTrue(tc, contains(s, 'Epochs -200 to 800 ms around event type(s) 11, 31') && contains(s, 'Trials kept per condition: 11: '), s);

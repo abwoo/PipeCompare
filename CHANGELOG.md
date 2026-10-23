@@ -3,6 +3,38 @@
 All notable changes. Versions follow `PipeCompare.Version` (`NeuroQC.Version` up to 0.7.1); each
 release has a git tag `vX.Y.Z`.
 
+## Unreleased
+
+- CI jobs allow two hours for the full GUI/ICA suite, which can exceed one hour on hosted
+  runners. Virtual displays reuse installed Xvfb and bound package-download and startup waits.
+  Logs name each test as it starts. R2022b/R2023a get an early results-window check and a
+  CI-only progress-dialog stand-in, alongside the existing alert stand-in: native progress
+  dialogs also block under Xvfb. Selection, adoption and script export still run in full;
+  native dialog appearance and interaction remain desktop manual checks.
+- CI follow-up: the results-window regression checks the conditional-validation wording.
+  Scripted channel edits now retain their changes and replayable history with EEGLAB 2022.0,
+  which returns no command string. Test summaries distinguish skips from failures. New PR
+  commits cancel superseded CI runs, and compatibility uses at most eight parallel jobs.
+- HMM emissions are normalized in log space before exponentiation. An isolated extreme sample
+  no longer makes the entire recording active; invalid fits expose `valid` and `reason`.
+- Artifact bias is unassessed (NaN) when all retained trials contain a detected artifact. Such
+  candidates cannot pass the ranking as if their bias were zero.
+- Consecutive band-power segments use a Bartlett HAC standard error, including weighted means,
+  automatic rejection limits and block-bootstrap scores. Missing positions retain their time
+  indices. These are finite-sample estimates, not a guarantee under arbitrary nonstationarity.
+- Group bootstrap draws use distinct reproducible streams per recording, paired only within
+  each recording. Unique recording names retain their streams under reordering.
+- Benchmark calibration includes the same artifact and shape bias as the ranking, separates
+  population-P3 error from realized-trial denoising error, reports selected pipelines separately,
+  and gives record-balanced ratios with record-bootstrap intervals and missing recommendations.
+  A third `firstSeed` argument permits disjoint development and validation simulations.
+- The split check is explicitly a conditional selection diagnostic, not independent validation
+  of the complete adaptive pipeline; its legacy numeric fields remain available.
+- Multitaper score units are corrected to `log10(uV^2/Hz)` (mean PSD); effective smoothing width
+  is available as a second output, and unresolved narrow bands warn when validated.
+- Bad-stretch checks retain an assessed/unassessed diagnostic in step records. Methodological
+  regression tests are included in local, compatibility and installed-package CI.
+
 ## 0.9.5 (2026-10-17)
 
 - Benchmark: whether the reported error tells the truth. For every pipeline compared, actual

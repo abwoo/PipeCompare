@@ -364,7 +364,10 @@ classdef Steps
                 % same copy among the channels not found bad as a whole, and
                 % interpolated in those stretches only
                 good = setdiff(elec, find(ismember({EEG.chanlocs.labels}, labels)), 'stable');
-                st = pipecompare.run.Steps.badStretches(src.data(good, :), EEG.srate);
+                [st, info.stretchCheck] = pipecompare.run.Steps.badStretches(src.data(good, :), EEG.srate);
+                if ~info.stretchCheck.assessed
+                    pipecompare.utils.log('Bad-channel stretches unassessed: %s.',info.stretchCheck.reason);
+                end
                 st = struct('channel', arrayfun(@(r) EEG.chanlocs(good(r)).labels, [st.row], 'UniformOutput', false), ...
                     'samples', {st.samples});
                 if ~isempty(st)
@@ -379,7 +382,7 @@ classdef Steps
             end
         end
 
-        function st = badStretches(X, srate)
+        function [st, check] = badStretches(X, srate)
             % Channels (rows of X, continuous, srate Hz) bad for only part of
             % the recording. Each channel's noise the others do not explain
             % (its residual from their least-squares prediction, as in
@@ -399,7 +402,9 @@ classdef Steps
             % channels, 30 windows, or linearly dependent channels.
             st = struct('row', {}, 'samples', {});
             [nc, n] = size(X); w = round(srate); nw = floor(n / w);
-            if nc < 8 || nw < 30, return; end
+            check = struct('assessed',false,'reason','','windows',nw,'channels',nc);
+            if nc < 8, check.reason='fewer than 8 eligible channels'; return; end
+            if nw < 30, check.reason='fewer than 30 one-second windows'; return; end
             Xs = double(X(:, 1:max(1, ceil(n / 2e5)):end)); Xs = Xs - median(Xs, 2);
             mad = 1.4826 * median(abs(Xs), 2);
             keep = max(abs(Xs) ./ max(mad, eps), [], 1) < 6;
@@ -407,10 +412,12 @@ classdef Steps
             Xs = Xs - mean(Xs, 2);
             C = (Xs * Xs') / size(Xs, 2);
             if rcond(C) < 1e-10
+                check.reason='rank-deficient channel covariance';
                 pipecompare.utils.log(['Bad channels: stretches of bad channels not looked for (the channels are ', ...
                     'linearly dependent, e.g. already average-referenced or interpolated).']);
                 return;
             end
+            check.assessed = true;
             P = inv(C); Wr = P ./ diag(P);
             L = zeros(nc, nw);
             for k = 1:nw
@@ -425,7 +432,10 @@ classdef Steps
             scale = max(0.05, median(sc));
             for c = 1:nc
                 y = (L(c, :) - q20(c) - median(gap)) / scale;
-                on = pipecompare.eval.Hmm.segment(y, -inf, pipecompare.run.Steps.MinWindows);
+                [on, model] = pipecompare.eval.Hmm.segment(y, -inf, pipecompare.run.Steps.MinWindows);
+                if ~model.valid
+                    check.assessed=false; check.reason=['HMM fit failed: ' model.reason];
+                end
                 d = diff([0 on 0]); s = find(d == 1); e = find(d == -1) - 1;
                 for q = 1:numel(s)
                     if mean(y(s(q):e(q))) >= pipecompare.run.Steps.StretchZ
@@ -1455,3 +1465,4 @@ for j = 1:numel(contract.components)
     end
 end
 end
+

@@ -115,8 +115,8 @@ classdef Rank
     %      the reference) are ranked separately and never against each
     %      other.
     %
-    %   No experimental effect (condition difference, p-value) is used, so
-    %   choosing a pipeline cannot inflate the effect tested later.
+    %   No condition difference or p-value is optimized. Data-dependent
+    %   preprocessing still needs independent downstream validation.
 
     properties (Constant)
         BiasShare = 0.5   % a bias above this share of the noise makes a pipeline "biased" (step 5)
@@ -166,7 +166,9 @@ classdef Rank
                 [primary(i), noise(i), bias(i)] = primaryPoint(m, objName, ref, g, sp);
                 for k = 1:nO
                     eb = pipecompare.utils.fieldOr(m.objectives(k), 'eyeBias', 0);
-                    [~, at] = max(abs(eb)); eyeB(i, k) = eb(at);   % the condition where blinks add most
+                    if all(isfinite(eb))
+                        [~, at] = max(abs(eb)); eyeB(i, k) = eb(at);   % the condition where blinks add most
+                    end
                 end
                 minRet(i) = min(m.retention); minKept(i) = min(m.kept);
                 interp(i) = c.interpolatedFraction;
@@ -176,6 +178,15 @@ classdef Rank
                     wCorr(i) = sg.waveformCorr; tCorr(i) = sg.topoCorr;
                 end
                 why = {};
+                assessedUse = 1:nO;
+                if ~strcmp(objName,'composite'), assessedUse = find(strcmp(ref.objectives,objName)); end
+                for k = assessedUse
+                    assessed = pipecompare.utils.fieldOr(m.objectives(k),'eyeBiasAssessed',true);
+                    if any(~assessed)
+                        why{end+1} = 'artifact bias unassessed: no artifact-free comparison trials'; %#ok<AGROW>
+                        break;
+                    end
+                end
                 % every comparison is written so that a missing value (NaN) fails it:
                 % a check that was not computed is never a pass
                 if ~(minKept(i) >= opts.minTrials), why{end+1} = sprintf('only %d trials in a condition (< %d)', minKept(i), opts.minTrials); end %#ok<AGROW>
@@ -271,7 +282,7 @@ classdef Rank
             s = RandStream('mt19937ar', 'Seed', opts.seed);
             peak = isfield(cands(1).m, 'objectives') && any(~strcmp({cands(1).m.objectives.kind}, 'scalar'));
             B = opts.nBoot; if peak, B = opts.nBootPeakOuter; end
-            nC = numel(ref.ids); W = cell(1, nC); scale = ones(1, nC);
+            nC = numel(ref.ids); W = cell(1, nC); indices = cell(1, nC); scale = ones(1, nC);
             for c = 1:nC
                 N = ref.n(c);
                 if peak
@@ -287,14 +298,14 @@ classdef Rank
                     for b = 1:B, W{c}(randperm(s, N, m), b) = 1; end
                     scale(c) = sqrt(m / N);
                 else
-                    W{c} = pipecompare.eval.Rank.resampleWeights(s, N, B, isfield(ref, 'segmented') && ref.segmented);
+                    [W{c}, indices{c}] = pipecompare.eval.Rank.resampleWeights(s, N, B, isfield(ref, 'segmented') && ref.segmented);
                 end
             end
-            per = perObjective(cands, ref, opts, W, scale);
+            per = perObjective(cands, ref, opts, W, scale, indices);
             boot = cellfun(@(q) combine(per, q, ref), objNames, 'UniformOutput', false);
         end
 
-        function W = resampleWeights(s, N, B, segmented)
+        function [W, idx] = resampleWeights(s, N, B, segmented)
             % N x B counts of each trial in B bootstrap resamples (random
             % stream s). Consecutive segments of one recording are dependent
             % (slow changes of state and noise), so they are resampled in
@@ -366,16 +377,24 @@ classdef Rank
             name = resolveObjective(obj, ref);
         end
 
+        function [total, noise, bias] = conditionErrors(o, gain, spread)
+            % The same per-condition error used by primaryPoint. Benchmark
+            % calibration must include both artifact and shape bias.
+            noise = o.sme / gain;
+            bias = biasOf(o, gain, spread);
+            total = sqrt(noise .^ 2 + bias .^ 2);
+        end
+
         function cf = crossfit(cands, ref, opts, objName, apparent, F)
             % The objective of the pipeline that is best on one half of the
             % trials, scored on the other half (rescaled to all trials by
             % sqrt(m/N), as the half-samples of bootstrap; SME ~ 1/sqrt(n)),
             % averaged over both directions and opts.nSplits random splits.
-            % Selection and evaluation use different trials, so the value is
-            % not flattered by the selection; apparent (the best objective on
-            % all trials) is. overstatement = honest / apparent - 1. A choice
-            % made on half the trials is somewhat worse than one made on all,
-            % so the overstatement is, if anything, too large. [] when a
+            % Conditional selection diagnostic: preprocessing and the
+            % candidate family have already been fitted on all trials.
+            % This is not an independent validation of the whole pipeline.
+            % overstatement = honest / apparent - 1 (honest is a legacy
+            % field name). [] when a
             % condition has fewer than 4 trials or nSplits is 0.
             % The choices a pipeline makes from the measure itself (a
             % rejection limit, an ICLabel threshold or components chosen by
@@ -430,7 +449,10 @@ classdef Rank
             if ~any(ok), return; end
             h = mean(honest(ok));
             cf = struct('apparent', apparent, 'honest', h, 'overstatement', h / apparent - 1, ...
-                'halfInSample', mean(inSample(ok)), 'nSplits', nS, 'nested', numel(nest));
+                'halfInSample', mean(inSample(ok)), 'nSplits', nS, 'nested', numel(nest), ...
+                'scope','conditional-selection','fullyHeldOut',false,'totalCandidates',numel(cands), ...
+                'fixedDecisions',{{'candidate eligibility','HMM and bad channels','ICA','trial weights', ...
+                'fine-tuned cutoffs','signal checks','factorial shrinkage'}});
         end
 
         function F = factorialModel(levels, Bq, pts)
@@ -618,9 +640,11 @@ classdef Rank
                 if ~isempty(b.crossfit)
                     pipecompare.utils.log(['Selection check: the pipeline best on half of the trials has objective %.4g on the ', ...
                         'other half (rescaled to all trials), against %.4g for the best on all trials: the best looks %.0f%% ', ...
-                        'better than it is (%d split(s), both directions; the limits, thresholds or components chosen ', ...
+                        'better in this conditional diagnostic (%d split(s), both directions; the limits, thresholds or components chosen ', ...
                         'from the data made again on the selecting half for %d pipeline(s)).'], b.crossfit.honest, b.crossfit.apparent, ...
                         100 * b.crossfit.overstatement, b.crossfit.nSplits, pipecompare.utils.fieldOr(b.crossfit, 'nested', 0));
+                    pipecompare.utils.log(['Conditional on preprocessing, candidate eligibility and shrinkage fitted on all trials; ', ...
+                        'this is not held-out validation of the complete pipeline or of new recordings.']);
                 end
             end
             if numel(R.byStratum) > 1
@@ -658,8 +682,9 @@ use = 1:numel(g);
 if ~strcmp(name, 'composite'), use = find(strcmp(ref.objectives, name)); end
 s2 = []; b2 = [];
 for k = use
-    s2 = [s2 (m.objectives(k).sme / g(k)) .^ 2]; %#ok<AGROW>
-    b2 = [b2 biasOf(m.objectives(k), g(k), spread(k)) .^ 2]; %#ok<AGROW>
+    [~, ns, bs] = pipecompare.eval.Rank.conditionErrors(m.objectives(k), g(k), spread(k));
+    s2 = [s2 ns .^ 2]; %#ok<AGROW>
+    b2 = [b2 bs .^ 2]; %#ok<AGROW>
 end
 noise = sqrt(mean(s2)); bias = sqrt(mean(b2));
 v = sqrt(mean(s2 + b2));
@@ -829,19 +854,21 @@ else, t = class(v);
 end
 end
 
-function per = perObjective(cands, ref, opts, W, scale)
+function per = perObjective(cands, ref, opts, W, scale, indices)
 % Total error of every candidate and objective under the trial weights
 % W{c} (N x B per condition): candidates x B x objectives. The SME
 % (Measure.smeBoot) and what blinks add (Measure.eyeBias) are those of
 % each resample; the shape part of the bias is that of all trials.
 nO = numel(ref.objectives); B = size(W{1}, 2);
+if nargin < 6, indices = {}; end
 per = zeros(numel(cands), B, nO);
 blink = pipecompare.utils.fieldOr(ref, 'blink', {});
 for k = 1:numel(cands)
     objs = cands(k).m.objectives;
     g = gainOf(cands(k), nO); sp = spreadOf(cands(k), nO);
     for o = 1:nO
-        sm = pipecompare.eval.Measure.smeBoot(objs(o), W, opts, 7919 * o, scale) / g(o);
+        ob = objs(o); ob.segmented = pipecompare.utils.fieldOr(ref, 'segmented', false);
+        sm = pipecompare.eval.Measure.smeBoot(ob, W, opts, 7919 * o, scale, indices) / g(o);
         nC = numel(W); b2 = zeros(1, B);
         for c = 1:nC
             eq = zeros(1, B);
@@ -964,8 +991,13 @@ for j = find(in.ok(:)')
         ok = ok & n >= max(ceil(need(q) * sum(H{q}) / ref.n(q) - 1e-9), 2);
         for o = 1:size(P.X{q}, 2)
             x = P.X{q}(:, o);
-            s1 = x' * K; s2 = (x .^ 2)' * K;
-            acc = acc + max((s2 - s1 .^ 2 ./ n) ./ (n - 1), 0) ./ n;
+            if pipecompare.utils.fieldOr(ref,'segmented',false)
+                [~, se] = pipecompare.eval.Measure.meanError(repmat(x,1,numel(v)),K,true);
+                acc = acc + se.^2;
+            else
+                s1 = x' * K; s2 = (x .^ 2)' * K;
+                acc = acc + max((s2 - s1 .^ 2 ./ n) ./ (n - 1), 0) ./ n;
+            end
             acc = acc + halfBias(in, x, o, q, K) .^ 2;
         end
     end
@@ -977,10 +1009,10 @@ if ~any(isfinite(best)), return; end
 j = find(best <= mg * min(best), 1);
 u = lims{j}(find(objs{j} <= mg * best(j), 1, 'last'));
 P = in.options{j};
-vH = scoredAt(in, P, u, H, scH, opts); vO = scoredAt(in, P, u, O, scO, opts);
+vH = scoredAt(in, P, u, H, scH, ref, opts); vO = scoredAt(in, P, u, O, scO, ref, opts);
 end
 
-function v = scoredAt(in, P, u, W, sc, opts)
+function v = scoredAt(in, P, u, W, sc, ref, opts)
 % The total error of option P with the trials kept at limit u, under the
 % trial weights W (Measure.smeBoot, rescaled by sc; the bias as in
 % halfBias; RMS over the measures)
@@ -992,7 +1024,8 @@ for o = 1:numel(per)
         K = W{q}; if ~isempty(in.w), K = K .* in.w{q}; end
         b2 = b2 + halfBias(in, X{q}, o, q, K) ^ 2;
     end
-    per(o) = sqrt(pipecompare.eval.Measure.smeBoot(struct('kind', 'scalar', 'X', {X}, 'w', {in.w}), W, opts, 0, sc) ^ 2 + b2 / nC);
+    ob = struct('kind','scalar','X',{X},'w',{in.w},'segmented',pipecompare.utils.fieldOr(ref,'segmented',false));
+    per(o) = sqrt(pipecompare.eval.Measure.smeBoot(ob, W, opts, 0, sc) ^ 2 + b2 / nC);
 end
 v = sqrt(mean(per .^ 2));
 end
@@ -1005,3 +1038,4 @@ eq = zeros(1, size(K, 2));
 if ~isempty(in.blink), [~, eq] = pipecompare.eval.Measure.eyeBias(x, in.blink{o}{q}, K); end
 b = sqrt(eq) + in.shape(o, q);
 end
+

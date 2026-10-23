@@ -105,7 +105,8 @@ classdef Group
             used = arrayfun(@(s) any(strcmp(s.table.status, 'feasible')), S);
             nK = numel(keys); nU = sum(used);
             G = struct('recordings', {{S.name}}, 'leftOut', {{S(~used).name}}, 'keys', {keys}, 'labels', {{}}, ...
-                'perRecording', nan(nU, nK), 'table', table(), 'recommended', [], 'note', '');
+                'perRecording', nan(nU, nK), 'table', table(), 'recommended', [], 'note', '', ...
+                'validationScope','observed-recordings','fullyHeldOut',false);
             assert(nK > 0, 'PipeCompare:Group', 'No pipeline was run on every recording.');
             [~, loc1] = ismember(keys, S(1).keys);
             G.labels = S(1).labels(loc1);
@@ -127,11 +128,15 @@ classdef Group
             F = find(feas);
             % each recording's bootstrap of the pipelines passing on it
             Fm = false(nU, nK); V = nan(nU, nK); boots = cell(1, nU);
+            baseOpts = pipecompare.utils.withDefaults(S(1).ranking.options, pipecompare.eval.Rank.defaults());
+            seeds = pipecompare.Group.recordingSeeds({S.name}, baseOpts.seed);
+            G.bootstrapSeeds = seeds(u);
             for j = 1:nU
                 s = S(u(j)); [~, loc] = ismember(keys, s.keys);
                 Fm(j, :) = strcmp(s.table.status(loc), 'feasible')';
                 if ~any(Fm(j, :)), continue; end
-                b = pipecompare.eval.Rank.bootstrap(s.cands(loc(Fm(j, :))), s.ref, s.ranking.options, {s.ranking.objective});
+                bootOpts = s.ranking.options; bootOpts.seed = seeds(u(j));
+                b = pipecompare.eval.Rank.bootstrap(s.cands(loc(Fm(j, :))), s.ref, bootOpts, {s.ranking.objective});
                 boots{j} = nan(nK, size(b{1}, 2)); boots{j}(Fm(j, :), :) = b{1};
                 V(j, Fm(j, :)) = var(b{1}, 0, 2)';
             end
@@ -169,6 +174,26 @@ classdef Group
                 G.own = table(G.recordings(u)', own, lab, same, ...
                     'VariableNames', {'recording', 'id', 'pipeline', 'sameAsGroup'});
                 G = rmfield(G, 'ownChoice');
+            end
+        end
+
+        function seeds = recordingSeeds(names, seed)
+            % Independent streams across recordings, paired across pipelines
+            % within one recording. Unique names retain their stream when
+            % input order changes; repeated names get separate occurrences.
+            keys = cell(size(names));
+            for i = 1:numel(names)
+                occurrence = sum(strcmp(names(1:i), names{i}));
+                keys{i} = sprintf('%s|%d', names{i}, occurrence);
+            end
+            [~, order] = sort(keys); seeds = zeros(size(names)); used = [];
+            % Leave room for the deterministic salts used by inner checks.
+            modulus = 2147483647;
+            for i = order(:)'
+                h = mod(double(seed), modulus);
+                for c = double(keys{i}), h = mod(h * 65599 + c, modulus); end
+                while any(used == h), h = mod(h + 1, modulus); end
+                seeds(i) = h; used(end+1) = h; %#ok<AGROW>
             end
         end
 
@@ -265,3 +290,4 @@ for v = {'EEG', 'pipecompare_result'}
     if isfield(s, v{1}), assignin('base', v{1}, s.(v{1})); else, evalin('base', ['clear ' v{1}]); end
 end
 end
+

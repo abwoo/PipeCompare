@@ -109,6 +109,15 @@ classdef Main < handle
                 'plugin); load the locations file of your cap instead.']);
         end
 
+        function [EEG, com] = editChannels(EEG, varargin)
+            % Older EEGLAB releases leave com empty after a scripted edit.
+            % Keep both the changed dataset and a command that replays it.
+            [EEG, ~, ~, com] = pop_chanedit(EEG, varargin{:});
+            if isempty(com)
+                com = sprintf('EEG = pop_chanedit(EEG, %s);', vararg2str(varargin));
+            end
+        end
+
         function storeNew(EEG, com)
             % EEG as a new EEGLAB dataset, the current one (as EEGLAB's
             % import menus store it)
@@ -547,7 +556,7 @@ classdef Main < handle
                     end
                 end
                 if isempty(args), return; end
-                [EEG, ~, ~, com] = pop_chanedit(EEG, args{:});
+                [EEG, com] = pipecompare.gui.Main.editChannels(EEG, args{:});
                 pipecompare.gui.Main.storeCurrent(EEG, com);
             catch ME
                 uialert(obj.Fig, ME.message, 'PipeCompare');
@@ -604,7 +613,7 @@ classdef Main < handle
                 assert(~isempty(EEG), 'PipeCompare:NoDataset', 'Open a data file first.');
                 switch how
                     case 'standard'
-                        [EEG, ~, ~, com] = pop_chanedit(EEG, 'lookup', pipecompare.gui.Main.standardLocations());
+                        [EEG, com] = pipecompare.gui.Main.editChannels(EEG, 'lookup', pipecompare.gui.Main.standardLocations());
                     case 'file'
                         if nargin < 3
                             [f, p] = uigetfile({'*.ced;*.elc;*.elp;*.sfp;*.loc;*.locs;*.xyz;*.txt', 'Channel locations'; ...
@@ -612,9 +621,8 @@ classdef Main < handle
                             if isequal(f, 0), return; end
                             file = fullfile(p, f);
                         end
-                        [EEG, ~, ~, com] = pop_chanedit(EEG, 'load', {file, 'filetype', 'autodetect'});
+                        [EEG, com] = pipecompare.gui.Main.editChannels(EEG, 'load', {file, 'filetype', 'autodetect'});
                 end
-                if isempty(com), return; end   % cancelled
                 pipecompare.gui.Main.storeCurrent(EEG, com);
             catch ME
                 uialert(obj.Fig, ME.message, 'PipeCompare');

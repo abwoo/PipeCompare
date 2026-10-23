@@ -842,12 +842,12 @@ function f = stepFacts(in, info)
 f = struct('type', in.type, 'params', in.params, 'interpolated', {{}}, 'removed', {{}}, ...
     'icsRemoved', NaN, 'icsTotal', NaN, 'rejected', NaN, 'epochsBefore', NaN, 'epochsInterpolated', NaN, ...
     'icsBrain', NaN, 'icsOther', NaN, 'otherMedian', NaN, 'icaPoints', NaN, 'uvChosen', NaN, 'thresholdChosen', NaN, 'icsConsidered', NaN, 'icsProtected', NaN, ...
-    'comps', [], 'rejIdx', [], 'cutoffRefined', false, 'weightRatio', NaN, 'trialWeights', [], 'curves', [], 'keptShift', [], 'leftAsIs', {{}}, 'eog', [], 'stretches', []);
+    'comps', [], 'rejIdx', [], 'cutoffRefined', false, 'weightRatio', NaN, 'trialWeights', [], 'curves', [], 'keptShift', [], 'leftAsIs', {{}}, 'eog', [], 'stretches', [], 'stretchCheck', []);
 for n = {'interpolated', 'removed', 'leftAsIs'}
     if isfield(info, n{1}), f.(n{1}) = cellstr(info.(n{1})); end
 end
 for n = {'icsRemoved', 'icsTotal', 'rejected', 'epochsBefore', 'epochsInterpolated', 'icsBrain', 'icsOther', 'otherMedian', 'icaPoints', 'uvChosen', 'thresholdChosen', 'icsConsidered', 'icsProtected', ...
-        'comps', 'rejIdx', 'cutoffRefined', 'weightRatio', 'trialWeights', 'curves', 'keptShift', 'eog', 'stretches'}
+        'comps', 'rejIdx', 'cutoffRefined', 'weightRatio', 'trialWeights', 'curves', 'keptShift', 'eog', 'stretches', 'stretchCheck'}
     if isfield(info, n{1}), f.(n{1}) = info.(n{1}); end
 end
 end
@@ -1454,3 +1454,4 @@ parts = {getByteStreamFromArray(result.rootComs), getByteStreamFromArray(result.
 for k = 1:numel(parts), md.update(parts{k}); end
 id = lower(reshape(dec2hex(typecast(md.digest(), 'uint8'))', 1, []));
 end
+

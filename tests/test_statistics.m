@@ -279,7 +279,7 @@ function testWhatBlinksAddToTheMean(tc)
 % Measure.eyeBias: the share of the blink trials times the difference of
 % their mean from the others' (what they add to the mean), its square
 % counted beyond 2 standard errors only (soft thresholding), 0 with no
-% blink trial kept or no other trial, and every mean (a column of weights)
+% blink trial kept, NaN with no other trial, and every mean (a column of weights)
 % at once.
 x = [1 1 1 3 3 NaN]'; b = logical([0 0 0 1 1 1])';
 [bias, sq] = pipecompare.eval.Measure.eyeBias(x, b, ones(6, 1));
@@ -293,8 +293,8 @@ verifyEqual(tc, sq, (bias - 2 * se) ^ 2, 'AbsTol', 1e-12);
 verifyGreaterThan(tc, sq, 0);
 K = [1 1 1 0 0 0; 0 0 0 1 1 0; 1 1 1 1 1 1]';
 [bias, sq] = pipecompare.eval.Measure.eyeBias(x, b, K);
-verifyEqual(tc, bias, [0 0 0.8], 'AbsTol', 1e-12);
-verifyEqual(tc, sq(1:2), [0 0]);
+verifyEqual(tc, bias([1 3]), [0 0.8], 'AbsTol', 1e-12);
+verifyEqual(tc, sq(1), 0); verifyTrue(tc, isnan(bias(2)) && isnan(sq(2)));
 % without a real bias, sq is small next to the SME^2 (1/40) even when
 % most trials have a blink
 rng(3); q = zeros(1, 2000);
@@ -660,9 +660,10 @@ ar = @(n) filter(1, [1 -phi], randn(rs, n, 1)) * sqrt(1 - phi ^ 2);
 fa = [0 0];
 for k = 1:sims
     common = ar(N);
-    a = nqc_cand(common + ar(N)); b = nqc_cand(common + ar(N));
+    xa = common + ar(N); xb = common + ar(N);
     for mode = 1:2
         ref = nqc_ref(N); ref.segmented = (mode == 1);
+        a = nqc_cand(xa,'segmented',ref.segmented); b = nqc_cand(xb,'segmented',ref.segmented);
         R = pipecompare.eval.Rank.run([a b], ref, o);
         fa(mode) = fa(mode) + any(~R.table.notDistinguished);
     end
@@ -681,3 +682,4 @@ verifyFalse(tc, pipecompare.eval.Rank.sameScores(R));
 R.table.status(2) = {'rejected'};
 verifyFalse(tc, pipecompare.eval.Rank.sameScores(R));   % one pipeline: nothing compared
 end
+

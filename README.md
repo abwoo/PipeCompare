@@ -642,12 +642,11 @@ setting's effect is estimated from all the pipelines that share it (see *Recomme
 5 %), the one of those that keeps the most trials, so that data are not cleaned more than they
 need to be. The result then says whether the recommended
 pipeline's noise is within 5 % of the best one's (a negligible difference) or whether the data are
-too few to tell, with how much noisier it could be. It also says how the best pipeline does on
-trials that were not used to choose it: either *its advantage is not luck*, or its noise there is
-about X % higher than it looks. The automatic settings inside each pipeline (the rejection limit,
-the ICLabel threshold, the components chosen by their effect on the noise) are chosen again on
-the trials used to choose, so their luck is left out of that number too; the sentence then says
-*trials not used to choose it or to set its automatic settings* (see [How a pipeline is chosen](#how-a-pipeline-is-chosen)). Last, it
+too few to tell, with how much noisier it could be. It also reports a conditional split check:
+some automatic limits, thresholds and component choices are reselected on one half and scored
+on the other. Preprocessing, candidate eligibility and shrinkage were fitted using all trials.
+The check therefore diagnoses part of the selection advantage; it does not establish that the
+complete pipeline generalizes to independent data (see [validation limits](docs/VALIDATION.md)). Last, it
 says how often the same pipeline would be recommended with the trials drawn again at random, for
 example *this pipeline is recommended 85% of the time: a stable choice* (70 % or more), or *45% of
 the time, No. 7 30% of the time: the data do not single out one pipeline clearly*; then the
@@ -1607,18 +1606,20 @@ bad-channel interpolation and ICA with ICLabel). It reports, per pipeline, the b
 mean square error of each condition and of their difference against the P3 actually in the data,
 the trials kept, and where the recommendation ranks by actual error among all the pipelines
 PipeCompare compared. It also checks that PipeCompare's own error estimate tells the truth: for
-every pipeline compared, the actual error of each condition's P3 (corrected by the signal check's
-gain) against the error PipeCompare reports for it (SME and what blinks add, divided by the gain).
-The ratio of the two (root mean squares over recordings; 1 = right, below 1 = the error is
-understated) is given for all pipelines, and with and without each step learned from the data
-(EOG regression, ICA components chosen by SME, ICA, trial weights, stretches interpolated), so a
-step that makes the SME too small is seen (`calibration.csv`, `benchmark_summary.txt`). It takes hours (an ICA per pipeline and recording), so on GitHub it runs
+every pipeline compared, the gain-corrected estimate's error against the population P3 is compared
+with the ranked total error, including artifact and signal-shape bias. `conditionalError` also
+retains the error against the realized trial mean, a distinct denoising target. Ratios above 1
+mean reported error is understated. Records have equal weight, and confidence intervals resample
+whole records. The selected pipelines are summarized separately; with/without learned-step
+groups are descriptive, not controlled ablations. Small samples are marked exploratory and
+missing recommendations are counted (`calibration.csv`, `benchmark_summary.txt`). It takes hours (an ICA per pipeline and recording), so on GitHub it runs
 by hand only (Actions > *benchmark* > *Run workflow*; the results, written after every recording,
 are kept as an artifact), or locally:
 
 ```matlab
 eeglab nogui; addpath(fullfile(pwd, 'benchmarks'));
 out = pipecompare_benchmark(8);           % 8 recordings; results also in tempdir
+out = pipecompare_benchmark(30, tempdir, 1001); % disjoint validation seeds 1001..1030
 ```
 
 Two optional checks use your own data, which is never committed: set the environment variable
