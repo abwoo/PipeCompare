@@ -99,18 +99,25 @@ if numel(S)>=3
             errors(p)=candidateLoss(C,S(held),loc(p));
         end
         oracle=min(errors,[],'omitnan');
+        [recommended,~,inFamily]=validation_recommended_loss(C,S(held),keys);
         rows(end+1,:)={S(held).name,numel(train),numel(valid),info.assessed, ...
-            errors(a),errors(f),errors(b),oracle,errors(b)-errors(a),a,b}; %#ok<AGROW>
+            errors(a),errors(f),errors(b),oracle,recommended,inFamily, ...
+            errors(b)-recommended,errors(b)-errors(a),a,b}; %#ok<AGROW>
     end
 end
 if ~isempty(rows)
     T=cell2table(rows,'VariableNames',{'recording','trainingParticipants','eligibleCandidates','priorAssessed', ...
-        'rawMinimumMSE','factorialMinimumMSE','frozenGroupMSE','oracleMSE','groupMinusIndependentMSE','rawChoice','groupChoice'});
+        'rawMinimumMSE','factorialMinimumMSE','frozenGroupMSE','familyOracleMSE', ...
+        'actualRecommendationMSE','recommendationInTrainingFamily','groupMinusRecommendationMSE', ...
+        'groupMinusRawMinimumMSE','rawChoice','groupChoice'});
     writetable(T,fullfile(outDir,'participant_held_out.csv'));
     result.groupTransferRecords=height(T);result.groupTransferAssessed=nnz(T.priorAssessed);
-    result.meanGroupMinusIndependentMSE=mean(T.groupMinusIndependentMSE,'omitnan');
+    result.meanGroupMinusRawMinimumMSE=mean(T.groupMinusRawMinimumMSE,'omitnan');
+    result.meanGroupMinusRecommendationMSE=mean(T.groupMinusRecommendationMSE,'omitnan');
+    result.actualRecommendationsInTrainingFamily=nnz(T.recommendationInTrainingFamily);
 end
 result.sourceRun=getenv('VALIDATION_SOURCE_RUN');result.sourceCommits=unique(sourceHeads);
+result.groupFamilyScope='Raw minima and oracle use training-supported keys; actual recommendations may use the full per-record candidate family.';
 result.fixedPriorTest=fixedPriorEvaluation(S,C,outDir);
 fid=fopen(fullfile(outDir,'summary.json'),'w');fprintf(fid,'%s\n',jsonencode(result));fclose(fid);
 fprintf('PIPECOMPARE_VALIDATION_JSON %s\n',jsonencode(result));
@@ -235,21 +242,32 @@ for j=test(:)'
     [~,loc]=ismember(keys,S(j).keys);
     [raw,rawContrast]=candidateLoss(C,S(j),loc(a));
     [group,groupContrast]=candidateLoss(C,S(j),loc(b));
-    rows(end+1,:)={id(j),info.assessed,numel(valid),a,b,raw,group,group-raw,rawContrast,groupContrast}; %#ok<AGROW>
+    [recommended,recommendedContrast,inFamily]=validation_recommended_loss(C,S(j),keys);
+    rows(end+1,:)={id(j),info.assessed,numel(valid),a,b,raw,group,group-raw, ...
+        rawContrast,groupContrast,recommended,recommendedContrast,inFamily,group-recommended}; %#ok<AGROW>
 end
 if isempty(rows),return;end
 T=cell2table(rows,'VariableNames',{'subject','priorAssessed','candidates','rawChoice','groupChoice', ...
-    'independentMSE','frozenGroupMSE','groupMinusIndependentMSE','independentContrastError','groupContrastError'});
+    'rawMinimumMSE','frozenGroupMSE','groupMinusRawMinimumMSE','rawMinimumContrastError','frozenGroupContrastError', ...
+    'actualRecommendationMSE','actualRecommendationContrastError','recommendationInTrainingFamily','groupMinusRecommendationMSE'});
 writetable(T,fullfile(outDir,'frozen_prior_independent_test.csv'));
 result.testCovered=height(T);result.priorAssessed=nnz(T.priorAssessed);
-result.meanGroupMinusIndependentMSE=mean(T.groupMinusIndependentMSE);
-result.conditionalRecordBootstrap95=recordInterval(T.groupMinusIndependentMSE);
-result.changedChoices=nnz(T.rawChoice~=T.groupChoice);
-result.harmfulChanges=nnz(T.groupMinusIndependentMSE>0&T.rawChoice~=T.groupChoice);
+result.meanGroupMinusRawMinimumMSE=mean(T.groupMinusRawMinimumMSE);
+result.rawMinimumComparisonConditional95=recordInterval(T.groupMinusRawMinimumMSE);
+result.meanGroupMinusRecommendationMSE=mean(T.groupMinusRecommendationMSE,'omitnan');
+result.recommendationComparisonConditional95=recordInterval(T.groupMinusRecommendationMSE);
+result.actualRecommendationsAvailable=nnz(isfinite(T.actualRecommendationMSE));
+result.actualRecommendationsInTrainingFamily=nnz(T.recommendationInTrainingFamily);
+result.changedChoicesVersusRawMinimum=nnz(T.rawChoice~=T.groupChoice);
+result.harmfulChangesVersusRawMinimum=nnz(T.groupMinusRawMinimumMSE>0&T.rawChoice~=T.groupChoice);
+result.harmfulChangesVersusRecommendation=nnz(T.groupMinusRecommendationMSE>0);
+result.comparisonScope='Raw-minimum comparison uses the training-supported family; actual recommendations use the original full per-record family.';
 a=mod(T.subject,2)==1;b=~a;
 if any(a)&&any(b)
-    result.independentGroupContrastError=mean(T.independentContrastError(a))-mean(T.independentContrastError(b));
-    result.frozenPriorGroupContrastError=mean(T.groupContrastError(a))-mean(T.groupContrastError(b));
+    result.rawMinimumGroupContrastError=mean(T.rawMinimumContrastError(a))-mean(T.rawMinimumContrastError(b));
+    result.frozenPriorGroupContrastError=mean(T.frozenGroupContrastError(a))-mean(T.frozenGroupContrastError(b));
+    result.actualRecommendationGroupContrastError=mean(T.actualRecommendationContrastError(a),'omitnan')- ...
+        mean(T.actualRecommendationContrastError(b),'omitnan');
 end
 end
 

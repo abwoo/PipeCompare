@@ -396,3 +396,22 @@ m=pipecompare.eval.Measure.candidate(remaining,c,ref);
 verifyTrue(tc,all(m.objectives.eyeBiasAssessed));
 verifyTrue(tc,all(isfinite(m.objectives.eyeBiasSq)));
 end
+
+function testGroupValidationUsesActualRecommendationInsteadOfRawMinimum(tc)
+oldPath=path;cleanup=onCleanup(@()path(oldPath)); %#ok<NASGU>
+addpath(fullfile(fileparts(mfilename('fullpath')),'..','benchmarks'));
+C=table(21*ones(4,1),{'raw-minimum';'raw-minimum';'selected';'selected'},[1;2;1;2], ...
+    [0.1;0.1;2;3],logical([0;0;1;1]),[0.1;0.1;2;3],ones(4,1), ...
+    'VariableNames',{'recording','steps','condition','actualError','selected','rawEstimate','gain'});
+S=struct('name','S021R01.mat','keys',{{'a','b'}},'labels',{{'raw-minimum','selected'}});
+S.table=table(ones(2,1),'VariableNames',{'gain_P3'});
+S.cands=struct('m',{struct('objectives',struct('estimate',[0.1 0.1])), ...
+    struct('objectives',struct('estimate',[2 3]))});
+[loss,contrast,inFamily]=validation_recommended_loss(C,S,{'a'});
+verifyEqual(tc,loss,6.5);verifyEqual(tc,contrast,-1);verifyFalse(tc,inFamily);
+[again,~,inFamily]=validation_recommended_loss(C,S,{'b'});
+verifyEqual(tc,again,loss);verifyTrue(tc,inFamily);
+C.selected(:)=false;
+[missing,contrast,inFamily]=validation_recommended_loss(C,S,{'a','b'});
+verifyTrue(tc,isnan(missing));verifyTrue(tc,isnan(contrast));verifyFalse(tc,inFamily);
+end

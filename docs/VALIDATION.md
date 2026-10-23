@@ -202,3 +202,10 @@ A saved five-record shard reports approximately 28 seconds per fit while its exp
 clocks report 259–999 seconds. The runner now uses its own timer handle and records that method
 in provenance. Summaries mark older fit-timing totals unassessed; calibration and detection
 metrics are separate from those clock readings. See the saved timer counterexample JSON.
+
+Group transfer reports two distinct baselines: the minimum raw score within the training-supported
+family, and the program's actual frozen per-record recommendation. The actual recommendation may
+use candidates outside that restricted family. Both loss differences and that coverage flag are
+exported; a raw-minimum comparison is not labeled as improvement over the actual recommendation.
+A regression deliberately makes the selected pipeline differ from the raw minimum and verifies
+that the actual selected truth rows are used, including unavailable recommendations.
