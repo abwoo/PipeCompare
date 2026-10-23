@@ -10,22 +10,37 @@ name: benchmark
 on:
   workflow_dispatch:
     inputs:
+      suite:
+        description: 'Public independent EEG validation or known-truth simulations'
+        type: choice
+        options: [public, synthetic]
+        default: public
       recordings:
         description: 'number of simulated recordings'
-        default: '8'
+        default: '30'
       first_seed:
         description: 'first seed (use a fresh range for validation)'
-        default: '1001'
+        default: '20001'
 
 jobs:
+  public:
+    if: inputs.suite != 'synthetic'
+    uses: ./.github/workflows/open-validation.yml
+
   benchmark:
-    name: Ground-truth benchmark
+    if: inputs.suite == 'synthetic'
+    name: Ground-truth benchmark shard ${{ matrix.shard }}
     runs-on: ubuntu-latest
     timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5]
     env:
       DISPLAY: ":99"
-      PIPECOMPARE_BENCH_N: ${{ github.event.inputs.recordings || '8' }}
-      PIPECOMPARE_BENCH_FIRST: ${{ github.event.inputs.first_seed || '1001' }}
+      PIPECOMPARE_BENCH_N: ${{ inputs.recordings || '30' }}
+      PIPECOMPARE_BENCH_FIRST: ${{ inputs.first_seed || '20001' }}
     steps:
       - name: Checkout PipeCompare
         uses: actions/checkout@v4
@@ -53,12 +68,41 @@ jobs:
           command: |
             addpath(fullfile(pwd, 'eeglab')); eeglab nogui;
             cd PipeCompare; addpath(pwd); addpath(fullfile(pwd, 'benchmarks'));
-            mkdir('bench_out'); pipecompare_benchmark([], fullfile(pwd, 'bench_out'), str2double(getenv('PIPECOMPARE_BENCH_FIRST')));
+            mkdir('bench_out'); total=str2double(getenv('PIPECOMPARE_BENCH_N'));
+            validateattributes(total,{'numeric'},{'scalar','integer','positive'});
+            count=max(0,min(ceil(total/6),total-${{ matrix.shard }}*ceil(total/6)));
+            first=str2double(getenv('PIPECOMPARE_BENCH_FIRST'))+${{ matrix.shard }}*ceil(total/6);
+            if count>0, pipecompare_benchmark(count,fullfile(pwd,'bench_out'),first);end
 
       - name: Keep the results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: benchmark
+          name: benchmark-${{ matrix.shard }}
           path: PipeCompare/bench_out
+
+  synthetic-summary:
+    if: always() && inputs.suite == 'synthetic'
+    needs: benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: benchmark-*
+          path: synthetic_results
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+      - uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(pwd); addpath(fullfile(pwd,'benchmarks'));
+            pipecompare_synthetic_summary(fullfile(pwd,'synthetic_results'),fullfile(pwd,'synthetic_summary'),str2double('${{ inputs.recordings }}'));
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: synthetic-validation-summary
+          path: synthetic_summary
 

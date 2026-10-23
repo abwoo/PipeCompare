@@ -4,6 +4,7 @@ name: independent public EEG validation
 # Every shard uses the single supported CI pair requested from PR #50 onward.
 on:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
