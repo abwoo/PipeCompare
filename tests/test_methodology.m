@@ -25,6 +25,42 @@ verifyEqual(tc,bias,expandedBias,'AbsTol',1e-12);
 verifyEqual(tc,sq,expandedSq,'AbsTol',1e-12);
 end
 
+function testWeightedRankingAndBootstrapIgnoreWeightNormalization(tc)
+x=[linspace(-1,1,20)'; 10+linspace(-1,1,20)']; b=[false(20,1);true(20,1)];
+c=nqc_cand(x); ref=nqc_ref(40); ref.blink={{b}};
+opts=pipecompare.eval.Rank.defaults(); opts.nBoot=99; opts.nSplits=0;
+w=linspace(0.2,1,40)';
+for scale=[1 100]
+    o=c.m.objectives; o.w={scale*w};
+    [o.estimate,o.sme]=pipecompare.eval.Measure.estimate(o,x,opts,0,o.w{1});
+    [o.eyeBias,o.eyeBiasSq]=pipecompare.eval.Measure.eyeBias(x,b,o.w{1});
+    c.m.objectives=o;
+    R=pipecompare.eval.Rank.run(c,ref,opts); B=pipecompare.eval.Rank.bootstrap(c,ref,opts);
+    if scale==1, point=R.table.objective; boot=B{1};
+    else
+        verifyEqual(tc,R.table.objective,point,'AbsTol',1e-12);
+        verifyEqual(tc,B{1},boot,'AbsTol',1e-12);
+    end
+end
+end
+
+function testGroupRankPassesPairedCovarianceToOwnChoices(tc)
+rs=RandStream('mt19937ar','Seed',3007); x=randn(rs,60,1);
+Y=[1 1.05; 1.08 1; 1.01 1.02]; opts=pipecompare.eval.Rank.defaults();
+opts.nBoot=199; opts.nSplits=0;
+S=struct('name',{},'keys',{},'labels',{},'table',{},'cands',{},'ref',{},'ranking',{});
+for i=1:size(Y,1)
+    c=[nqc_cand(x*Y(i,1)),nqc_cand(x*Y(i,2))]; ref=nqc_ref(60);
+    R=pipecompare.eval.Rank.run(c,ref,opts);
+    S(i)=struct('name',sprintf('record%d',i),'keys',{{'a','b'}},'labels',{{'a','b'}}, ...
+        'table',R.table,'cands',c,'ref',ref,'ranking',struct('options',opts,'objective',R.objective));
+end
+G=pipecompare.Group.rank(S);
+verifyEqual(tc,G.own.id,[1;2;1]);
+verifyTrue(tc,G.twoLevelModel.pairedCovariance);
+verifyEqual(tc,G.ownShrunk./G.ownShrunk(:,1),Y./Y(:,1),'AbsTol',1e-9);
+end
+
 function testGroupVarianceRespectsDisconnectedDesign(tc)
 A = [1 2; 2 1]; Y = nan(4); Y(1:2,1:2)=A; Y(3:4,3:4)=A;
 [~,~,one] = pipecompare.Group.twoLevel(A,0.01*ones(2));
@@ -61,6 +97,18 @@ for band = {[0 0.1],[127.9 128]}
     expected=log10(abs(F(at))^2/fs);
     verifyEqual(tc,pipecompare.eval.Measure.bandScores(X,fs,f),expected,'AbsTol',1e-10);
 end
+end
+
+function testHmmKeepsFiniteEventsWhenASampleIsMissing(tc)
+rs=RandStream('mt19937ar','Seed',317); fs=250; t=(0:30*fs-1)/fs;
+X=0.2*randn(rs,size(t));
+for at=5:5:25, X=X+12*exp(-0.5*((t-at)/0.08).^2); end
+X(100)=NaN;
+[hit,m]=pipecompare.eval.Hmm.events(X,fs);
+verifyTrue(tc,m.valid); verifyGreaterThan(tc,nnz(hit),100);
+verifyFalse(tc,hit(100)); verifyEqual(tc,m.inputMissingSamples,1);
+[hit,m]=pipecompare.eval.Hmm.segment([0:8 nan(1,100)],3.5,3);
+verifyFalse(tc,m.valid); verifyFalse(tc,any(hit));
 end
 
 function testHmmExtremeImpulseDoesNotMarkWholeRecording(tc)
