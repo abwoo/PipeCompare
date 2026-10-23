@@ -1,21 +1,43 @@
-name: verify public benchmark clock measurements
+name: freeze fresh public cohort and reproduce invalid-bootstrap inference
 on:
   push:
     branches: [codex/verify-spectral-20261023]
   workflow_dispatch:
 permissions:
   contents: read
-  actions: read
 jobs:
-  timing:
+  manifest:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - run: python3 .github/scripts/freeze-fresh-cohort.py
+  counterexample:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
         with:
-          name: public-validation-3
-          path: timing_source
-          run-id: 39947982777
-          github-token: ${{ github.token }}
-      - run: python3 .github/scripts/check-native-timing.py
+          path: PipeCompare
+      - run: git clone --depth 1 --branch 2026.0.0 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
+      - run: bash PipeCompare/.github/scripts/prepare-matlab.sh
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+      - uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab'));eeglab nogui;
+            cd PipeCompare;addpath(pwd);
+            [keep,equivalent]=pipecompare.eval.Rank.confidenceSet([1;1],nan(2,99),1,0.02,0.05);
+            B=repmat([1;1.01],1,99);B(2,1:20)=NaN;
+            [chosen,nEq]=pipecompare.eval.Rank.fixedSequence([1;1.01],B,1,2,0.02,0.05);
+            levels=repmat({{'step','same'}},1,5);
+            rs=RandStream('mt19937ar','Seed',20261023);
+            pts=(1:5)';Q=pts+0.1*randn(rs,5,99);Q(1,1)=NaN;
+            F=pipecompare.eval.Rank.factorialModel(levels,Q,pts);
+            result=struct('allMissingMarkedEquivalent',equivalent(2), ...
+                'partialMissingChosen',chosen,'partialMissingEquivalentCount',nEq, ...
+                'incompleteBootstrapFittedFactorial',~isempty(F));
+            fprintf('PIPECOMPARE_INVALID_BOOTSTRAP_COUNTEREXAMPLE_JSON %s\n',jsonencode(result));
+            assert(equivalent(2)&&chosen==2&&~isempty(F),'Legacy inference counterexamples did not reproduce');
