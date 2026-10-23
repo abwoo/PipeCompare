@@ -230,3 +230,10 @@ and simulation seeds 20031–20060 before inspecting their outcomes. The earlier
 results in this section describe the pre-repair audit, not independent confirmation of the
 revised procedure. Unchanged EEG-IO and ERP CORE component controls are reused without counting
 them as extra participants. Both versioned protocols and source hashes are retained.
+
+Record-bootstrap calibration intervals also retain positive/zero ratios as infinity.
+Zero/zero resamples retain their mass at both possible ratio bounds [0, infinity];
+they cannot create a narrow interval by being omitted. Summaries report both shares.
+If every reported error is zero, a positive actual RMS is explicitly an infinite
+point ratio; zero actual and reported RMS leave the ratio undefined. This is a
+summary correction and does not change candidate selection or saved truth rows.

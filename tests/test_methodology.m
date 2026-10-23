@@ -274,6 +274,43 @@ C.reportedError(1)=NaN; S=pipecompare.eval.Calibration.summarize(C);
 verifyEqual(tc,S.unassessedRecords,1); verifyEqual(tc,S.nRecords,1); verifyTrue(tc,all(isnan(S.ci)));
 end
 
+function testCalibrationRetainsInfiniteRatioDraws(tc)
+% Two equal-error recordings, one reporting zero: a quarter of
+% two-record resamples have an infinite ratio. The upper CI must be Inf.
+C=table([1;2],ones(2,1),[0;1], ...
+    'VariableNames',{'recording','actualError','reportedError'});
+S=pipecompare.eval.Calibration.summarize(C,1999,4);
+verifyEqual(tc,S.ratio,sqrt(2),'AbsTol',1e-12);
+verifyEqual(tc,S.ci(1),1,'AbsTol',1e-12);verifyEqual(tc,S.ci(2),Inf);
+verifyEqual(tc,S.bootstrapDraws,1999);
+verifyGreaterThan(tc,S.bootstrapInfiniteShare,0.15);
+verifyLessThan(tc,S.bootstrapInfiniteShare,0.35);
+verifyEqual(tc,S.bootstrapUndefinedShare,0);
+end
+
+function testCalibrationRetainsUndefinedRatioMass(tc)
+% Zero/zero resamples convey no ratio. Returning [1,1] after deleting
+% them would certify precision that these two recordings cannot supply.
+C=table([1;2],[0;1],[0;1], ...
+    'VariableNames',{'recording','actualError','reportedError'});
+S=pipecompare.eval.Calibration.summarize(C,1999,4);
+verifyEqual(tc,S.ratio,1);verifyEqual(tc,S.ci,[0 Inf]);
+verifyGreaterThan(tc,S.bootstrapUndefinedShare,0.15);
+verifyEqual(tc,S.bootstrapInfiniteShare,0);
+end
+
+function testCalibrationZeroReportingHasExplicitPointResult(tc)
+C=table([1;2],[1;2],zeros(2,1), ...
+    'VariableNames',{'recording','actualError','reportedError'});
+S=pipecompare.eval.Calibration.summarize(C);
+verifyEqual(tc,S.ratio,Inf);verifyEqual(tc,S.actualRms,sqrt(2.5),'AbsTol',1e-12);
+verifyEqual(tc,S.reportedRms,0);
+verifyTrue(tc,contains(S.interpretation,'zero error'));
+C.actualError(:)=0;S=pipecompare.eval.Calibration.summarize(C);
+verifyTrue(tc,isnan(S.ratio));verifyEqual(tc,S.actualRms,0);
+verifyEqual(tc,S.reportedRms,0);
+end
+
 function testCrossfitStatesItsConditionalScope(tc)
 c = nqc_cand((1:40)'); opts=pipecompare.eval.Rank.defaults(); opts.nSplits=2;
 cf=pipecompare.eval.Rank.crossfit(c,nqc_ref(40),opts,'composite',c.m.composite);

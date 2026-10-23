@@ -9,6 +9,7 @@ on:
       - 'benchmarks/pipecompare_synthetic_summary.m'
       - 'benchmarks/validation_*.m'
       - 'benchmarks/pipecompare_spectral_validation.m'
+      - '+pipecompare/+eval/Calibration.m'
       - '.github/workflows/validation-summary.yml'
   workflow_dispatch:
     inputs:
