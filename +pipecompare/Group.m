@@ -46,11 +46,11 @@ classdef Group
     %   tau^2/(tau^2+v) when that covariance is diagonal). tau^2 is fitted
     %   after projecting out recording and pipeline effects. Each recording
     %   gets the pipeline lowest by this estimate among those passing on it.
-    %   With tau^2 = 0 every recording gets the same pipeline; with
+    %   With tau^2 = 0 recordings with the same eligible options get the
+    %   same pipeline; with
     %   precise recordings each gets its own best. G.own: a table (recording,
     %   id, pipeline, sameAsGroup); G.ownShrunk (recordings x pipelines);
-    %   G.share: the share of the differences between recordings kept (the
-    %   mean shrinkage factor, 0 = one pipeline fits all).
+    %   G.share: the mean diagonal of the posterior gain matrices.
     %
     %   pipecompare.Group.writeScript(G, file) writes the recommended
     %   pipeline as a function to run on each recording (its decisions are
@@ -299,7 +299,7 @@ classdef Group
             O = G.own; ok = isfinite(O.id);
             if ~any(ok), return; end
             t = sprintf(['Each recording''s own pipeline, its estimate helped by the others (two-level empirical ', ...
-                'Bayes; %.0f%% of the differences between recordings kept): '], 100 * G.share);
+                'Bayes; mean posterior gain %.0f%%): '], 100 * G.share);
             if ~isempty(G.recommended) && all(O.sameAsGroup(ok))
                 t = [t sprintf('every recording gets the group''s pipeline %d, so one pipeline fits them all.', G.recommended)];
             else
