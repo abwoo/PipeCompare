@@ -1,8 +1,6 @@
 name: frozen spectral and frequency-grid diagnostics
 
 on:
-  push:
-    branches: [codex/verify-spectral-20261023]
   workflow_dispatch:
 
 permissions:
