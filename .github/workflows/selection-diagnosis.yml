@@ -1,0 +1,37 @@
+name: selection and calibration diagnosis
+on:
+  pull_request:
+    paths:
+      - 'benchmarks/diagnose_selection.py'
+      - 'tests/test_selection_diagnosis.py'
+      - '.github/workflows/selection-diagnosis.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify attribution invariants
+        run: python -m unittest discover -s tests -p test_selection_diagnosis.py
+      - name: Download frozen saved analyses
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*validation-analysis'
+          path: diagnosis_source
+          run-id: 39974230047
+          github-token: ${{ github.token }}
+      - name: Attribute candidate-family and selection limitations
+        run: python benchmarks/diagnose_selection.py diagnosis_source diagnosis/selection_diagnosis.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: selection-diagnosis
+          path: diagnosis
+          retention-days: 90
