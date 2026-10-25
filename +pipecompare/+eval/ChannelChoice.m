@@ -49,7 +49,7 @@ classdef ChannelChoice
             end
             contract = ctx.contract;
             ref = pipecompare.utils.fieldOr(ctx, 'ref', []);
-            if isempty(ref), ref = pipecompare.eval.Measure.reference(EEG, contract); end
+            if isempty(ref), ref = pipecompare.eval.Measure.reference(EEG, contract,pipecompare.utils.fieldOr(ctx,'rank',struct())); end
             opts = pipecompare.utils.withDefaults(pipecompare.utils.fieldOr(ctx, 'rank', struct()), ...
                 pipecompare.eval.Rank.defaults());
             [timeSteps, chanSteps, rej] = split(pipecompare.utils.fieldOr(ctx, 'after', {}));

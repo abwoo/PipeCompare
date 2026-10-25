@@ -1035,6 +1035,13 @@ classdef Presets
             has = @(s) any(strcmp(steps, s));
             notes = {};
             plan = pipecompare.plan.Plan();
+            if balanced && ~isempty(pipecompare.utils.fieldOr(state,'eyeChannels',{})) && ...
+                    (has('ica')||has('badchannels'))
+                % Fit regression before ICA, so ICA is learned from the
+                % data it actually decomposes. Both operations stay optional.
+                plan=plan.addChoice('eogregress',{'eogregress'},'none');
+                notes{end+1}='dedicated-EOG regression and no regression compared before ICA';
+            end
             continuous = ~state.isEpoched;
             ica = false;
             exclusion = {};

@@ -1,40 +1,31 @@
-name: Preserve frozen controls and stop obsolete development
+name: Verify pinned ICLabel native backend
 on:
   push:
     branches: [codex/optimization-probes-20261025]
 permissions:
   contents: read
-  actions: write
 jobs:
-  preserve:
+  native:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 35
+    env:
+      DISPLAY: ':99'
     steps:
-      - uses: actions/github-script@v7
+      - uses: actions/checkout@v4
         with:
-          script: |
-            const replacement=40157535539;
-            const current=await github.rest.actions.getWorkflowRun({...context.repo,run_id:replacement});
-            if(current.data.head_sha!=='7a47327cf8d5185476f94bfd6e6f7797fbf1cdfb'||current.data.name!=='paired optimization validation')throw new Error('Replacement identity mismatch');
-            const jobs=await github.paginate(github.rest.actions.listJobsForWorkflowRun,{...context.repo,run_id:replacement,per_page:100});
-            if(!jobs.some(j=>j.name==='plan'&&j.conclusion==='success')||jobs.filter(j=>/^Paired (public participant|simulation seed) /.test(j.name)).length!==8)throw new Error('Replacement gate or matrix incomplete');
-            const runs=[[40156842261,'dc83d34dedf3e1108be4e2ab54c357ae8b03de2d'],[40153112163,'f58e9ebafad580939c3cac14027a02d9c2dba818']];
-            for(const [id,sha] of runs) {
-              const run=await github.rest.actions.getWorkflowRun({...context.repo,run_id:id});
-              if(run.data.head_sha!==sha||run.data.name!=='paired optimization validation')throw new Error('Obsolete source identity mismatch');
-              if(run.data.status!=='completed') {
-                await github.rest.actions.cancelWorkflowRun({...context.repo,run_id:id});
-                core.info('Requested graceful cancellation '+id+'; always-upload artifact steps retain completed legacy controls');
-              }
-            }
-            for(let n=0;n<120;n++) {
-              let done=true;
-              for(const [id] of runs) {
-                const js=await github.paginate(github.rest.actions.listJobsForWorkflowRun,{...context.repo,run_id:id,per_page:100});
-                const native=js.filter(j=>/^Paired (public participant|simulation seed) /.test(j.name));
-                if(native.some(j=>j.status!=='completed'))done=false;
-              }
-              if(done){core.info('All obsolete native workers stopped; preserved artifacts are available for reuse');return;}
-              await new Promise(resolve=>setTimeout(resolve,5000));
-            }
-            throw new Error('Obsolete workers still finalizing artifacts; inspect before any forced cancellation');
+          path: PipeCompare
+      - uses: ./PipeCompare/.github/actions/setup-2026
+      - uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab'));eeglab nogui;
+            addpath(fullfile(pwd,'PipeCompare','benchmarks'));
+            pipecompare_native_backend_probe(fullfile(pwd,'results'));
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pinned-iclabel-native-backend
+          path: |
+            results
+            eeglab/plugins/ICLabel/matconvnet/matlab/mex
+          retention-days: 90

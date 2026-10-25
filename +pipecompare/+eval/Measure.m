@@ -55,14 +55,16 @@ classdef Measure
 
     methods (Static)
         function o = defaults()
-            o = struct('nBootPeak', 1000, 'seed', 1);
+            o = struct('nBootPeak', 1000, 'seed', 1,'artifactVariance','pooled');
         end
 
-        function ref = reference(EEG, contract)
+        function ref = reference(EEG, contract, opts)
             % trial identities only: the ROI may be restored later in the plan
+            if nargin<3,opts=struct();end
+            varianceMode=pipecompare.utils.fieldOr(opts,'artifactVariance','pooled');
             T = pipecompare.eval.Measure.trials(EEG, contract, true);
             conds = contract.conditions;
-            ref = struct('ids', {cell(1, numel(conds))}, 'names', {{conds.name}});
+            ref = struct('ids', {cell(1, numel(conds))}, 'names', {{conds.name}},'artifactVariance',varianceMode);
             for c = 1:numel(conds)
                 ref.ids{c} = unique(T.id(T.cond == c))';
                 assert(numel(ref.ids{c}) >= 2, 'PipeCompare:Contract', ...
@@ -188,7 +190,7 @@ classdef Measure
             end
         end
 
-        function [bias, sq, assessed, se] = eyeBias(x, b, K, counts)
+        function [bias, sq, assessed, se] = eyeBias(x, b, K, counts, varianceMode)
             % What the blink trials add to a weighted mean score. x: scores
             % (n x 1, NaN = absent), b: blink trials (n x 1 logical), K:
             % weights (n x L: a column per mean). Optional counts are the
@@ -199,21 +201,21 @@ classdef Measure
             % mean is sum(K .* x) / sum(K); with blink share p (of the
             % weight) and blink and other trials' means mB and mN, it is mN
             % + p (mB - mN): bias = p (mB - mN), what the blinks add. The
-            % estimate is noisy (se = p s sqrt(qB/swB^2 + qN/swN^2),
-            % q the sums of squared weights per physical observation, s
-            % the pooled weighted SD, often larger than the SME itself when
-            % most trials have a blink), so what counts is only the part
-            % beyond what chance makes: sq = max(|bias| - BiasZ se, 0)^2
-            % (soft thresholding). Taking only the variance off (bias^2 -
-            % se^2, kept at 0 or more) left a bias where there is none: in
-            % simulation with 70% blink trials and no real effect it added a
-            % third to the total error on average and pushed the choices
-            % towards rejecting blink trials; with soft thresholding about
-            % 1%. Zero when no kept trial has a detected artifact. NaN
+            % estimate is noisy: pooled within-group variation supplies
+            % the contrast SE, and a delta-method term retains uncertainty
+            % in the estimated artifact share. Mean separation is not
+            % treated as within-group noise. This assumes common within-
+            % group variance and fixed fitted labels/weights; uncertainty
+            % from learning preprocessing is not included.
+            % sq=max(abs(bias)-BiasZ*se,0)^2 is a fitted risk proxy, not a
+            % calibrated absolute error or causal artifact effect.
+            % Zero when no kept trial has a detected artifact. NaN
             % when every kept trial has one, or no trial remains: there is
             % no artifact-free comparison and the bias is unidentifiable.
             % assessed says which weighted means have an estimate. 1 x L.
             if nargin < 4, counts = ones(size(K)); end
+            if nargin < 5,varianceMode='pooled';end
+            assert(any(strcmp(varianceMode,{'pooled','legacy-total'})),'PipeCompare:Weights','Unknown artifact variance model.');
             assert(all(isfinite(K(:)) & K(:) >= 0), 'PipeCompare:Weights', 'Bias weights must be finite and nonnegative.');
             assert(all(isfinite(counts(:)) & counts(:) >= 0 & counts(:) == fix(counts(:))), ...
                 'PipeCompare:Weights', 'Resampling counts must be nonnegative integers.');
@@ -224,15 +226,33 @@ classdef Measure
             Q = K .^ 2 ./ max(counts, 1);
             nB = b' * K; nN = o' * K; n = nB + nN;
             sB = (x .* b)' * K; sN = (x .* o)' * K;
-            s2 = (x .^ 2)' * K;
-            mu = (sB + sN) ./ n;
-            v = max(s2 ./ n - mu .^ 2, 0) ./ max(1 - sum(Q,1) ./ n .^ 2, eps);
-            p = nB ./ n;
-            bias = p .* (sB ./ nB - sN ./ nN);
-            se = p .* sqrt(v .* ((b' * Q) ./ nB .^ 2 + (o' * Q) ./ nN .^ 2));
+            qB=b'*Q;qN=o'*Q;
+            if strcmp(varianceMode,'legacy-total')
+                % Reproduce the old risk model for frozen comparisons.
+                s2=(x.^2)'*K;mu=(sB+sN)./n;
+                v=max(s2./n-mu.^2,0)./max(1-sum(Q,1)./n.^2,eps);
+                varianceAssessed=true(size(n));
+            else
+                % Pool class-centered residuals under a common within-
+                % group variance, using physical multiplicities for DOF.
+                mB=sB./max(nB,realmin);mN=sN./max(nN,realmin);
+                ssB=sum(K.*b.*(x-mB).^2,1);ssN=sum(K.*o.*(x-mN).^2,1);
+                dof=max(nB-qB./max(nB,realmin),0)+max(nN-qN./max(nN,realmin),0);
+                v=(ssB+ssN)./max(dof,realmin);
+                varianceAssessed=dof>10*eps.*max(n,realmin);
+            end
+            p=nB./n;contrast=sB./nB-sN./nN;bias=p.*contrast;
+            se2=p.^2.*v.*(qB./nB.^2+qN./nN.^2);
+            if ~strcmp(varianceMode,'legacy-total')
+                % The share is estimated too: retain its delta-method
+                % uncertainty without calling mean separation noise.
+                prevalenceVar=(qB.*(1-p).^2+qN.*p.^2)./max(n.^2-qB-qN,realmin);
+                se2=se2+contrast.^2.*prevalenceVar;
+            end
+            se=sqrt(se2);
             sq = max(abs(bias) - pipecompare.eval.Measure.BiasZ * se, 0) .^ 2;
             clean = nB == 0 & nN > 0;
-            assessed = nN > 0;
+            assessed = nN > 0 & (clean | varianceAssessed);
             bias(clean) = 0; sq(clean) = 0; se(clean)=0;
             bias(~assessed) = NaN; sq(~assessed) = NaN; se(~assessed)=NaN;
         end
@@ -258,7 +278,7 @@ classdef Measure
             end
             objs = repmat(struct('name', '', 'unit', '', 'kind', '', 'polarity', '', 'times', [], ...
                 'X', {{}}, 'w', {{}}, 'estimate', [], 'sme', [], 'agg', NaN, 'eyeBias', [], 'eyeBiasSq', [], ...
-                'eyeBiasAssessed', [], 'eyeBiasSE', [], 'segmented', false), 1, nO);
+                'eyeBiasAssessed', [], 'eyeBiasSE', [], 'eyeBiasSEMode',opts.artifactVariance,'segmented', false), 1, nO);
             blink = pipecompare.utils.fieldOr(ref, 'blink', {});
             % the epochs' weights (weight_trials), by the trial's urevent
             wRow = [];
@@ -293,7 +313,7 @@ classdef Measure
                     [o.estimate(c), o.sme(c)] = pipecompare.eval.Measure.estimate(o, X, opts, k * 1000 + c, w);
                     if strcmp(o.kind, 'scalar') && numel(blink) >= k && ~isempty(blink{k})
                         K = ones(ref.n(c), 1); if ~isempty(w), K = w; K(isnan(K)) = 0; end
-                        [o.eyeBias(c), o.eyeBiasSq(c), o.eyeBiasAssessed(c), o.eyeBiasSE(c)] = pipecompare.eval.Measure.eyeBias(X(:, 1), blink{k}{c}, K);
+                        [o.eyeBias(c), o.eyeBiasSq(c), o.eyeBiasAssessed(c), o.eyeBiasSE(c)] = pipecompare.eval.Measure.eyeBias(X(:, 1), blink{k}{c}, K,ones(size(K)),opts.artifactVariance);
                     end
                     if strcmp(o.kind, 'scalar') && isfield(ref, 'blinkInfo')
                         invalid=pipecompare.utils.fieldOr(ref.blinkInfo,'invalidEyeInput',false);

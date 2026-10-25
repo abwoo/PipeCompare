@@ -1265,3 +1265,32 @@ candidates; otherwise it returns the unshrunk point scores. Selection frequencie
 as their denominator and separately retain the share with no assessed recommendation. These
 rules concern conditional comparisons of the fitted candidate family and do not establish
 independent calibration of measurement error.
+
+### Artifact-association variance correction (PR #50 optimization)
+
+Let W be total trial weight, p the weighted artifact share, d the difference
+between marked and other-trial means, and Q_i the squared reliability weight
+per physical observation (bootstrap multiplicities are divided out). The
+association estimate is p*d. Its updated delta-method variance separates
+pooled within-group variation from uncertainty in p:
+
+    Var(p*d) approximately p^2 * s_within^2 * (Q_B/W_B^2 + Q_N/W_N^2)
+                          + d^2 * Var(p)
+    Var(p) = [Q_B*(1-p)^2 + Q_N*p^2] / [W^2 - Q_B - Q_N]
+
+Weighted within-group residuals and degrees of freedom supply s_within.
+The old total-variance expression mixed mean separation into contrast noise
+and scaled prevalence uncertainty incorrectly. Removing every between-group
+contribution would also be wrong: p is estimated, not fixed. This remains a
+delta approximation under common within-group variance and fixed fitted
+labels/weights, not a guarantee under heteroscedasticity or learned
+preprocessing. Analytic flat-group and independent-record Monte Carlo tests
+cover several artifact prevalences and association strengths.
+
+The explicit legacy-total mode reproduces the previous convention for frozen
+before/after controls. New objectives store their variance convention;
+historical score checkpoints without it retain legacy bootstrap behavior.
+Automatic rejection/component-choice bootstrap now passes physical counts
+to the bias estimator; the legacy control preserves its previous convention.
+Both corrections can change adaptive choices and require whole-procedure
+outcome validation, not only rescoring selected outputs.
