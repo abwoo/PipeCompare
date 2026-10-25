@@ -318,3 +318,41 @@ successful compilation alone cannot satisfy it. A pinned eight-component probe
 reported maximum probability difference 5.96e-7, identical winning classes and
 0.471 versus 7.706 seconds for native versus MATLAB-reference network inference.
 This timing is for that probe, not an end-to-end pipeline speed claim.
+
+
+### Recovering long native simulation jobs
+
+The compiled-backend development run 40159157180 completed all four public
+records and the component/null/spectrum controls, but three of four paired
+simulation jobs reached their 340-minute limit. Its synthetic summary correctly
+refused incomplete fits and independent confirmation did not start.
+
+Recovery separates Standard and Balanced into independent workers. Each worker
+uses up to six sequential 120-minute cooperative slices. The time limit is
+checked between operations: an individual ICA fit finishes before the slice
+stops, so an unusually long fit can still reach the runner's hard limit.
+Completed candidates, ICA decompositions for the main search and both reseeds,
+and finished benchmark stages persist across workers. ICA cache keys bind the
+complete input, parameters, search identity, high-pass state, seed, MATLAB
+version and relevant ICA source code; replay restores the post-fit random state.
+MATLAB regression tests compare native output and interrupted/uninterrupted
+recommendations and reseed objectives. No candidate, convergence tolerance,
+random-start check or scientific admission threshold is removed.
+
+The recovery workflow waits for all numerical and native/GUI 2026 CI tests,
+including checkpoint parity, before using any old result. Only completed arms
+from the pinned compiled run above can be imported, with seed, recipe, variance
+mode, native-backend evidence, result rows and content digests checked. Earlier
+fallback runs remain ineligible. Newly computed and imported results retain
+their distinct provenance. Partial progress is never a completed benchmark;
+all planned seeds and both arms must be complete before aggregation. Reaching
+six slices without finishing fails the final summary instead of dropping a
+record or reporting success. Completed CSV reports are kept; bulky intermediate
+checkpoints are removed only after completion has been verified.
+
+A single recovery workflow runs development, applies the existing admission
+screen, and starts untouched confirmation only if both execution and the screen
+pass and the PR's code has not changed. Stage-specific artifacts prevent
+confirmation from overwriting development. Successful execution is separate
+from stable calibration, improved accuracy, and external generalization.
+

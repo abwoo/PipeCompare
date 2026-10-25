@@ -64,7 +64,12 @@ classdef Executor
         function result = run(plan, contract, opts)
             if nargin < 3, opts = struct(); end
             opts = pipecompare.utils.withDefaults(opts, struct('dryRun', false, 'injectUv', 5, 'filterCheck', true, ...
-                'refineCutoffs', false, 'eogCheck', false, 'icaSeeds', 0, 'signalTemplate', 'bump', 'dataUnit', 'uV', 'checkpoint', '', 'parallel', false, 'verbose', 'normal', 'progress', []));
+                'refineCutoffs', false, 'eogCheck', false, 'icaSeeds', 0, 'signalTemplate', 'bump', 'dataUnit', 'uV', 'checkpoint', '', 'maxSeconds', Inf, 'parallel', false, 'verbose', 'normal', 'progress', []));
+            validateattributes(opts.maxSeconds,{'numeric'},{'scalar','real','positive','nonnan'});
+            assert(isinf(opts.maxSeconds)||~isempty(opts.checkpoint),'PipeCompare:Options', ...
+                'A time-limited search requires a checkpoint folder.');
+            assert(isinf(opts.maxSeconds)||~opts.parallel,'PipeCompare:Options', ...
+                'Time slices use serial prefix sharing; run independent recordings in parallel.');
             opts.artifactVariance=pipecompare.utils.fieldOr(opts,'artifactVariance','pooled');
             assert(any(strcmp(opts.artifactVariance,{'pooled','legacy-total'})),'PipeCompare:Options','Unknown artifact variance model.');
             assert(isnumeric(opts.icaSeeds) && isscalar(opts.icaSeeds) && opts.icaSeeds >= 0 && opts.icaSeeds == round(opts.icaSeeds), ...
@@ -93,8 +98,11 @@ classdef Executor
             result = pipecompare.run.Executor.execute(result, false(numel(leaves), 1));
         end
 
-        function result = resume(dirName)
+        function result = resume(dirName, runtime)
             % Continue an interrupted search from its checkpoint folder.
+            if nargin<2,runtime=struct();end
+            assert(all(ismember(fieldnames(runtime),{'maxSeconds'})),'PipeCompare:Options', ...
+                'Resume overrides may only change maxSeconds.');
             M = load(fullfile(dirName, 'manifest.mat'));
             R = load(fullfile(dirName, 'root.mat'));
             assert(isfield(M, 'identity') && isfield(R, 'identity') && strcmp(M.identity, R.identity), ...
@@ -112,6 +120,7 @@ classdef Executor
             end
             done = false(numel(result.leaves), 1);
             files = dir(fullfile(dirName, 'leaf_*.mat'));
+            files=files(~cellfun(@isempty,regexp({files.name},'^leaf_[0-9]{6}\.mat$','once')));
             prev = repmat(emptyCand(), numel(result.leaves), 1);
             for f = 1:numel(files)
                 d = load(fullfile(dirName, files(f).name));
@@ -125,6 +134,11 @@ classdef Executor
             pipecompare.utils.log('Resuming: %d of %d candidates already evaluated.', sum(done), numel(done));
             result.prevCands = prev;
             if isfield(result.options, 'stopAfter'), result.options = rmfield(result.options, 'stopAfter'); end
+            if isfield(runtime,'maxSeconds')
+                validateattributes(runtime.maxSeconds,{'numeric'},{'scalar','real','positive','nonnan'});
+                assert(isinf(runtime.maxSeconds)||~result.options.parallel,'PipeCompare:Options','Time slices require serial prefix sharing.');
+                result.options.maxSeconds=runtime.maxSeconds;
+            end
             result = pipecompare.run.Executor.execute(result, done);
         end
 
@@ -151,6 +165,7 @@ classdef Executor
             try
                 env.spread = pipecompare.eval.Injection.shapeSpreads(S, contract, env.truth, leaves);
             catch ME
+                    if startsWith(ME.identifier,'PipeCompare:Checkpoint') || strcmp(ME.identifier,'PipeCompare:Interrupted'),rethrow(ME);end
                 env.spread = {};
                 pipecompare.utils.log('Signal shapes: not checked (%s); the bias leaves out what the filters do to other shapes.', ME.message);
             end
@@ -300,13 +315,19 @@ classdef Executor
                     cx = ctx;
                     if strcmp(in.type, 'icremove'), cx.iclabel = labels; end
                     cx = choiceContext(env, child, cx, S);
-                    [E2, coms, info] = runStep(in, E, cx, env.opts.verbose);
+                    if strcmp(in.type,'ica') && ~isempty(env.opts.checkpoint)
+                        [E2,coms,info]=pipecompare.run.IcaCheckpoint.run(E,in,cx, ...
+                            env.opts.checkpoint,env.identity,@()runStep(in,E,cx,env.opts.verbose));
+                    else
+                        [E2, coms, info] = runStep(in, E, cx, env.opts.verbose);
+                    end
                     if isfield(info, 'iclabel'), labels = info.iclabel; end
                     for q = 1:numel(coms)
                         fprintf('    %s\n', coms{q});
                         E2 = eeg_hist(E2, coms{q});
                     end
                 catch ME
+                    if startsWith(ME.identifier,'PipeCompare:Checkpoint') || strcmp(ME.identifier,'PipeCompare:Interrupted'),rethrow(ME);end
                     out = [out; failUnder(env, under, in, ME)]; %#ok<AGROW>
                     continue;
                 end
@@ -368,6 +389,7 @@ classdef Executor
                     afterEach(q, @(args) relayProgress(prog, args, stopFile));
                     env.opts.progress = @(varargin) workerProgress(q, stopFile, varargin);
                 catch ME
+                    if startsWith(ME.identifier,'PipeCompare:Checkpoint') || strcmp(ME.identifier,'PipeCompare:Interrupted'),rethrow(ME);end
                     pipecompare.utils.log('Progress and Stop are not available while the pool runs (%s).', ME.message);
                 end
             end
@@ -867,6 +889,7 @@ try
     [~, S, matched] = evalc('pipecompare.run.Steps.replayDecision(in, S, info, ctx)');
     if ~matched, unmatched = {in.type}; end
 catch ME
+                    if startsWith(ME.identifier,'PipeCompare:Checkpoint') || strcmp(ME.identifier,'PipeCompare:Interrupted'),rethrow(ME);end
     pipecompare.utils.log('Signal check: the copy failed at step %s (%s); the pipelines below have no signal check.', ...
         in.label, ME.message);
     S = [];
@@ -982,6 +1005,7 @@ try
     end
     c.status = 'ok';
 catch ME
+                    if startsWith(ME.identifier,'PipeCompare:Checkpoint') || strcmp(ME.identifier,'PipeCompare:Interrupted'),rethrow(ME);end
     c.status = 'failed'; c.message = ['evaluation: ' ME.message];
 end
 el = toc(env.tStart);
@@ -1068,6 +1092,7 @@ try
     [cut, cinfo] = pipecompare.eval.Cutoff.search(E, rest, dec, struct('m', c.m, 'gain', c.signal.gain, ...
         'spread', pipecompare.utils.fieldOr(c.signal, 'shapeSpread', [])), cenv);
 catch ME
+                    if startsWith(ME.identifier,'PipeCompare:Checkpoint') || strcmp(ME.identifier,'PipeCompare:Interrupted'),rethrow(ME);end
     pipecompare.utils.log('Filter cutoffs not fine-tuned: %s', ME.message);
     return;
 end
@@ -1111,6 +1136,7 @@ try
         [ctx, acc] = advance(in, ctx, acc, info, coms, unmatched, toc(t0));
     end
 catch ME
+                    if startsWith(ME.identifier,'PipeCompare:Checkpoint') || strcmp(ME.identifier,'PipeCompare:Interrupted'),rethrow(ME);end
     pipecompare.utils.log('The pipeline with the fine-tuned cutoffs failed at step %s: %s', in.label, ME.message);
     return;
 end
@@ -1179,6 +1205,7 @@ try
         [ctx, acc] = advance(in, ctx, acc, info, coms, unmatched, toc(t0));
     end
 catch ME
+                    if startsWith(ME.identifier,'PipeCompare:Checkpoint') || strcmp(ME.identifier,'PipeCompare:Interrupted'),rethrow(ME);end
     pipecompare.utils.log('Eye channels: pipeline %d with them regressed out failed (%s).', ib, ME.message);
     return;
 end
@@ -1297,6 +1324,7 @@ try
         c.signal.shapeSpread = orig.signal.shapeSpread;
     end
 catch ME
+                    if startsWith(ME.identifier,'PipeCompare:Checkpoint') || strcmp(ME.identifier,'PipeCompare:Interrupted'),rethrow(ME);end
     pipecompare.utils.log('ICA check: pipeline %d failed (%s); not checked.', li, ME.message);
     c = [];
 end
@@ -1306,6 +1334,9 @@ function stop = tick(env, n, in)
 % Tell the caller's opts.progress that n more candidates are evaluated (and,
 % before a step, which step starts) and return its request to stop.
 stop = false;
+if toc(env.tStart)>=pipecompare.utils.fieldOr(env.opts,'maxSeconds',Inf)
+    error('PipeCompare:Interrupted','Time slice ended; saved candidates and ICA fits can be resumed.');
+end
 if ~isfield(env.opts, 'progress') || isempty(env.opts.progress), return; end
 if nargin < 3, stop = callProgress(env.opts.progress, {n}); else, stop = callProgress(env.opts.progress, {n, in}); end
 end
@@ -1443,7 +1474,7 @@ function id = searchIdentity(result)
 % analysis contract, the enumerated pipelines and the options that change
 % results. A checkpoint folder belongs to exactly one identity.
 o = result.options;
-o = rmfield(o, intersect(fieldnames(o), {'checkpoint','stopAfter','parallel','verbose','dryRun','progress'}));
+o = rmfield(o, intersect(fieldnames(o), {'checkpoint','stopAfter','maxSeconds','parallel','verbose','dryRun','progress'}));
 md = java.security.MessageDigest.getInstance('SHA-256');
 root = result.root;
 % the data in blocks: the same bytes as double(root.data(:)), without a
@@ -1459,4 +1490,5 @@ parts = {getByteStreamFromArray(result.rootComs), getByteStreamFromArray(result.
 for k = 1:numel(parts), md.update(parts{k}); end
 id = lower(reshape(dec2hex(typecast(md.digest(), 'uint8'))', 1, []));
 end
+
 

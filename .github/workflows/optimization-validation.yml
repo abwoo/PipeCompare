@@ -130,68 +130,105 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: optimization-public-${{ matrix.subject }}
+          name: ${{ needs.plan.outputs.stage }}-optimization-public-${{ matrix.subject }}
           path: results
           retention-days: 90
 
-  synthetic:
-    needs: plan
+  synthetic-1:
+    needs: [plan]
     if: needs.plan.outputs.requested == 'true'
-    name: Paired simulation seed ${{ matrix.seed }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 340
     strategy:
       fail-fast: false
-      max-parallel: ${{ needs.plan.outputs.stage == 'development' && 4 || 8 }}
+      max-parallel: 8
       matrix:
         seed: ${{ fromJSON(needs.plan.outputs.seeds) }}
-    env:
-      DISPLAY: ':99'
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          path: PipeCompare
-      - name: Wait for frozen legacy artifacts to finish uploading
-        if: needs.plan.outputs.stage == 'development' && needs.plan.outputs.legacy_run != ''
-        timeout-minutes: 12
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const id=Number('${{ needs.plan.outputs.legacy_run }}');
-            for(let n=0;n<120;n++) {
-              try {
-                const r=await github.rest.actions.getWorkflowRun({...context.repo,run_id:id});
-                if(r.data.head_sha!=='f58e9ebafad580939c3cac14027a02d9c2dba818')throw new Error('Unexpected legacy source');
-                if(r.data.status==='completed')return;
-                const jobs=await github.paginate(github.rest.actions.listJobsForWorkflowRun,{...context.repo,run_id:id,filter:'latest',per_page:100});
-                const native=jobs.filter(j=>/^Paired (public participant|simulation seed) /.test(j.name));
-                if(native.length===8&&native.every(j=>j.status==='completed'))return;
-              }catch(e){if(![429,500,502,503,504].includes(e.status))throw e;}
-              await new Promise(resolve=>setTimeout(resolve,5000));
-            }
-            throw new Error('Legacy jobs have not stopped/uploaded; retry after artifact preservation');
-      - name: Download any completed frozen legacy control
-        if: needs.plan.outputs.stage == 'development' && needs.plan.outputs.legacy_run != ''
-        continue-on-error: true
-        uses: actions/download-artifact@v4
-        with:
-          name: optimization-synthetic-${{ matrix.seed }}
-          path: legacy
-          run-id: ${{ needs.plan.outputs.legacy_run }}
-          github-token: ${{ github.token }}
-      - uses: ./PipeCompare/.github/actions/setup-2026
-      - uses: matlab-actions/run-command@v2
-        with:
-          command: |
-            addpath(fullfile(pwd,'eeglab'));eeglab nogui;
-            legacy=fullfile(pwd,'legacy');cd PipeCompare;addpath(pwd);addpath(fullfile(pwd,'benchmarks'));
-            pipecompare_optimization_synthetic(fullfile(pwd,'results'),${{ matrix.seed }},'${{ needs.plan.outputs.stage }}',legacy);
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: optimization-synthetic-${{ matrix.seed }}
-          path: PipeCompare/results
-          retention-days: 90
+        recipe: [standard, balanced]
+    uses: ./.github/workflows/optimization-synthetic-slice.yml
+    with:
+      stage: ${{ needs.plan.outputs.stage }}
+      seed: ${{ matrix.seed }}
+      recipe: ${{ matrix.recipe }}
+      slice: 1
+
+  synthetic-2:
+    needs: [plan, synthetic-1]
+    if: needs.plan.outputs.requested == 'true'
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        seed: ${{ fromJSON(needs.plan.outputs.seeds) }}
+        recipe: [standard, balanced]
+    uses: ./.github/workflows/optimization-synthetic-slice.yml
+    with:
+      stage: ${{ needs.plan.outputs.stage }}
+      seed: ${{ matrix.seed }}
+      recipe: ${{ matrix.recipe }}
+      slice: 2
+
+  synthetic-3:
+    needs: [plan, synthetic-2]
+    if: needs.plan.outputs.requested == 'true'
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        seed: ${{ fromJSON(needs.plan.outputs.seeds) }}
+        recipe: [standard, balanced]
+    uses: ./.github/workflows/optimization-synthetic-slice.yml
+    with:
+      stage: ${{ needs.plan.outputs.stage }}
+      seed: ${{ matrix.seed }}
+      recipe: ${{ matrix.recipe }}
+      slice: 3
+
+  synthetic-4:
+    needs: [plan, synthetic-3]
+    if: needs.plan.outputs.requested == 'true'
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        seed: ${{ fromJSON(needs.plan.outputs.seeds) }}
+        recipe: [standard, balanced]
+    uses: ./.github/workflows/optimization-synthetic-slice.yml
+    with:
+      stage: ${{ needs.plan.outputs.stage }}
+      seed: ${{ matrix.seed }}
+      recipe: ${{ matrix.recipe }}
+      slice: 4
+
+  synthetic-5:
+    needs: [plan, synthetic-4]
+    if: needs.plan.outputs.requested == 'true'
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        seed: ${{ fromJSON(needs.plan.outputs.seeds) }}
+        recipe: [standard, balanced]
+    uses: ./.github/workflows/optimization-synthetic-slice.yml
+    with:
+      stage: ${{ needs.plan.outputs.stage }}
+      seed: ${{ matrix.seed }}
+      recipe: ${{ matrix.recipe }}
+      slice: 5
+
+  synthetic-6:
+    needs: [plan, synthetic-5]
+    if: needs.plan.outputs.requested == 'true'
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        seed: ${{ fromJSON(needs.plan.outputs.seeds) }}
+        recipe: [standard, balanced]
+    uses: ./.github/workflows/optimization-synthetic-slice.yml
+    with:
+      stage: ${{ needs.plan.outputs.stage }}
+      seed: ${{ matrix.seed }}
+      recipe: ${{ matrix.recipe }}
+      slice: 6
 
   nulls:
     needs: plan
@@ -215,7 +252,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: optimization-null-spectrum
+          name: ${{ needs.plan.outputs.stage }}-optimization-null-spectrum
           path: results
 
   components:
@@ -247,7 +284,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: optimization-component-controls
+          name: ${{ needs.plan.outputs.stage }}-optimization-component-controls
           path: results
 
   public-summary:
@@ -259,8 +296,18 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          pattern: optimization-public-[0-9]*
+          pattern: ${{ needs.plan.outputs.stage }}-optimization-public-[0-9]*
           path: source
+      - name: Normalize stage prefix for the public summary reader
+        env:
+          STAGE: ${{ needs.plan.outputs.stage }}
+        run: |
+          python - <<'PYCODE'
+          import os
+          from pathlib import Path
+          for p in Path('source').glob(os.environ['STAGE']+'-optimization-public-*'):
+              p.rename(p.with_name(p.name.removeprefix(os.environ['STAGE']+'-')))
+          PYCODE
       - run: bash .github/scripts/prepare-matlab.sh
       - uses: matlab-actions/setup-matlab@v2
         with:
@@ -273,11 +320,11 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: optimization-public-summary
+          name: ${{ needs.plan.outputs.stage }}-optimization-public-summary
           path: results
 
   synthetic-summary:
-    needs: [plan, synthetic]
+    needs: [plan, synthetic-6]
     if: always() && needs.plan.outputs.requested == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -285,8 +332,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          pattern: optimization-synthetic-[0-9]*
-          path: source
+          pattern: ${{ needs.plan.outputs.stage }}-synthetic-*-slice-6
+          path: slices
+      - name: Require complete matching arms for every planned seed
+        env:
+          VALIDATION_REVISION: ${{ github.sha }}
+        run: >-
+          python benchmarks/collect_synthetic_slices.py --root slices --out source
+          --stage ${{ needs.plan.outputs.stage }} --revision "$VALIDATION_REVISION"
+          --protocol benchmarks/optimization_protocol.json
       - run: bash .github/scripts/prepare-matlab.sh
       - uses: matlab-actions/setup-matlab@v2
         with:
@@ -299,5 +353,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: optimization-synthetic-summary
+          name: ${{ needs.plan.outputs.stage }}-optimization-synthetic-summary
           path: results
+

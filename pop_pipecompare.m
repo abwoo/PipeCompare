@@ -54,6 +54,8 @@ function [EEG, com, result] = pop_pipecompare(EEG, varargin)
 %   'show'     'on' (default) shows a progress window with a Stop button
 %              (stopping keeps the pipelines already run) and opens the
 %              results window; 'off' does neither
+%   'checkpoint' folder for resumable candidate and ICA checkpoints
+%   'maxseconds' cooperative time slice (requires checkpoint; default Inf)
 %   'progress' a container (a page of the PipeCompare window, pipecompare)
 %              in which the progress and Stop are shown instead of a
 %              window of their own; the results window is then not opened
@@ -78,10 +80,10 @@ assert(~isempty(EEG.data), 'PipeCompare:NoDataset', 'pop_pipecompare needs a dat
 if nargin < 2
     opts = pipecompare.gui.SimpleDialog.ask(EEG);
     if isempty(opts), return; end                       % cancelled, or continued in the panel
-    opts.progress = [];
+    opts.progress = [];opts.checkpoint='';opts.maxseconds=Inf;
 else
     opts = struct('measure', '', 'events', {{}}, 'left', {{}}, 'right', {{}}, 'pool', false, 'window', [], 'band', [], ...
-        'channels', {{}}, 'recipe', 'standard', 'steps', {{}}, 'comparecleanup', false, 'artifactvariance','pooled','reference', 'asis', 'segment', 2, 'show', 'on', 'progress', []);
+        'channels', {{}}, 'recipe', 'standard', 'steps', {{}}, 'comparecleanup', false, 'artifactvariance','pooled','reference', 'asis', 'segment', 2, 'show', 'on', 'progress', [], 'checkpoint', '', 'maxseconds', Inf);
     [varargin{:}] = convertStringsToChars(varargin{:});   % "P3" as well as 'P3'
     for k = 1:2:numel(varargin)
         f = lower(char(varargin{k}));
@@ -138,6 +140,7 @@ assert(nTotal > 1, 'PipeCompare:Simple', 'On these data the steps chosen (%s) gi
 % thresholds in uV would remove nothing from data stored in V
 runOpts = pipecompare.simple.Presets.searchOptions();
 runOpts.dataUnit = state.unitGuess;
+runOpts.checkpoint=opts.checkpoint;runOpts.maxSeconds=opts.maxseconds;
 runOpts.artifactVariance=pipecompare.utils.fieldOr(opts,'artifactvariance','pooled');
 assert(any(strcmp(runOpts.artifactVariance,{'pooled','legacy-total'})), ...
     'PipeCompare:Simple','artifactvariance must be pooled or legacy-total.');
@@ -242,3 +245,4 @@ try
 catch err
 end
 end
+

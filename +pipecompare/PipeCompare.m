@@ -47,8 +47,9 @@ classdef PipeCompare
             result = pipecompare.run.Executor.run(plan, contract, opts);
         end
 
-        function result = resume(checkpointDir)
-            result = pipecompare.run.Executor.resume(checkpointDir);
+        function result = resume(checkpointDir, runtime)
+            if nargin<2,runtime=struct();end
+            result = pipecompare.run.Executor.resume(checkpointDir,runtime);
         end
 
         function adopt(result, idx, force)
@@ -181,3 +182,4 @@ else
     error('PipeCompare:Export', 'Cannot write a %s value into a script.', class(v));
 end
 end
+
