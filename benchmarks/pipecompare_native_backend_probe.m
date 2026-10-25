@@ -22,7 +22,7 @@ delta=max(abs(double(compiled(:))-double(fallback(:))));
 assert(delta<1e-5&&isequal(a,b),'PipeCompare:Backend','CPU MEX and MATLAB fallback classifications differ.');
 report=struct('components',n,'maxProbabilityDifference',delta,'sameWinningClasses',isequal(a,b), ...
  'compiledSeconds',compiledSeconds,'fallbackSeconds',fallbackSeconds,'mex',which('vl_nnconv'), ...
- 'cpuBuildPatch','omit-unused-gpu-include', 'matlab',version,'matconvnetCommit','092ecb8c04031ddcb1d9a7ba6ebe76a250c4672c');
+ 'cpuBuildPatch','omit-unused-gpu-include-and-explicit-limits-header', 'matlab',version,'matconvnetCommit','092ecb8c04031ddcb1d9a7ba6ebe76a250c4672c');
 fid=fopen(fullfile(outDir,'backend.json'),'w');fprintf(fid,'%s\n',jsonencode(report));fclose(fid);
 fprintf('PIPECOMPARE_NATIVE_BACKEND_JSON %s\n',jsonencode(report));
 end

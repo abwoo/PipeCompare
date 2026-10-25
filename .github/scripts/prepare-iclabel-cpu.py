@@ -19,3 +19,11 @@ if text.count(line)!=1:
 before=hashlib.sha256(path.read_bytes()).hexdigest()
 path.write_text(text.replace(line,''))
 print('CPU-only compiler compatibility patch; source='+actual+'; originalSHA256='+before)
+
+pool=root/'matlab'/'src'/'bits'/'nnpooling.cpp'
+source=pool.read_text()
+expected_pool='#ifdef ENABLE_GPU\n#error "The file nnpooling.cu should be compiled instead"\n#endif\n#include "nnpooling.cu"\n'
+if source.strip()!=expected_pool.strip():
+    raise RuntimeError('Pinned CPU pooling source changed')
+pool.write_text('#include <limits>\n'+source)
+print('Explicit standard <limits> header for current g++; pooling arithmetic unchanged')
