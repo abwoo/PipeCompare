@@ -11,6 +11,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   admit:
+    if: false # paused for within-group variance correction; no confirmation data consumed
     runs-on: ubuntu-latest
     timeout-minutes: 360
     outputs:
