@@ -1,5 +1,6 @@
-function pipecompare_optimization_public(dataDir,outDir,subject,stage)
+function pipecompare_optimization_public(dataDir,outDir,subject,stage,legacyDir)
 % Paired actual-program comparison. Truth never enters either search.
+if nargin<5,legacyDir='';end
 if ~isfolder(outDir),mkdir(outDir);end
 protocol=jsondecode(fileread(fullfile(fileparts(mfilename('fullpath')),'optimization_protocol.json')));
 assert(ismember(subject,protocol.([stage '_subjects'])),'PipeCompare:Validation','Participant not assigned to this stage.');
@@ -15,8 +16,13 @@ T=pipecompare_open_spectra(D,subject);writetable(T,fullfile(outDir,'spectral.csv
 T=pipecompare_optimization_stretches(background,subject);writetable(T,fullfile(outDir,'stretches.csv'));
 for recipe={'standard','balanced'}
     folder=fullfile(outDir,recipe{1});if ~isfolder(folder),mkdir(folder);end
+    varianceMode='pooled';
+    if strcmp(recipe{1},'standard')
+        varianceMode='legacy-total';
+        if strcmp(stage,'development')&&validation_reuse_legacy(legacyDir,folder,'public',subject,population,realized),continue;end
+    end
     setBase(EEG);fitTimer=tic;
-    transcript=evalc('[~,~,r]=pop_pipecompare(EEG,''measure'',''P3'',''events'',{''11'',''31''},''recipe'',recipe{1},''reference'',''average'',''show'',''off'');');
+    transcript=evalc('[~,~,r]=pop_pipecompare(EEG,''measure'',''P3'',''events'',{''11'',''31''},''recipe'',recipe{1},''artifactvariance'',varianceMode,''reference'',''average'',''show'',''off'');');
     seconds=toc(fitTimer);fid=fopen(fullfile(folder,'native.log'),'w');fprintf(fid,'%s',transcript);fclose(fid);
     feasible=find(strcmp(r.ranking.table.status,'feasible'))';
     C=pipecompare.eval.Calibration.rows(r,feasible,population,realized,subject);
@@ -31,7 +37,8 @@ for recipe={'standard','balanced'}
         assert(replay<1e-6,'PipeCompare:Validation','Native replay changed the selected readout.');
     end
     writeJson(fullfile(folder,'execution.json'),struct('completed',true,'recommended',~isempty(pick), ...
-        'seconds',seconds,'replayMaxError',replay,'candidates',numel(r.cands)));
+        'seconds',seconds,'replayMaxError',replay,'candidates',numel(r.cands), ...
+        'artifactVariance',varianceMode,'legacyReused',false));
 end
 writeJson(fullfile(outDir,'execution.json'),struct('completed',true));
 end
