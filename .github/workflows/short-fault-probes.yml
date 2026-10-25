@@ -1,0 +1,26 @@
+name: development short-fault alignment probes
+on:
+  push:
+    branches: [codex/optimization-probes-20261025]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash .github/scripts/prepare-matlab.sh
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+      - uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(pwd);addpath(fullfile(pwd,'benchmarks'));
+            pipecompare_short_fault_probe(fullfile(pwd,'probe_results'));
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: short-fault-alignment-probes
+          path: probe_results
