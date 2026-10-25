@@ -22,6 +22,13 @@ class GateTests(unittest.TestCase):
     def test_admission_is_not_granted_to_a_worse_search(self):
         p=deepcopy(self.p);p['balancedPairedRMSE']=3
         self.assertFalse(gate(p,self.s,self.c)['ready_for_confirmation'])
+    def test_zero_assessability_withholds_data_without_crashing(self):
+        p=deepcopy(self.p);p.update(paired=0,standardAvailable=0,balancedAvailable=0,
+            standardPairedRMSE=None,balancedPairedRMSE=None)
+        result=gate(p,self.s,self.c)
+        self.assertFalse(result['ready_for_confirmation'])
+        self.assertIsNone(result['metrics']['public_relative_paired_mse_change'])
+
     def test_valid_development_can_only_admit_confirmation(self):
         result=gate(self.p,self.s,self.c)
         self.assertTrue(result['ready_for_confirmation'])

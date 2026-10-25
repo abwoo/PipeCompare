@@ -20,9 +20,11 @@ def gate(public, synthetic, criteria):
             new=report['planned']-report['balanced']['unavailable']
         if new<old:
             reasons.append(name+': recommendation coverage declined')
-        before=report['standardPairedRMSE']**2;after=report['balancedPairedRMSE']**2
-        if not all(math.isfinite(v) and v>=0 for v in [before,after]):
-            reasons.append(name+': nonfinite paired loss');relative=None
+        old_rmse=report['standardPairedRMSE'];new_rmse=report['balancedPairedRMSE']
+        valid=all(isinstance(v,(int,float)) and math.isfinite(v) and v>=0 for v in [old_rmse,new_rmse])
+        before=old_rmse**2 if valid else None;after=new_rmse**2 if valid else None
+        if not valid:
+            reasons.append(name+': unavailable or nonfinite paired loss');relative=None
         elif before==0:
             relative=0 if after==0 else None
             if after>0:reasons.append(name+': worsened a zero-loss control')
