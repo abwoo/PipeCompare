@@ -65,6 +65,8 @@ classdef Executor
             if nargin < 3, opts = struct(); end
             opts = pipecompare.utils.withDefaults(opts, struct('dryRun', false, 'injectUv', 5, 'filterCheck', true, ...
                 'refineCutoffs', false, 'eogCheck', false, 'icaSeeds', 0, 'signalTemplate', 'bump', 'dataUnit', 'uV', 'checkpoint', '', 'parallel', false, 'verbose', 'normal', 'progress', []));
+            opts.artifactVariance=pipecompare.utils.fieldOr(opts,'artifactVariance','pooled');
+            assert(any(strcmp(opts.artifactVariance,{'pooled','legacy-total'})),'PipeCompare:Options','Unknown artifact variance model.');
             assert(isnumeric(opts.icaSeeds) && isscalar(opts.icaSeeds) && opts.icaSeeds >= 0 && opts.icaSeeds == round(opts.icaSeeds), ...
                 'PipeCompare:Options', 'icaSeeds must be a whole number >= 0.');
             assert(any(strcmp(opts.signalTemplate, {'bump', 'data'})), 'PipeCompare:Options', ...
@@ -127,9 +129,12 @@ classdef Executor
         end
 
         function result = execute(result, done)
-            opts = result.options; contract = result.contract; leaves = result.leaves; tree = result.tree;
+            opts = result.options;
+            opts.artifactVariance=pipecompare.utils.fieldOr(opts,'artifactVariance','legacy-total');
+            result.options=opts;
+            contract = result.contract; leaves = result.leaves; tree = result.tree;
             root = result.root;
-            ref = pipecompare.eval.Measure.reference(root, contract);
+            ref = pipecompare.eval.Measure.reference(root, contract,opts);
             result.ref = ref;
             pipecompare.utils.log('Reference trials per condition: %s', ...
                 strjoin(arrayfun(@(c) sprintf('%s=%d', ref.names{c}, ref.n(c)), 1:numel(ref.n), 'UniformOutput', false), ', '));
@@ -536,7 +541,7 @@ classdef Executor
                 steps(:, 1), steps(:, 2));
             if any(chosen('uv') | chosen('threshold') | repair)
                 % a limit or threshold chosen from the data is judged against these data's own trials
-                ctx.ref = pipecompare.eval.Measure.reference(EEG, contract);
+                ctx.ref = pipecompare.eval.Measure.reference(EEG, contract,opts);
             end
             S = []; truth = [];
             if any(chosen('threshold') | repair)

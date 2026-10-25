@@ -90,7 +90,7 @@ classdef IcThreshold
         function [comps, info] = chooseBySme(EEG, cand, ctx)
             contract = ctx.contract;
             ref = pipecompare.utils.fieldOr(ctx, 'ref', []);
-            if isempty(ref), ref = pipecompare.eval.Measure.reference(EEG, contract); end
+            if isempty(ref), ref = pipecompare.eval.Measure.reference(EEG, contract,pipecompare.utils.fieldOr(ctx,'rank',struct())); end
             opts = pipecompare.utils.withDefaults(pipecompare.utils.fieldOr(ctx, 'rank', struct()), ...
                 pipecompare.eval.Rank.defaults());
             assert(pipecompare.eval.Threshold.applies(contract), 'PipeCompare:IcThreshold', ...
@@ -212,7 +212,7 @@ classdef IcThreshold
         function [t, info] = choose(EEG, q, ctx)
             contract = ctx.contract;
             ref = pipecompare.utils.fieldOr(ctx, 'ref', []);
-            if isempty(ref), ref = pipecompare.eval.Measure.reference(EEG, contract); end
+            if isempty(ref), ref = pipecompare.eval.Measure.reference(EEG, contract,pipecompare.utils.fieldOr(ctx,'rank',struct())); end
             opts = pipecompare.utils.withDefaults(pipecompare.utils.fieldOr(ctx, 'rank', struct()), ...
                 pipecompare.eval.Rank.defaults());
             assert(pipecompare.eval.Threshold.applies(contract), 'PipeCompare:IcThreshold', ...

@@ -585,3 +585,48 @@ c=nqc_cand((1:40)');o=c.m.objectives;
 [~,~,~,s]=pipecompare.eval.Rank.conditionErrors(o,1,0);
 verifyTrue(tc,all(isnan(s.artifactBiasSE)));
 end
+
+function testBiasSESeparatesWithinVariationAndPrevalence(tc)
+% Flat values within each group: only the estimated artifact share varies.
+for nB=[10 90]
+    n=100;b=(1:n)'<=nB;x=10*double(b);p=nB/n;
+    [bias,sq,ok,se]=pipecompare.eval.Measure.eyeBias(x,b,ones(n,1));
+    [~,~,~,legacy]=pipecompare.eval.Measure.eyeBias(x,b,ones(n,1),ones(n,1),'legacy-total');
+    verifyTrue(tc,ok);verifyEqual(tc,bias,10*p,'AbsTol',1e-12);
+    verifyEqual(tc,se,sqrt(100*p*(1-p)/(n-1)),'AbsTol',1e-12);
+    if p>0.5,verifyLessThan(tc,se,legacy);else,verifyGreaterThan(tc,se,legacy);end
+    verifyGreaterThanOrEqual(tc,sq,0);
+end
+end
+
+function testBiasUncertaintyMatchesIndependentRecordSampling(tc)
+rs=RandStream('mt19937ar','Seed',20261025);n=200;replicates=700;
+for prevalence=[0.1 0.5 0.9]
+    for effect=[0 10]
+        bias=nan(1,replicates);estimated=nan(1,replicates);
+        for j=1:replicates
+            b=rand(rs,n,1)<prevalence;x=3*randn(rs,n,1)+effect*b;
+            [bias(j),~,~,se]=pipecompare.eval.Measure.eyeBias(x,b,ones(n,1));estimated(j)=se^2;
+        end
+        ratio=sqrt(mean(estimated)/var(bias));
+        verifyGreaterThan(tc,ratio,0.85);verifyLessThan(tc,ratio,1.15);
+    end
+end
+end
+
+function testAutomaticThresholdBootstrapUsesPhysicalCounts(tc)
+x=[0;1;2;7;9;10];b=logical([0;0;0;1;1;1]);n=numel(x);
+ref=nqc_ref(n);ref.blink={{b}};ref.artifactVariance='pooled';
+opts=pipecompare.eval.Rank.defaults();opts.seed=81;opts.nBoot=99;
+C=struct('loc',{{(1:n)'}},'use',1);
+got=pipecompare.eval.Threshold.bootstrap({x},{zeros(n,1)},Inf,opts,ref,C);
+rs=RandStream('mt19937ar','Seed',opts.seed+202);
+W=pipecompare.eval.Rank.resampleWeights(rs,n,opts.nBoot,false);expected=nan(size(got));
+for j=1:opts.nBoot
+    at=repelem((1:n)',W(:,j));
+    [~,sq]=pipecompare.eval.Measure.eyeBias(x(at),b(at),ones(n,1));
+    expected(j)=sqrt(var(x(at))/n+sq);
+end
+ok=isfinite(expected);verifyEqual(tc,got(ok),expected(ok),'AbsTol',1e-10);
+verifyEqual(tc,isnan(got),isnan(expected));
+end
