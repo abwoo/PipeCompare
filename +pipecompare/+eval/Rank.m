@@ -902,7 +902,8 @@ for k = 1:numel(cands)
             if strcmp(objs(o).kind, 'scalar') && numel(blink) >= o && ~isempty(blink{o})
                 K = W{c};
                 if isfield(objs(o), 'w') && ~isempty(objs(o).w), wt = objs(o).w{c}; wt(isnan(wt)) = 0; K = K .* wt; end
-                [~, eq] = pipecompare.eval.Measure.eyeBias(objs(o).X{c}(:, 1), blink{o}{c}, K, W{c});
+                [~, eq] = pipecompare.eval.Measure.eyeBias(objs(o).X{c}(:, 1), blink{o}{c}, K, W{c}, ...
+                    pipecompare.utils.fieldOr(objs(o),'eyeBiasSEMode','legacy-total'));
             end
             oc = struct('estimate', objs(o).estimate(c));
             b2 = b2 + biasOf(oc, g(o), sp(o), eq) .^ 2;
@@ -984,7 +985,8 @@ for j = 1:numel(use), shape(j, :) = biasOf(struct('estimate', objs(j).estimate),
 blink = pipecompare.utils.fieldOr(ref, 'blink', {});
 bl = {};
 if numel(blink) >= max(use) && all(~cellfun(@isempty, blink(use))), bl = blink(use); end
-in = struct('options', {opt}, 'ok', logical(cv.ok), 'w', {w}, 'shape', shape, 'blink', {bl});
+modes=arrayfun(@(j)pipecompare.utils.fieldOr(objs(j),'eyeBiasSEMode','legacy-total'),use,'UniformOutput',false);
+in = struct('options', {opt}, 'ok', logical(cv.ok), 'w', {w}, 'shape', shape, 'blink', {bl},'biasVarianceMode',{modes});
 end
 
 function [vH, vO] = nestedHalf(in, H, O, scH, scO, ref, opts)
@@ -1062,7 +1064,7 @@ function b = halfBias(in, x, o, q, K)
 % weights K (a column per mean): what the blinks among those trials add
 % (Measure.eyeBias; x is already divided by the gain) plus the shape part.
 eq = zeros(1, size(K, 2));
-if ~isempty(in.blink), [~, eq] = pipecompare.eval.Measure.eyeBias(x, in.blink{o}{q}, K); end
+if ~isempty(in.blink), [~, eq] = pipecompare.eval.Measure.eyeBias(x, in.blink{o}{q}, K,ones(size(K)),in.biasVarianceMode{o}); end
 b = sqrt(eq) + in.shape(o, q);
 end
 

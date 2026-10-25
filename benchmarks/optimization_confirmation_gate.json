@@ -5,6 +5,6 @@
   "maximum_additional_outside_injection_marking": 0.005,
   "minimum_short_fault_recall_gain_if_no_accuracy_gain": 0.5,
   "require_no_recommendation_coverage_loss": true,
-  "development_run": 40153112163,
-  "algorithm_head": "f58e9ebafad580939c3cac14027a02d9c2dba818"
+  "development_run": 40157535539,
+  "algorithm_head": "7a47327cf8d5185476f94bfd6e6f7797fbf1cdfb"
 }

@@ -24,6 +24,7 @@ jobs:
       stage: ${{ steps.plan.outputs.stage }}
       people: ${{ steps.plan.outputs.people }}
       seeds: ${{ steps.plan.outputs.seeds }}
+      legacy_run: ${{ steps.plan.outputs.legacy_run }}
     steps:
       - uses: actions/checkout@v4
       - name: Verify frozen development and confirmation splits
@@ -59,6 +60,7 @@ jobs:
               if(!passed)throw new Error('Numerical gate did not finish');
             }
             if(!['development','confirmation'].includes(stage))throw new Error('Invalid validation stage');
+            core.setOutput('legacy_run',String(protocol.legacy_development_source_run||''));
             core.setOutput('stage',stage);core.setOutput('people',JSON.stringify(protocol[stage+'_subjects']));
             core.setOutput('seeds',JSON.stringify(protocol[stage+'_synthetic_seeds']));core.setOutput('requested','true');
             core.info('Frozen stage '+stage+'; source manifest '+protocol.source_manifest_sha256);
@@ -71,7 +73,7 @@ jobs:
     timeout-minutes: 340
     strategy:
       fail-fast: false
-      max-parallel: 6
+      max-parallel: ${{ needs.plan.outputs.stage == 'development' && 2 || 6 }}
       matrix:
         subject: ${{ fromJSON(needs.plan.outputs.people) }}
     env:
@@ -87,6 +89,34 @@ jobs:
       - name: Fetch frozen participant and verify source manifest
         timeout-minutes: 20
         run: python PipeCompare/benchmarks/fetch_optimization_data.py --stage ${{ needs.plan.outputs.stage }} --subject ${{ matrix.subject }} --out input
+      - name: Wait for frozen legacy artifacts to finish uploading
+        if: needs.plan.outputs.stage == 'development'
+        timeout-minutes: 12
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const id=Number('${{ needs.plan.outputs.legacy_run }}');
+            for(let n=0;n<120;n++) {
+              try {
+                const r=await github.rest.actions.getWorkflowRun({...context.repo,run_id:id});
+                if(r.data.head_sha!=='f58e9ebafad580939c3cac14027a02d9c2dba818')throw new Error('Unexpected legacy source');
+                if(r.data.status==='completed')return;
+                const jobs=await github.paginate(github.rest.actions.listJobsForWorkflowRun,{...context.repo,run_id:id,filter:'latest',per_page:100});
+                const native=jobs.filter(j=>/^Paired (public participant|simulation seed) /.test(j.name));
+                if(native.length===8&&native.every(j=>j.status==='completed'))return;
+              }catch(e){if(![429,500,502,503,504].includes(e.status))throw e;}
+              await new Promise(resolve=>setTimeout(resolve,5000));
+            }
+            throw new Error('Legacy jobs have not stopped/uploaded; retry after artifact preservation');
+      - name: Download any completed frozen legacy control
+        if: needs.plan.outputs.stage == 'development'
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: optimization-public-${{ matrix.subject }}
+          path: legacy
+          run-id: ${{ needs.plan.outputs.legacy_run }}
+          github-token: ${{ github.token }}
       - uses: ./PipeCompare/.github/actions/setup-2026
       - name: Run both actual searches and detector-driven repairs
         uses: matlab-actions/run-command@v2
@@ -94,7 +124,7 @@ jobs:
           command: |
             addpath(fullfile(pwd,'eeglab'));eeglab nogui;
             addpath(fullfile(pwd,'PipeCompare'));addpath(fullfile(pwd,'PipeCompare','benchmarks'));
-            pipecompare_optimization_public(fullfile(pwd,'input'),fullfile(pwd,'results'),${{ matrix.subject }},'${{ needs.plan.outputs.stage }}');
+            pipecompare_optimization_public(fullfile(pwd,'input'),fullfile(pwd,'results'),${{ matrix.subject }},'${{ needs.plan.outputs.stage }}',fullfile(pwd,'legacy'));
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -110,7 +140,7 @@ jobs:
     timeout-minutes: 340
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: ${{ needs.plan.outputs.stage == 'development' && 2 || 8 }}
       matrix:
         seed: ${{ fromJSON(needs.plan.outputs.seeds) }}
     env:
@@ -119,13 +149,41 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: PipeCompare
+      - name: Wait for frozen legacy artifacts to finish uploading
+        if: needs.plan.outputs.stage == 'development'
+        timeout-minutes: 12
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const id=Number('${{ needs.plan.outputs.legacy_run }}');
+            for(let n=0;n<120;n++) {
+              try {
+                const r=await github.rest.actions.getWorkflowRun({...context.repo,run_id:id});
+                if(r.data.head_sha!=='f58e9ebafad580939c3cac14027a02d9c2dba818')throw new Error('Unexpected legacy source');
+                if(r.data.status==='completed')return;
+                const jobs=await github.paginate(github.rest.actions.listJobsForWorkflowRun,{...context.repo,run_id:id,filter:'latest',per_page:100});
+                const native=jobs.filter(j=>/^Paired (public participant|simulation seed) /.test(j.name));
+                if(native.length===8&&native.every(j=>j.status==='completed'))return;
+              }catch(e){if(![429,500,502,503,504].includes(e.status))throw e;}
+              await new Promise(resolve=>setTimeout(resolve,5000));
+            }
+            throw new Error('Legacy jobs have not stopped/uploaded; retry after artifact preservation');
+      - name: Download any completed frozen legacy control
+        if: needs.plan.outputs.stage == 'development'
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: optimization-synthetic-${{ matrix.seed }}
+          path: legacy
+          run-id: ${{ needs.plan.outputs.legacy_run }}
+          github-token: ${{ github.token }}
       - uses: ./PipeCompare/.github/actions/setup-2026
       - uses: matlab-actions/run-command@v2
         with:
           command: |
             addpath(fullfile(pwd,'eeglab'));eeglab nogui;
-            cd PipeCompare;addpath(pwd);addpath(fullfile(pwd,'benchmarks'));
-            pipecompare_optimization_synthetic(fullfile(pwd,'results'),${{ matrix.seed }},'${{ needs.plan.outputs.stage }}');
+            legacy=fullfile(pwd,'legacy');cd PipeCompare;addpath(pwd);addpath(fullfile(pwd,'benchmarks'));
+            pipecompare_optimization_synthetic(fullfile(pwd,'results'),${{ matrix.seed }},'${{ needs.plan.outputs.stage }}',legacy);
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -199,7 +257,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          pattern: optimization-public-*
+          pattern: optimization-public-[0-9]*
           path: source
       - run: bash .github/scripts/prepare-matlab.sh
       - uses: matlab-actions/setup-matlab@v2
@@ -225,7 +283,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          pattern: optimization-synthetic-*
+          pattern: optimization-synthetic-[0-9]*
           path: source
       - run: bash .github/scripts/prepare-matlab.sh
       - uses: matlab-actions/setup-matlab@v2

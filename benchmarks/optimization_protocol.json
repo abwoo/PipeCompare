@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "scope": "Paired optimization development and locked confirmation; no tuning on confirmation outcomes.",
   "development_subjects": [
     51,
@@ -134,6 +134,14 @@
       "frozen-prior held-out transfer"
     ],
     "precision": "Retain original 30-assessable-record / 10% half-width criterion; 29 remaining public participants cannot alone establish that target.",
-    "decision": "Report unfavorable effects; no automatic claim or promotion from a lower calibration ratio alone."
+    "decision": "Inspect development before rearming confirmation; legacy control artifacts may be reused only with completed execution and matched identities/truth."
+  },
+  "development_round": 2,
+  "legacy_development_source_run": 40153112163,
+  "legacy_algorithm_head": "f58e9ebafad580939c3cac14027a02d9c2dba818",
+  "artifact_variance": {
+    "standard": "legacy-total",
+    "balanced": "pooled",
+    "note": "Corrected model uses within-group variance plus artifact-share uncertainty; the control reproduces the prior convention."
   }
 }

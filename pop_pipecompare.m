@@ -28,6 +28,7 @@ function [EEG, com, result] = pop_pipecompare(EEG, varargin)
 %              balanced also compares skipping automatic cleanup
 %              (standard: badchannels, ica, highpass, lowpass, reject,
 %              weight; filters: the two filters)
+%   'artifactvariance' 'pooled' (default) | 'legacy-total' (old-model control)
 %   'comparecleanup' false (default) | true: also compare skipping cleanup
 %   'steps'    instead of 'recipe', any of 'badchannels', 'ica',
 %              'icsme' (with 'ica': the components to remove also chosen
@@ -80,7 +81,7 @@ if nargin < 2
     opts.progress = [];
 else
     opts = struct('measure', '', 'events', {{}}, 'left', {{}}, 'right', {{}}, 'pool', false, 'window', [], 'band', [], ...
-        'channels', {{}}, 'recipe', 'standard', 'steps', {{}}, 'comparecleanup', false, 'reference', 'asis', 'segment', 2, 'show', 'on', 'progress', []);
+        'channels', {{}}, 'recipe', 'standard', 'steps', {{}}, 'comparecleanup', false, 'artifactvariance','pooled','reference', 'asis', 'segment', 2, 'show', 'on', 'progress', []);
     [varargin{:}] = convertStringsToChars(varargin{:});   % "P3" as well as 'P3'
     for k = 1:2:numel(varargin)
         f = lower(char(varargin{k}));
@@ -137,6 +138,9 @@ assert(nTotal > 1, 'PipeCompare:Simple', 'On these data the steps chosen (%s) gi
 % thresholds in uV would remove nothing from data stored in V
 runOpts = pipecompare.simple.Presets.searchOptions();
 runOpts.dataUnit = state.unitGuess;
+runOpts.artifactVariance=pipecompare.utils.fieldOr(opts,'artifactvariance','pooled');
+assert(any(strcmp(runOpts.artifactVariance,{'pooled','legacy-total'})), ...
+    'PipeCompare:Simple','artifactvariance must be pooled or legacy-total.');
 if strcmp(state.unitGuess, 'V'), pipecompare.utils.log('The data are in volts (judged from the amplitude scale); they are compared in uV.'); end
 prog = pipecompare.gui.Progress.empty;
 if ~strcmp(opts.show, 'off')
@@ -208,6 +212,7 @@ elseif ~pipecompare.simple.Presets.isBand(opts.measure)
 elseif opts.segment ~= 2, args = [args {'segment', opts.segment}]; end
 if isempty(recipe), args = [args {'steps', steps}]; else, args = [args {'recipe', recipe}]; end
 if opts.comparecleanup,args=[args {'comparecleanup',true}];end
+if strcmp(runOpts.artifactVariance,'legacy-total'),args=[args {'artifactvariance','legacy-total'}];end
 if strcmp(opts.reference, 'average'), args = [args {'reference', 'average'}]; end
 if strcmp(opts.show, 'off'), args = [args {'show', 'off'}]; end
 com = sprintf('EEG = pop_pipecompare(EEG, %s);', vararg2str(args));

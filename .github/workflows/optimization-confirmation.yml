@@ -10,8 +10,15 @@ concurrency:
   group: optimization-confirmation-pr50
   cancel-in-progress: true
 jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: python -m unittest discover -s tests -p test_confirmation_gate.py
+      - run: python -m unittest discover -s tests -p test_optimization_protocol.py
   admit:
-    if: false # paused for within-group variance correction; no confirmation data consumed
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 360
     outputs:
@@ -76,7 +83,7 @@ jobs:
         with:
           pattern: optimization-*-summary
           path: development_source
-          run-id: 40153112163
+          run-id: 40157535539
           github-token: ${{ github.token }}
       - id: admit
         name: Evaluate the prespecified development admission screen

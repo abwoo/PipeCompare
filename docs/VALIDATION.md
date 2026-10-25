@@ -242,9 +242,9 @@ summary correction and does not change candidate selection or saved truth rows.
 ## Paired optimization development and confirmation
 
 The optional `balanced` recipe (or `comparecleanup=true` with selected steps)
-compares automatic bad-channel handling, ICA fitting and component removal with
+compares automatic bad-channel handling, dedicated-EOG regression, ICA fitting and component removal with
 skipping each, while preserving the requested reference and measurement contract.
-The Simple dialog has a Balanced button; Standard remains the legacy control.
+The Simple dialog has a Balanced button. The paired study explicitly uses `legacy-total` with Standard and the revised `pooled` variance with Balanced; the normal API defaults to the revised variance model.
 The expanded search is not yet certified as superior. Prefixes remain shared
 within each branch; skipping ICA never makes component removal legal without ICA.
 
