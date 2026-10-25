@@ -283,3 +283,17 @@ controls, annotated EEG-IO blinks, real ERP CORE execution and known spectra.
 Markings outside injected intervals on natural EEG are not certified false positives.
 Raw EEG is not uploaded. Any change made after viewing confirmation outcomes
 requires a new validation cohort; an execution green check is not scientific success.
+
+The confirmation controller can wait for the exact development source run and
+its full numerical/GUI CI, without repeating fits. It verifies that only the
+listed orchestration/documentation files differ from that algorithm revision.
+It then applies `optimization_confirmation_gate.json`: at least three paired
+records in each development arm, no recommendation-coverage loss, at most 5%
+paired-MSE deterioration in either arm, and either an accuracy gain or at least
+0.5 short-fault recall gain, with at most 0.005 extra marking outside injections.
+Known-null and component execution controls must already have passed. These are
+prespecified engineering admission tolerances, not statistical evidence of
+clinical noninferiority or superiority. Failing admission leaves the untouched
+confirmation inputs unused. Passing admission runs the frozen public and
+simulation confirmation through a reusable workflow; it does not promote a
+new recipe to the default or declare methodological success.

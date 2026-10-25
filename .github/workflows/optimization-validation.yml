@@ -1,6 +1,11 @@
 name: paired optimization validation
 on:
   pull_request:
+  workflow_call:
+    inputs:
+      stage:
+        type: string
+        required: true
   workflow_dispatch:
     inputs:
       stage:
@@ -25,12 +30,14 @@ jobs:
         run: python -m unittest discover -s tests -p test_optimization_protocol.py
       - id: plan
         uses: actions/github-script@v7
+        env:
+          REQUESTED_STAGE: ${{ inputs.stage }}
         with:
           script: |
             const fs=require('fs');
             const protocol=JSON.parse(fs.readFileSync('benchmarks/optimization_protocol.json','utf8'));
             core.setOutput('requested','false');
-            let stage=context.payload.inputs?.stage;
+            let stage=process.env.REQUESTED_STAGE||context.payload.inputs?.stage;
             if(context.eventName==='pull_request') {
               const sha=context.payload.pull_request.head.sha;
               const commit=await github.rest.repos.getCommit({...context.repo,ref:sha});
