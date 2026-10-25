@@ -188,7 +188,7 @@ classdef Measure
             end
         end
 
-        function [bias, sq, assessed] = eyeBias(x, b, K, counts)
+        function [bias, sq, assessed, se] = eyeBias(x, b, K, counts)
             % What the blink trials add to a weighted mean score. x: scores
             % (n x 1, NaN = absent), b: blink trials (n x 1 logical), K:
             % weights (n x L: a column per mean). Optional counts are the
@@ -233,8 +233,8 @@ classdef Measure
             sq = max(abs(bias) - pipecompare.eval.Measure.BiasZ * se, 0) .^ 2;
             clean = nB == 0 & nN > 0;
             assessed = nN > 0;
-            bias(clean) = 0; sq(clean) = 0;
-            bias(~assessed) = NaN; sq(~assessed) = NaN;
+            bias(clean) = 0; sq(clean) = 0; se(clean)=0;
+            bias(~assessed) = NaN; sq(~assessed) = NaN; se(~assessed)=NaN;
         end
 
         function m = candidate(EEG, contract, ref, opts)
@@ -258,7 +258,7 @@ classdef Measure
             end
             objs = repmat(struct('name', '', 'unit', '', 'kind', '', 'polarity', '', 'times', [], ...
                 'X', {{}}, 'w', {{}}, 'estimate', [], 'sme', [], 'agg', NaN, 'eyeBias', [], 'eyeBiasSq', [], ...
-                'eyeBiasAssessed', [], 'segmented', false), 1, nO);
+                'eyeBiasAssessed', [], 'eyeBiasSE', [], 'segmented', false), 1, nO);
             blink = pipecompare.utils.fieldOr(ref, 'blink', {});
             % the epochs' weights (weight_trials), by the trial's urevent
             wRow = [];
@@ -277,7 +277,7 @@ classdef Measure
                 o.X = cell(1, nC); o.estimate = nan(1, nC); o.sme = nan(1, nC);
                 % what blinks add to each condition's mean (Measure.eyeBias;
                 % 0 without eye channels, for peak measures and band power)
-                o.eyeBias = zeros(1, nC); o.eyeBiasSq = zeros(1, nC);
+                o.eyeBias = zeros(1, nC); o.eyeBiasSq = zeros(1, nC); o.eyeBiasSE=zeros(1,nC);
                 if strcmp(o.kind, 'scalar') && numel(blink) >= k && ~isempty(blink{k})
                     o.eyeBiasAssessed = false(1, nC);
                 end
@@ -293,7 +293,7 @@ classdef Measure
                     [o.estimate(c), o.sme(c)] = pipecompare.eval.Measure.estimate(o, X, opts, k * 1000 + c, w);
                     if strcmp(o.kind, 'scalar') && numel(blink) >= k && ~isempty(blink{k})
                         K = ones(ref.n(c), 1); if ~isempty(w), K = w; K(isnan(K)) = 0; end
-                        [o.eyeBias(c), o.eyeBiasSq(c), o.eyeBiasAssessed(c)] = pipecompare.eval.Measure.eyeBias(X(:, 1), blink{k}{c}, K);
+                        [o.eyeBias(c), o.eyeBiasSq(c), o.eyeBiasAssessed(c), o.eyeBiasSE(c)] = pipecompare.eval.Measure.eyeBias(X(:, 1), blink{k}{c}, K);
                     end
                     if strcmp(o.kind, 'scalar') && isfield(ref, 'blinkInfo')
                         invalid=pipecompare.utils.fieldOr(ref.blinkInfo,'invalidEyeInput',false);
@@ -303,7 +303,7 @@ classdef Measure
                             invalid=invalid||any(kept&~ref.blinkInfo.available{k}{c}(:));
                         end
                         if invalid
-                            o.eyeBias(c)=NaN;o.eyeBiasSq(c)=NaN;o.eyeBiasAssessed(c)=false;
+                            o.eyeBias(c)=NaN;o.eyeBiasSq(c)=NaN;o.eyeBiasAssessed(c)=false;o.eyeBiasSE(c)=NaN;
                         end
                     end
                 end

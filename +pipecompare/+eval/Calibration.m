@@ -4,7 +4,7 @@ classdef Calibration
     % sampling units. This measures RMS error, not interval coverage.
     methods (Static)
         function C = rows(r, feasible, population, realized, recording)
-            data = cell(0,18); T = r.ranking.table;
+            data = cell(0,20); T = r.ranking.table;
             vars = T.Properties.VariableNames;
             gv = vars(startsWith(vars, 'gain_')); sv = vars(startsWith(vars, 'shapeSpread_'));
             for j = feasible(:)'
@@ -12,18 +12,18 @@ classdef Calibration
                 g = 1; if ~isempty(gv), g = T.(gv{1})(j); end
                 sp = 0; if ~isempty(sv), sp = T.(sv{1})(j); end
                 if ~(isfinite(g) && g > 0), continue; end
-                [reported, ~, bias] = pipecompare.eval.Rank.conditionErrors(o, g, sp);
+                [reported, ~, bias, sensitivity] = pipecompare.eval.Rank.conditionErrors(o, g, sp);
                 selected = any(r.ranking.recommended == j);
                 for c = 1:numel(population)
                     data(end+1,:) = {recording, r.labels{j}, c, o.estimate(c)/g-population(c), ...
                         reported(c), o.sme(c), o.eyeBias(c), g, selected, o.estimate(c)/g-realized(c), sp, bias(c), ...
                         o.estimate(c)-population(c), o.estimate(c)-realized(c), o.estimate(c), o.estimate(c)/g, ...
-                        population(c), realized(c)}; %#ok<AGROW>
+                        population(c), realized(c), sensitivity.associationError(c), sensitivity.artifactBiasSE(c)}; %#ok<AGROW>
                 end
             end
             C = cell2table(data, 'VariableNames', {'recording','steps','condition','actualError','reportedError', ...
                 'sme','eyeBias','gain','selected','conditionalError','shapeSpread','totalBias', ...
-                'rawError','rawConditionalError','rawEstimate','correctedEstimate','populationTruth','realizedTruth'});
+                'rawError','rawConditionalError','rawEstimate','correctedEstimate','populationTruth','realizedTruth','associationSensitivityError','artifactBiasSE'});
         end
 
         function S = summarize(C, nBoot, seed)

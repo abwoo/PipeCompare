@@ -147,6 +147,7 @@ classdef Rank
             stratum = repmat({''}, n, 1);
             primary = nan(n, 1); minRet = nan(n, 1); minKept = nan(n, 1); interp = nan(n, 1);
             ampErr = nan(n, 1); latSh = nan(n, 1); artPct = nan(n, 1); wCorr = nan(n, 1); tCorr = nan(n, 1);
+            associationRisk=nan(n,nO);artifactSE=nan(n,nO);
             objAgg = nan(n, nO); noise = nan(n, 1); bias = nan(n, 1); eyeB = nan(n, nO); spreads = nan(n, nO);
             for i = 1:n
                 c = cands(i);
@@ -165,6 +166,9 @@ classdef Rank
                 objAgg(i, :) = [m.objectives.agg] ./ g;
                 [primary(i), noise(i), bias(i)] = primaryPoint(m, objName, ref, g, sp);
                 for k = 1:nO
+                    [~,~,~,sensitivity]=pipecompare.eval.Rank.conditionErrors(m.objectives(k),g(k),sp(k));
+                    associationRisk(i,k)=sqrt(mean(sensitivity.associationError.^2));
+                    artifactSE(i,k)=max(sensitivity.artifactBiasSE);
                     eb = pipecompare.utils.fieldOr(m.objectives(k), 'eyeBias', 0);
                     if all(isfinite(eb))
                         [~, at] = max(abs(eb)); eyeB(i, k) = eb(at);   % the condition where blinks add most
@@ -250,6 +254,8 @@ classdef Rank
                 'chosenShare','minRetention','minTrials','interpolated','ampError', ...
                 'latencyShiftMs','artifactPct','waveformCorr','topoCorr','reason','note'});
             for k = 1:nO
+                T.(matlab.lang.makeValidName(['associationRisk_' ref.objectives{k}]))=associationRisk(:,k);
+                T.(matlab.lang.makeValidName(['artifactBiasSE_' ref.objectives{k}]))=artifactSE(:,k);
                 T.(matlab.lang.makeValidName(['sme_' ref.objectives{k}])) = objAgg(:, k);   % gain-corrected
                 T.(matlab.lang.makeValidName(['gain_' ref.objectives{k}])) = gains(:, k);
                 T.(matlab.lang.makeValidName(['eyeBias_' ref.objectives{k}])) = eyeB(:, k);   % in the measure's unit
@@ -386,12 +392,17 @@ classdef Rank
             name = resolveObjective(obj, ref);
         end
 
-        function [total, noise, bias] = conditionErrors(o, gain, spread)
+        function [total, noise, bias, sensitivity] = conditionErrors(o, gain, spread)
             % The same per-condition error used by primaryPoint. Benchmark
             % calibration must include both artifact and shape bias.
             noise = o.sme / gain;
             bias = biasOf(o, gain, spread);
             total = sqrt(noise .^ 2 + bias .^ 2);
+            association=pipecompare.utils.fieldOr(o,'eyeBias',nan(size(o.estimate)));
+            associationError=sqrt(noise.^2+((abs(association)+abs(o.estimate)*spread)/gain).^2);
+            se=pipecompare.utils.fieldOr(o,'eyeBiasSE',nan(size(o.estimate)))/gain;
+            sensitivity=struct('associationError',associationError,'artifactBiasSE',se, ...
+                'scope','Association sensitivity, not causal bias or a calibrated absolute error bound');
         end
 
         function cf = crossfit(cands, ref, opts, objName, apparent, F)

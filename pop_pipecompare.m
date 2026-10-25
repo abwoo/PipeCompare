@@ -24,7 +24,8 @@ function [EEG, com, result] = pop_pipecompare(EEG, varargin)
 %              as in ERP CORE: the event types with the target on the left
 %              / of left-hand responses, and of the right (instead of
 %              'events'; one side may be left out)
-%   'recipe'   'standard' (default) | 'filters': which steps are compared
+%   'recipe'   'standard' (default) | 'filters' | 'balanced': steps compared
+%              balanced also compares skipping automatic cleanup
 %              (standard: badchannels, ica, highpass, lowpass, reject,
 %              weight; filters: the two filters)
 %   'steps'    instead of 'recipe', any of 'badchannels', 'ica',
@@ -119,7 +120,11 @@ else
     steps = pipecompare.simple.Presets.recipeSteps(opts.recipe);
 end
 recipe = pipecompare.simple.Presets.recipeOf(steps);
-[plan, notes] = pipecompare.simple.Presets.recipe(steps, state, c, opts.reference, ...
+planSteps=steps;
+if isempty(opts.steps) && ischar(opts.recipe) && strcmp(opts.recipe,'balanced')
+    planSteps='balanced';recipe='balanced';
+end
+[plan, notes] = pipecompare.simple.Presets.recipe(planSteps, state, c, opts.reference, ...
     pipecompare.simple.Presets.nonEegChannels(EEG));
 for k = 1:numel(notes), pipecompare.utils.log('Left out: %s.', notes{k}); end
 nTotal = numel(plan.enumerate(state, c, struct('maxLeaves', Inf)));

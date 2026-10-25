@@ -226,7 +226,8 @@ classdef Group
             theta = nan(size(Y)); share = NaN; tau2 = 0;
             model = struct('scope','observed-recordings','fullyHeldOut',false, ...
                 'pairedCovariance',paired,'cells',m,'components',0,'df',0,'varianceAssessed',false, ...
-                'pipelineEffects',nan(1,nP),'pipelineComponents',nan(1,nP),'tau2',NaN);
+                'pipelineEffects',nan(1,nP),'pipelineComponents',nan(1,nP),'tau2',NaN, ...
+                'trainingRecords',nnz(any(ok,2)),'recordsPerPipeline',sum(ok,1),'minimumTransferRecords',3);
             if m == 0, return; end
             [D, components, columns, component] = groupDesign(record,pipeline,nR,nP);
             model.pipelineEffects = nan(1,nP);
@@ -305,6 +306,10 @@ classdef Group
                 p = find(isfinite(Y(s,:)) & Y(s,:)>0 & isfinite(V(s,:)) & V(s,:)>=0);
                 if ~prior.varianceAssessed || ~isfinite(prior.tau2)
                     info.reason{s}='training interaction variance unassessed'; continue;
+                end
+                if isfield(prior,'recordsPerPipeline') && ...
+                        (numel(p)<2 || any(prior.recordsPerPipeline(p)<prior.minimumTransferRecords))
+                    info.reason{s}='insufficient independent training support for compared candidates';continue;
                 end
                 if isempty(p) || any(~isfinite(prior.pipelineEffects(p)))
                     info.reason{s}='candidate absent from training'; continue;

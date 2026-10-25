@@ -505,3 +505,70 @@ missing=R.byStratum.bootstrapUnavailableShare;
 verifyGreaterThan(tc,missing,0);verifyLessThan(tc,R.byStratum.bootstrapCompleteShare,1);
 verifyEqual(tc,sum(R.table.chosenShare)+missing,1,'AbsTol',1e-12);
 end
+
+function testBiasUncertaintyRespectsPhysicalMultiplicity(tc)
+x=[0;1;2;7;9;10];b=logical([0;0;0;1;1;1]);w=[0.4;1;0.7;0.5;0.8;1];counts=[1;3;2;2;1;3];
+idx=repelem((1:numel(x))',counts);
+[~,~,~,a]=pipecompare.eval.Measure.eyeBias(x,b,counts.*w,counts);
+[~,~,~,q]=pipecompare.eval.Measure.eyeBias(x(idx),b(idx),w(idx));
+[~,~,~,scaled]=pipecompare.eval.Measure.eyeBias(x,b,100*counts.*w,counts);
+verifyEqual(tc,a,q,'AbsTol',1e-12);verifyEqual(tc,a,scaled,'AbsTol',1e-12);
+end
+
+function testRiskSensitivityDoesNotChangeFittedScore(tc)
+c=nqc_cand((1:40)');o=c.m.objectives;o.eyeBias=2;o.eyeBiasSq=0.25;o.eyeBiasSE=0.7;
+[total,noise,bias,s]=pipecompare.eval.Rank.conditionErrors(o,0.9,0.1);
+verifyEqual(tc,total,sqrt(noise.^2+bias.^2),'AbsTol',1e-12);
+verifyGreaterThan(tc,s.associationError,total);verifyEqual(tc,s.artifactBiasSE,0.7/0.9,'AbsTol',1e-12);
+verifyTrue(tc,contains(s.scope,'not causal'));
+end
+
+function testFrozenPriorNeedsIndependentCandidateSupport(tc)
+Y=[1 2;2 1];V=0.01*ones(2);
+[~,~,~,prior]=pipecompare.Group.twoLevel(Y,V);
+[a,info]=pipecompare.Group.applyPrior(prior,[1.1 1.2],[0.01 0.01]);
+verifyEqual(tc,a,[1.1 1.2]);verifyFalse(tc,info.assessed);
+verifyTrue(tc,contains(info.reason{1},'training support'));
+verifyEqual(tc,prior.recordsPerPipeline,[2 2]);
+end
+
+function testMultiscaleDetectsStrongShortFaultWithoutFalseRepair(tc)
+rs=RandStream('mt19937ar','Seed',20261025);fs=100;X=randn(rs,12,60*fs);
+[quiet,check]=pipecompare.run.Steps.badStretches(X,fs,'multiscale');
+verifyTrue(tc,check.assessed);verifyEmpty(tc,quiet);
+for seconds=[0.5 1 5]
+    D=X;at=20*fs+(1:round(seconds*fs));D(3,at)=D(3,at)+30*randn(rs,1,numel(at));
+    [st,info]=pipecompare.run.Steps.badStretches(D,fs,'multiscale');pred=false(size(X));
+    for k=1:numel(st),pred(st(k).row,st(k).samples(1):st(k).samples(2))=true;end
+    verifyTrue(tc,info.assessed);verifyGreaterThan(tc,mean(pred(3,at)),0.95);
+    truth=false(size(X));truth(3,at)=true;
+    verifyLessThan(tc,nnz(pred&~truth)/nnz(~truth),0.005);
+end
+end
+
+function testMultiscaleRemainsUnassessedForUnsupportedInput(tc)
+X=randn(8,4000);X=X-mean(X,1);
+[st,check]=pipecompare.run.Steps.badStretches(X,100,'multiscale');
+verifyEmpty(tc,st);verifyFalse(tc,check.assessed);
+verifyError(tc,@()pipecompare.run.Steps.badStretches(X,100,'unknown'),'PipeCompare:Stretches');
+end
+
+function testBalancedRecipeContainsMinimalAndCleanupAlternatives(tc)
+P=pipecompare.simple.Presets;st=nqc_fakeState(false,250);
+st.nLocated=16;st.filters.lowpass=[];c=nqc_contract();
+p=P.recipe('balanced',st,c,'average',{'EOG1'});
+for id={'badchannels','ica','icremove'}
+    k=find(strcmp({p.Slots.id},id{1}),1);
+    if isempty(k),continue;end
+    verifyTrue(tc,any(cellfun(@(a)strcmp(a.type,'none'),p.Slots(k).alternatives)));
+end
+L=p.enumerate(st,c);noIca=false;withIca=false;noRepair=false;
+for j=1:numel(L)
+    types=cellfun(@(s)s.type,L(j).path,'UniformOutput',false);
+    noIca=noIca||~any(strcmp(types,'ica'));withIca=withIca||any(strcmp(types,'ica'));
+    noRepair=noRepair||~any(strcmp(types,'badchannels'));
+    verifyEqual(tc,nnz(strcmp(types,'reref')),1);
+    if any(strcmp(types,'icremove')),verifyTrue(tc,any(strcmp(types,'ica')));end
+end
+verifyTrue(tc,noIca);verifyTrue(tc,withIca);verifyTrue(tc,noRepair);
+end

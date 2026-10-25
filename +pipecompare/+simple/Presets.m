@@ -111,7 +111,7 @@ classdef Presets
         end
 
         function names = recipeNames()
-            names = {'filters', 'standard'};
+            names = {'filters', 'standard', 'balanced'};
         end
 
         function names = stepNames()
@@ -174,7 +174,7 @@ classdef Presets
                 return;
             end
             switch name
-                case 'standard', steps = {'badchannels', 'ica', 'highpass', 'lowpass', 'reject', 'weight'};
+                case {'standard','balanced'}, steps = {'badchannels', 'ica', 'highpass', 'lowpass', 'reject', 'weight'};
                 case 'filters', steps = {'highpass', 'lowpass'};
                 otherwise, error('PipeCompare:Simple', 'Unknown recipe %s (filters, standard).', name);
             end
@@ -1014,6 +1014,7 @@ classdef Presets
             if nargin < 5, exclude = {}; end
             assert(any(strcmp(reference, {'asis', 'average'})), 'PipeCompare:Simple', ...
                 'reference must be asis or average.');
+            balanced = ischar(name) && strcmp(name,'balanced');
             steps = pipecompare.simple.Presets.recipeSteps(name);   % validates the name or steps
             has = @(s) any(strcmp(steps, s));
             notes = {};
@@ -1149,6 +1150,20 @@ classdef Presets
                 else
                     notes{end+1} = 'weighting epochs by their noise is for ERPs: left out';
                 end
+            end
+            if balanced
+                % Cleanup must be compared, rather than shared by every
+                % candidate. Illegal ICA-removal-without-ICA paths are
+                % rejected by the ordinary plan state machine.
+                for id={'badchannels','ica','icremove'}
+                    at=find(strcmp({plan.Slots.id},id{1}),1);
+                    if isempty(at),continue;end
+                    plan=plan.setSkippable(id{1},true);
+                    if strcmp(id{1},'badchannels')
+                        plan.Slots(at).alternatives{1}.params.stretchMode='multiscale';
+                    end
+                end
+                notes{end+1}='balanced: cleanup and no-cleanup branches compared; multiscale strong short faults enabled';
             end
             if has('peaktopeak') && ~has('reject')
                 notes{end+1} = 'peak-to-peak rejection needs epoch rejection (it is its method)';
