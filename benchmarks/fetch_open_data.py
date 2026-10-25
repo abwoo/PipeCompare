@@ -116,12 +116,13 @@ def main():
     parser.add_argument("--shard", type=int, required=True)
     parser.add_argument("--shards", type=int, default=6)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--components-only", action="store_true")
     args = parser.parse_args()
     assert 0 <= args.shard < args.shards
     protocol = json.loads(Path(__file__).with_name("open_data_protocol.json").read_text())
     args.out.mkdir(parents=True, exist_ok=True)
     provenance = []
-    for entry in protocol["physionet"]["files"][args.shard::args.shards]:
+    for entry in ([] if args.components_only else protocol["physionet"]["files"][args.shard::args.shards]):
         path = args.out / Path(entry["path"]).name
         url = "https://physionet-open.s3.amazonaws.com/eegmmidb/1.0.0/" + entry["path"]
         fetch(url, path, entry["sha256"])
@@ -139,7 +140,7 @@ def main():
             blink_record(z, subject, args.out)
             provenance.append(dict(source="EEG-IO", subject=subject, url=url, sha256=blink["archive_sha256"]))
     for entry in protocol["erp_core"]["files"]:
-        if f"sub-{11 + args.shard:03d}/" not in entry["path"]:
+        if not (args.components_only and args.shards == 1) and f"sub-{11 + args.shard:03d}/" not in entry["path"]:
             continue
         assert entry["checksum_algorithm"] == "sha256"
         path = args.out / "erp_core" / Path(entry["path"]).name

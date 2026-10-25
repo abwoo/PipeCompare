@@ -1,0 +1,236 @@
+name: paired optimization validation
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      stage:
+        type: choice
+        options: [development, confirmation]
+        default: development
+permissions:
+  contents: read
+  actions: read
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      requested: ${{ steps.plan.outputs.requested }}
+      stage: ${{ steps.plan.outputs.stage }}
+      people: ${{ steps.plan.outputs.people }}
+      seeds: ${{ steps.plan.outputs.seeds }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify frozen development and confirmation splits
+        run: python -m unittest discover -s tests -p test_optimization_protocol.py
+      - id: plan
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs=require('fs');
+            const protocol=JSON.parse(fs.readFileSync('benchmarks/optimization_protocol.json','utf8'));
+            core.setOutput('requested','false');
+            let stage=context.payload.inputs?.stage;
+            if(context.eventName==='pull_request') {
+              const sha=context.payload.pull_request.head.sha;
+              const commit=await github.rest.repos.getCommit({...context.repo,ref:sha});
+              if(commit.data.commit.message.includes('[optimization-development]')) stage='development';
+              if(commit.data.commit.message.includes('[optimization-confirmation]')) stage='confirmation';
+              if(!stage)return;
+              let passed=false;
+              for(let n=0;n<90;n++) {
+                try {
+                  const rs=await github.rest.actions.listWorkflowRuns({...context.repo,workflow_id:'matlab-tests.yml',head_sha:sha,event:'pull_request'});
+                  const r=rs.data.workflow_runs.find(r=>r.head_sha===sha);
+                  if(r?.status==='completed') {
+                    if(r.conclusion!=='success')throw new Error('Numerical/checkpoint tests failed');
+                    passed=true;break;
+                  }
+                } catch(e) {if(![429,500,502,503,504].includes(e.status))throw e;}
+                await new Promise(resolve=>setTimeout(resolve,15000));
+              }
+              if(!passed)throw new Error('Numerical gate did not finish');
+            }
+            if(!['development','confirmation'].includes(stage))throw new Error('Invalid validation stage');
+            core.setOutput('stage',stage);core.setOutput('people',JSON.stringify(protocol[stage+'_subjects']));
+            core.setOutput('seeds',JSON.stringify(protocol[stage+'_synthetic_seeds']));core.setOutput('requested','true');
+            core.info('Frozen stage '+stage+'; source manifest '+protocol.source_manifest_sha256);
+
+  public:
+    needs: plan
+    if: needs.plan.outputs.requested == 'true'
+    name: Paired public participant ${{ matrix.subject }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        subject: ${{ fromJSON(needs.plan.outputs.people) }}
+    env:
+      DISPLAY: ':99'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Fetch frozen participant and verify source manifest
+        timeout-minutes: 20
+        run: python PipeCompare/benchmarks/fetch_optimization_data.py --stage ${{ needs.plan.outputs.stage }} --subject ${{ matrix.subject }} --out input
+      - uses: ./PipeCompare/.github/actions/setup-2026
+      - name: Run both actual searches and detector-driven repairs
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab'));eeglab nogui;
+            addpath(fullfile(pwd,'PipeCompare'));addpath(fullfile(pwd,'PipeCompare','benchmarks'));
+            pipecompare_optimization_public(fullfile(pwd,'input'),fullfile(pwd,'results'),${{ matrix.subject }},'${{ needs.plan.outputs.stage }}');
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: optimization-public-${{ matrix.subject }}
+          path: results
+          retention-days: 90
+
+  synthetic:
+    needs: plan
+    if: needs.plan.outputs.requested == 'true'
+    name: Paired simulation seed ${{ matrix.seed }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        seed: ${{ fromJSON(needs.plan.outputs.seeds) }}
+    env:
+      DISPLAY: ':99'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+      - uses: ./PipeCompare/.github/actions/setup-2026
+      - uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab'));eeglab nogui;
+            cd PipeCompare;addpath(pwd);addpath(fullfile(pwd,'benchmarks'));
+            pipecompare_optimization_synthetic(fullfile(pwd,'results'),${{ matrix.seed }},'${{ needs.plan.outputs.stage }}');
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: optimization-synthetic-${{ matrix.seed }}
+          path: PipeCompare/results
+          retention-days: 90
+
+  nulls:
+    needs: plan
+    if: needs.plan.outputs.requested == 'true'
+    name: Known-null false-positive and known-spectrum controls
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash .github/scripts/prepare-matlab.sh
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+          products: Signal_Processing_Toolbox
+      - uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(pwd);addpath(fullfile(pwd,'benchmarks'));
+            pipecompare_optimization_null(fullfile(pwd,'results'),'${{ needs.plan.outputs.stage }}');
+            pipecompare_spectral_validation(fullfile(pwd,'results'));
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: optimization-null-spectrum
+          path: results
+
+  components:
+    needs: plan
+    if: needs.plan.outputs.requested == 'true'
+    name: Annotated blink and real ERP component controls
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      DISPLAY: ':99'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Fetch existing frozen component controls only
+        timeout-minutes: 30
+        run: python PipeCompare/benchmarks/fetch_open_data.py --components-only --shard 0 --shards 1 --out input
+      - uses: ./PipeCompare/.github/actions/setup-2026
+      - uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab'));eeglab nogui;
+            addpath(fullfile(pwd,'PipeCompare'));addpath(fullfile(pwd,'PipeCompare','benchmarks'));
+            pipecompare_optimization_controls(fullfile(pwd,'input'),fullfile(pwd,'results'));
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: optimization-component-controls
+          path: results
+
+  public-summary:
+    needs: [plan, public]
+    if: always() && needs.plan.outputs.requested == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: optimization-public-*
+          path: source
+      - run: bash .github/scripts/prepare-matlab.sh
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+      - uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(pwd);addpath(fullfile(pwd,'benchmarks'));
+            pipecompare_optimization_summary(fullfile(pwd,'source'),fullfile(pwd,'results'),'${{ needs.plan.outputs.stage }}');
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: optimization-public-summary
+          path: results
+
+  synthetic-summary:
+    needs: [plan, synthetic]
+    if: always() && needs.plan.outputs.requested == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: optimization-synthetic-*
+          path: source
+      - run: bash .github/scripts/prepare-matlab.sh
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+      - uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(pwd);addpath(fullfile(pwd,'benchmarks'));
+            pipecompare_optimization_synthetic_summary(fullfile(pwd,'source'),fullfile(pwd,'results'),'${{ needs.plan.outputs.stage }}');
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: optimization-synthetic-summary
+          path: results

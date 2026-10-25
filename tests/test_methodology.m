@@ -572,3 +572,10 @@ for j=1:numel(L)
 end
 verifyTrue(tc,noIca);verifyTrue(tc,withIca);verifyTrue(tc,noRepair);
 end
+
+function testUnavailableCalibrationHasTypedSchema(tc)
+C=pipecompare.eval.Calibration.empty();
+verifyEqual(tc,height(C),0);verifyEqual(tc,width(C),20);
+verifyClass(tc,C.recording,'double');verifyClass(tc,C.selected,'logical');
+S=pipecompare.eval.Calibration.summarize(C);verifyEqual(tc,S.nRecords,0);verifyTrue(tc,isnan(S.ratio));
+end

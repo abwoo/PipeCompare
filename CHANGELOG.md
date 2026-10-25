@@ -715,3 +715,11 @@ uses simultaneous bootstrap intervals and a stratum per reference, and recommend
 aggressive of the candidates that are not distinguished from the best. Results can be adopted as
 an EEGLAB dataset or exported as a script. 0.6-era features were removed: sampled search, the
 spectral mode, Pareto and priority objectives, external QC, and the showcase site.
+
+
+PR #50 optimization work (unreleased): add an optional Balanced cleanup search,
+strong short-fault detection, artifact-association sensitivity and bias standard
+errors, and a minimum-support guard for frozen group transfer. Add paired native
+legacy/expanded-search evaluation with frozen development/confirmation inputs,
+known-null controls and detector-driven interpolation metrics. These additions
+remain under validation; no improvement in calibration or accuracy is assumed.

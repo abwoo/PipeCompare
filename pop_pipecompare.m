@@ -28,6 +28,7 @@ function [EEG, com, result] = pop_pipecompare(EEG, varargin)
 %              balanced also compares skipping automatic cleanup
 %              (standard: badchannels, ica, highpass, lowpass, reject,
 %              weight; filters: the two filters)
+%   'comparecleanup' false (default) | true: also compare skipping cleanup
 %   'steps'    instead of 'recipe', any of 'badchannels', 'ica',
 %              'icsme' (with 'ica': the components to remove also chosen
 %              by their effect on the noise, compared with ICLabel's
@@ -79,7 +80,7 @@ if nargin < 2
     opts.progress = [];
 else
     opts = struct('measure', '', 'events', {{}}, 'left', {{}}, 'right', {{}}, 'pool', false, 'window', [], 'band', [], ...
-        'channels', {{}}, 'recipe', 'standard', 'steps', {{}}, 'reference', 'asis', 'segment', 2, 'show', 'on', 'progress', []);
+        'channels', {{}}, 'recipe', 'standard', 'steps', {{}}, 'comparecleanup', false, 'reference', 'asis', 'segment', 2, 'show', 'on', 'progress', []);
     [varargin{:}] = convertStringsToChars(varargin{:});   % "P3" as well as 'P3'
     for k = 1:2:numel(varargin)
         f = lower(char(varargin{k}));
@@ -119,13 +120,15 @@ if ~isempty(opts.steps) || isempty(opts.recipe)
 else
     steps = pipecompare.simple.Presets.recipeSteps(opts.recipe);
 end
+assert((islogical(opts.comparecleanup)||isnumeric(opts.comparecleanup))&&isscalar(opts.comparecleanup)&& ...
+    ismember(double(opts.comparecleanup),[0 1]),'PipeCompare:Simple','comparecleanup must be true or false.');
 recipe = pipecompare.simple.Presets.recipeOf(steps);
 planSteps=steps;
 if isempty(opts.steps) && ischar(opts.recipe) && strcmp(opts.recipe,'balanced')
     planSteps='balanced';recipe='balanced';
 end
 [plan, notes] = pipecompare.simple.Presets.recipe(planSteps, state, c, opts.reference, ...
-    pipecompare.simple.Presets.nonEegChannels(EEG));
+    pipecompare.simple.Presets.nonEegChannels(EEG), opts.comparecleanup);
 for k = 1:numel(notes), pipecompare.utils.log('Left out: %s.', notes{k}); end
 nTotal = numel(plan.enumerate(state, c, struct('maxLeaves', Inf)));
 assert(nTotal > 1, 'PipeCompare:Simple', 'On these data the steps chosen (%s) give %d pipeline, so there is nothing to compare%s.', ...
@@ -204,6 +207,7 @@ elseif ~pipecompare.simple.Presets.isBand(opts.measure)
     if opts.pool, args = [args {'pool', true}]; end
 elseif opts.segment ~= 2, args = [args {'segment', opts.segment}]; end
 if isempty(recipe), args = [args {'steps', steps}]; else, args = [args {'recipe', recipe}]; end
+if opts.comparecleanup,args=[args {'comparecleanup',true}];end
 if strcmp(opts.reference, 'average'), args = [args {'reference', 'average'}]; end
 if strcmp(opts.show, 'off'), args = [args {'show', 'off'}]; end
 com = sprintf('EEG = pop_pipecompare(EEG, %s);', vararg2str(args));

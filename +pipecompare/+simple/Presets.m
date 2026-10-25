@@ -1002,7 +1002,7 @@ classdef Presets
                 strjoin(what, ' and '));
         end
 
-        function [plan, notes] = recipe(name, state, contract, reference, exclude)
+        function [plan, notes] = recipe(name, state, contract, reference, exclude, compareCleanup)
             % The plan of a recipe (or of the steps given, a cell of
             % pipecompare.simple.Presets.stepNames; they always run in that
             % order) for these data, and why a step was left out.
@@ -1014,7 +1014,8 @@ classdef Presets
             if nargin < 5, exclude = {}; end
             assert(any(strcmp(reference, {'asis', 'average'})), 'PipeCompare:Simple', ...
                 'reference must be asis or average.');
-            balanced = ischar(name) && strcmp(name,'balanced');
+            if nargin<6,compareCleanup=false;end
+            balanced = compareCleanup || (ischar(name) && strcmp(name,'balanced'));
             steps = pipecompare.simple.Presets.recipeSteps(name);   % validates the name or steps
             has = @(s) any(strcmp(steps, s));
             notes = {};

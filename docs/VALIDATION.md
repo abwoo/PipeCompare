@@ -237,3 +237,49 @@ they cannot create a narrow interval by being omitted. Summaries report both sha
 If every reported error is zero, a positive actual RMS is explicitly an infinite
 point ratio; zero actual and reported RMS leave the ratio undefined. This is a
 summary correction and does not change candidate selection or saved truth rows.
+
+
+## Paired optimization development and confirmation
+
+The optional `balanced` recipe (or `comparecleanup=true` with selected steps)
+compares automatic bad-channel handling, ICA fitting and component removal with
+skipping each, while preserving the requested reference and measurement contract.
+The Simple dialog has a Balanced button; Standard remains the legacy control.
+The expanded search is not yet certified as superior. Prefixes remain shared
+within each branch; skipping ICA never makes component removal legal without ICA.
+
+Balanced bad-channel handling also enables a short strong-residual path: half-second
+windows, at least eight robust SDs and a fourfold residual-SD increase. The existing
+one-second/persistent HMM remains for longer lower-amplitude events. Same-channel
+intervals are united before interpolation. Unsupported rank/missing data remain
+unassessed. Short weak events are not promised to be detected.
+
+Rank tables and calibration exports now retain unshrunk association sensitivity
+and the artifact-bias estimate's standard error separately from the soft-threshold
+selection score. Neither is a causal artifact effect or a calibrated confidence
+bound. Changing risk reporting does not itself improve the adopted EEG.
+Frozen group transfer requires support from at least three independent training
+records for every compared candidate and at least two comparable candidates;
+this structural guard is not evidence that transfer improves performance.
+
+`optimization_protocol.json` freezes development participants 51, 52, 58, 69,
+and untouched confirmation participants 81–109. The confirmation group prior
+uses 81–89 for training and 90–109 for testing. Synthetic development seeds
+40101–40104 and confirmation seeds 41001–41030 are disjoint. The official
+EEGMMIDB 1.0.0 manifest is checksum-pinned; each job writes all cohort file hashes
+before fitting. The 29 remaining participants alone cannot meet the unchanged
+30-assessable-record precision floor; no extra people are invented by counting
+seeds, candidates, windows or repeated component controls.
+
+`paired optimization validation` runs marked commits with
+`[optimization-development]` or `[optimization-confirmation]`. Fast numerical
+checks gate native computation. Both actual recipe searches use the same input
+record, and CSVs retain every planned participant's recommendation availability.
+Record-bootstrap paired MSE differences are conditional on joint assessability;
+coverage gains/losses are reported separately. Confirmation intervals for a group
+prior condition on its frozen training cohort. Results include detector-driven
+repair, markings/changes outside injected intervals, separate simulated known-null
+controls, annotated EEG-IO blinks, real ERP CORE execution and known spectra.
+Markings outside injected intervals on natural EEG are not certified false positives.
+Raw EEG is not uploaded. Any change made after viewing confirmation outcomes
+requires a new validation cohort; an execution green check is not scientific success.

@@ -1,4 +1,4 @@
-function out = pipecompare_benchmark(nRec, outDir, firstSeed)
+function out = pipecompare_benchmark(nRec, outDir, firstSeed, recipe)
 %PIPECOMPARE_BENCHMARK Ground-truth benchmark: does the pipeline PipeCompare
 %   recommends measure the P3 more accurately than common fixed pipelines?
 %
@@ -44,6 +44,7 @@ if nargin < 1 || isempty(nRec)
 end
 if nargin < 2 || isempty(outDir), outDir = tempdir; end
 if nargin < 3, firstSeed = 1; end
+if nargin < 4, recipe='standard'; end
 validateattributes(nRec,{'numeric'},{'scalar','integer','positive'});
 validateattributes(firstSeed,{'numeric'},{'scalar','integer','positive'});
 names = {'PipeCompare', 'minimal', 'common'};
@@ -53,7 +54,7 @@ for rec = 1:nRec
     s = firstSeed + rec - 1;
     [EEG, truth] = bench_synth(s);
     setBase(EEG);
-    [~, ~, r] = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'11', '31'}, 'reference', 'average', 'show', 'off');
+    [~, ~, r] = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'11', '31'}, 'recipe', recipe, 'reference', 'average', 'show', 'off');
     c = r.contract;
     want = trueP3(truth, c, EEG.srate);
     population = populationP3(truth, c, EEG.srate);

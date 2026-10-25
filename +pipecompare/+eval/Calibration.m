@@ -21,9 +21,20 @@ classdef Calibration
                         population(c), realized(c), sensitivity.associationError(c), sensitivity.artifactBiasSE(c)}; %#ok<AGROW>
                 end
             end
+            if isempty(data),C=pipecompare.eval.Calibration.empty();return;end
             C = cell2table(data, 'VariableNames', {'recording','steps','condition','actualError','reportedError', ...
                 'sme','eyeBias','gain','selected','conditionalError','shapeSpread','totalBias', ...
                 'rawError','rawConditionalError','rawEstimate','correctedEstimate','populationTruth','realizedTruth','associationSensitivityError','artifactBiasSE'});
+        end
+
+        function C = empty()
+            % Typed empty schema preserves unavailable recordings in CSVs.
+            names={'recording','steps','condition','actualError','reportedError', ...
+                'sme','eyeBias','gain','selected','conditionalError','shapeSpread','totalBias', ...
+                'rawError','rawConditionalError','rawEstimate','correctedEstimate', ...
+                'populationTruth','realizedTruth','associationSensitivityError','artifactBiasSE'};
+            types=repmat({'double'},1,numel(names));types{2}='cell';types{9}='logical';
+            C=table('Size',[0 numel(names)],'VariableTypes',types,'VariableNames',names);
         end
 
         function S = summarize(C, nBoot, seed)
