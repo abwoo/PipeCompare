@@ -1,23 +1,27 @@
-name: Cancel duplicate queued recovery only
+name: Native ICA checkpoint parity probe
 on:
   push:
     branches: [codex/optimization-probes-20261025]
 permissions:
-  actions: write
   contents: read
 jobs:
-  cleanup:
+  parity:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 35
     steps:
-      - uses: actions/github-script@v7
+      - uses: actions/checkout@v4
         with:
-          script: |
-            const keep=(await github.rest.actions.getWorkflowRun({...context.repo,run_id:40189377057})).data;
-            const duplicate=(await github.rest.actions.getWorkflowRun({...context.repo,run_id:40189384016})).data;
-            if(keep.head_sha!=='ce57d751c2df64823265bc7c026b4c049fb0667d'||keep.status!=='in_progress')throw new Error('Expected recovery is not active');
-            if(duplicate.head_sha!=='2893731090d1c179526995e06417c63c81772971'||duplicate.head_branch!=='codex/optimization-recovery-20261025')throw new Error('Unexpected duplicate');
-            if(duplicate.status==='completed')return;
-            if(!['queued','pending','waiting'].includes(duplicate.status))throw new Error('Duplicate has begun; inspect before cancelling');
-            await github.rest.actions.cancelWorkflowRun({...context.repo,run_id:40189384016});
-            core.info('Kept 40189377057; cancelled only duplicate queued 40189384016.');
+          repository: abwoo/PipeCompare
+          ref: ce57d751c2df64823265bc7c026b4c049fb0667d
+          path: PipeCompare
+      - uses: ./PipeCompare/.github/actions/setup-2026
+      - name: Run the three native checkpoint regression tests first
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab'));eeglab nogui;
+            cd PipeCompare;addpath(pwd);addpath(fullfile(pwd,'tests'));
+            suite=test_engine;
+            names={'test_engine/testIcaCheckpointPreservesNativeOutputAndRandomState','test_engine/testResumeRetainsIcaSeedsAndRecommendation','test_engine/testTimeSliceRequiresCheckpointAndCanResume'};
+            suite=suite(ismember({suite.Name},names));assert(numel(suite)==3);
+            r=run(suite);disp(r);assert(all([r.Passed])&&~any([r.Incomplete]),'Checkpoint parity failed');
