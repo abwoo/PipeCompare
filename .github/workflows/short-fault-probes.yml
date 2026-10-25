@@ -15,6 +15,8 @@ jobs:
         with:
           path: PipeCompare
       - uses: ./PipeCompare/.github/actions/setup-2026
+      - name: Prepare the pinned CPU-only compiler without Parallel Toolbox
+        run: python PipeCompare/.github/scripts/prepare-iclabel-cpu.py eeglab/plugins/ICLabel/matconvnet
       - uses: matlab-actions/run-command@v2
         with:
           command: |
