@@ -630,3 +630,17 @@ end
 ok=isfinite(expected);verifyEqual(tc,got(ok),expected(ok),'AbsTol',1e-10);
 verifyEqual(tc,isnan(got),isnan(expected));
 end
+
+function testBalancedComparesDedicatedEogWithAndWithoutIca(tc)
+st=nqc_fakeState(false,250);st.nLocated=16;st.filters.lowpass=[];st.eyeChannels={'EOG1'};
+P=pipecompare.simple.Presets;c=nqc_contract();plan=P.recipe('balanced',st,c,'average',{'EOG1'});
+L=plan.enumerate(st,c);onlyEog=false;both=false;none=false;
+for j=1:numel(L)
+    types=cellfun(@(s)s.type,L(j).path,'UniformOutput',false);
+    eog=find(strcmp(types,'eogregress'),1);ica=find(strcmp(types,'ica'),1);
+    onlyEog=onlyEog||(~isempty(eog)&&isempty(ica));
+    both=both||(~isempty(eog)&&~isempty(ica));none=none||(isempty(eog)&&isempty(ica));
+    if ~isempty(eog)&&~isempty(ica),verifyLessThan(tc,eog,ica);end
+end
+verifyTrue(tc,onlyEog);verifyTrue(tc,both);verifyTrue(tc,none);
+end
