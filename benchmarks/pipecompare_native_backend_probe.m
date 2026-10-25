@@ -4,7 +4,7 @@ if ~isfolder(outDir),mkdir(outDir);end
 plugin=fileparts(which('pop_iclabel'));assert(~isempty(plugin),'ICLabel is required.');
 addpath(fullfile(plugin,'matconvnet','matlab'));vl_setupnn;
 mex('-setup','C++');
-vl_compilenn('enableGpu',false,'enableImreadJpeg',false,'verbose',1);
+vl_compilenn('enableGpu',false,'enableImreadJpeg',false,'verbose',1,'preCompileFn',@cpuCompiler);
 vl_setupnn;rehash;
 assert(exist('vl_nnconv','file')==3,'PipeCompare:Backend','CPU convolution MEX was not activated.');
 fprintf('PIPECOMPARE_BACKEND_PATH_BEFORE %s\n',which('vl_nnconv'));
@@ -28,7 +28,13 @@ delta=max(abs(double(compiled(:))-double(fallback(:))));
 assert(delta<1e-5&&isequal(a,b),'PipeCompare:Backend','CPU MEX and MATLAB fallback classifications differ.');
 report=struct('components',n,'maxProbabilityDifference',delta,'sameWinningClasses',isequal(a,b), ...
  'compiledSeconds',compiledSeconds,'fallbackSeconds',fallbackSeconds,'mex',which('vl_nnconv'), ...
- 'cpuBuildPatch','omit-unused-gpu-include-and-explicit-limits-header', 'matlab',version,'matconvnetCommit','092ecb8c04031ddcb1d9a7ba6ebe76a250c4672c');
+ 'cpuBuildPatch','cpu-gcc12-unused-gpu-include-and-explicit-limits-header', 'matlab',version,'matconvnetCommit','092ecb8c04031ddcb1d9a7ba6ebe76a250c4672c');
 fid=fopen(fullfile(outDir,'backend.json'),'w');fprintf(fid,'%s\n',jsonencode(report));fclose(fid);
 fprintf('PIPECOMPARE_NATIVE_BACKEND_JSON %s\n',jsonencode(report));
+end
+
+function [opts,mexSrc,libSrc,flags]=cpuCompiler(opts,mexSrc,libSrc,flags)
+% GCC 13 requires GLIBCXX_3.4.32, newer than this MATLAB's bundled runtime.
+assert(isfile('/usr/bin/g++-12'),'PipeCompare:Backend','Pinned g++-12 is required.');
+flags.mex{end+1}='CXX=/usr/bin/g++-12';
 end
