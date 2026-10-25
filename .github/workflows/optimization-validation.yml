@@ -15,6 +15,8 @@ on:
 permissions:
   contents: read
   actions: read
+env:
+  PIPECOMPARE_NATIVE_BACKEND_REPORT: ${{ github.workspace }}/validation_backend/backend.json
 jobs:
   plan:
     runs-on: ubuntu-latest
@@ -60,7 +62,7 @@ jobs:
               if(!passed)throw new Error('Numerical gate did not finish');
             }
             if(!['development','confirmation'].includes(stage))throw new Error('Invalid validation stage');
-            core.setOutput('legacy_run',String(protocol.legacy_development_source_run||''));
+            core.setOutput('legacy_run',String(protocol.reuse_legacy_controls===false?'':(protocol.legacy_development_source_run||'')));
             core.setOutput('stage',stage);core.setOutput('people',JSON.stringify(protocol[stage+'_subjects']));
             core.setOutput('seeds',JSON.stringify(protocol[stage+'_synthetic_seeds']));core.setOutput('requested','true');
             core.info('Frozen stage '+stage+'; source manifest '+protocol.source_manifest_sha256);
@@ -73,7 +75,7 @@ jobs:
     timeout-minutes: 340
     strategy:
       fail-fast: false
-      max-parallel: ${{ needs.plan.outputs.stage == 'development' && 2 || 6 }}
+      max-parallel: ${{ needs.plan.outputs.stage == 'development' && 4 || 6 }}
       matrix:
         subject: ${{ fromJSON(needs.plan.outputs.people) }}
     env:
@@ -90,7 +92,7 @@ jobs:
         timeout-minutes: 20
         run: python PipeCompare/benchmarks/fetch_optimization_data.py --stage ${{ needs.plan.outputs.stage }} --subject ${{ matrix.subject }} --out input
       - name: Wait for frozen legacy artifacts to finish uploading
-        if: needs.plan.outputs.stage == 'development'
+        if: needs.plan.outputs.stage == 'development' && needs.plan.outputs.legacy_run != ''
         timeout-minutes: 12
         uses: actions/github-script@v7
         with:
@@ -109,7 +111,7 @@ jobs:
             }
             throw new Error('Legacy jobs have not stopped/uploaded; retry after artifact preservation');
       - name: Download any completed frozen legacy control
-        if: needs.plan.outputs.stage == 'development'
+        if: needs.plan.outputs.stage == 'development' && needs.plan.outputs.legacy_run != ''
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
@@ -140,7 +142,7 @@ jobs:
     timeout-minutes: 340
     strategy:
       fail-fast: false
-      max-parallel: ${{ needs.plan.outputs.stage == 'development' && 2 || 8 }}
+      max-parallel: ${{ needs.plan.outputs.stage == 'development' && 4 || 8 }}
       matrix:
         seed: ${{ fromJSON(needs.plan.outputs.seeds) }}
     env:
@@ -150,7 +152,7 @@ jobs:
         with:
           path: PipeCompare
       - name: Wait for frozen legacy artifacts to finish uploading
-        if: needs.plan.outputs.stage == 'development'
+        if: needs.plan.outputs.stage == 'development' && needs.plan.outputs.legacy_run != ''
         timeout-minutes: 12
         uses: actions/github-script@v7
         with:
@@ -169,7 +171,7 @@ jobs:
             }
             throw new Error('Legacy jobs have not stopped/uploaded; retry after artifact preservation');
       - name: Download any completed frozen legacy control
-        if: needs.plan.outputs.stage == 'development'
+        if: needs.plan.outputs.stage == 'development' && needs.plan.outputs.legacy_run != ''
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:

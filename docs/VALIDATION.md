@@ -242,9 +242,9 @@ summary correction and does not change candidate selection or saved truth rows.
 ## Paired optimization development and confirmation
 
 The optional `balanced` recipe (or `comparecleanup=true` with selected steps)
-compares automatic bad-channel handling, ICA fitting and component removal with
+compares automatic bad-channel handling, dedicated-EOG regression, ICA fitting and component removal with
 skipping each, while preserving the requested reference and measurement contract.
-The Simple dialog has a Balanced button; Standard remains the legacy control.
+The Simple dialog has a Balanced button. The paired study explicitly uses `legacy-total` with Standard and the revised `pooled` variance with Balanced; the normal API defaults to the revised variance model.
 The expanded search is not yet certified as superior. Prefixes remain shared
 within each branch; skipping ICA never makes component removal legal without ICA.
 
@@ -283,3 +283,38 @@ controls, annotated EEG-IO blinks, real ERP CORE execution and known spectra.
 Markings outside injected intervals on natural EEG are not certified false positives.
 Raw EEG is not uploaded. Any change made after viewing confirmation outcomes
 requires a new validation cohort; an execution green check is not scientific success.
+
+The confirmation controller can wait for the exact development source run and
+its full numerical/GUI CI, without repeating fits. It verifies that only the
+listed orchestration/documentation files differ from that algorithm revision.
+It then applies `optimization_confirmation_gate.json`: at least three paired
+records in each development arm, no recommendation-coverage loss, at most 5%
+paired-MSE deterioration in either arm, and either an accuracy gain or at least
+0.5 short-fault recall gain, with at most 0.005 extra marking outside injections.
+Known-null and component execution controls must already have passed. These are
+prespecified engineering admission tolerances, not statistical evidence of
+clinical noninferiority or superiority. Failing admission leaves the untouched
+confirmation inputs unused. Passing admission runs the frozen public and
+simulation confirmation through a reusable workflow; it does not promote a
+new recipe to the default or declare methodological success.
+
+The pinned 2026 CPU build is checked against ICLabel's original MATLAB network
+evaluation on fixed inputs before native validation. Build-only compatibility
+patches omit an unused GPU-toolbox lookup and include the C++ standard limits
+header explicitly; classifier features, network weights and arithmetic stay
+unchanged. Probability differences and wall-clock timings use explicit timer
+handles. Recipe logs stream to Actions and are saved while computation proceeds;
+an incomplete fit remains explicitly incomplete, even if its log exists.
+
+Development round 3 recomputes both recipe arms on the same verified CPU backend.
+Earlier fallback-backend control artifacts remain archived but are not reused in
+that comparison; tiny network differences must not be silently conflated with
+method changes. Four participants and four simulation seeds run concurrently.
+
+The CPU MEX uses GCC 12 because the runner's default GCC 13 requests a newer
+GLIBCXX ABI than MATLAB R2026a's bundled C++ runtime provides. The backend gate
+executes an exact convolution check and rejects ICLabel's silent fallback; a
+successful compilation alone cannot satisfy it. A pinned eight-component probe
+reported maximum probability difference 5.96e-7, identical winning classes and
+0.471 versus 7.706 seconds for native versus MATLAB-reference network inference.
+This timing is for that probe, not an end-to-end pipeline speed claim.

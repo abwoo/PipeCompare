@@ -11,6 +11,8 @@ background=pipecompare_open_background(D);
 meta=struct('commit',getenv('GITHUB_SHA'),'stage',stage,'subject',subject, ...
     'prevalence',prevalence,'fitTimer','explicit-tic-handle','protocol',protocol, ...
     'matlab',version,'eeglab',eeg_getversion);
+backendFile=getenv('PIPECOMPARE_NATIVE_BACKEND_REPORT');
+if isfile(backendFile),meta.nativeBackend=jsondecode(fileread(backendFile));end
 writeJson(fullfile(outDir,'metadata.json'),meta);
 T=pipecompare_open_spectra(D,subject);writetable(T,fullfile(outDir,'spectral.csv'));
 T=pipecompare_optimization_stretches(background,subject);writetable(T,fullfile(outDir,'stretches.csv'));
@@ -22,8 +24,10 @@ for recipe={'standard','balanced'}
         if strcmp(stage,'development')&&validation_reuse_legacy(legacyDir,folder,'public',subject,population,realized),continue;end
     end
     setBase(EEG);fitTimer=tic;
-    transcript=evalc('[~,~,r]=pop_pipecompare(EEG,''measure'',''P3'',''events'',{''11'',''31''},''recipe'',recipe{1},''artifactvariance'',varianceMode,''reference'',''average'',''show'',''off'');');
-    seconds=toc(fitTimer);fid=fopen(fullfile(folder,'native.log'),'w');fprintf(fid,'%s',transcript);fclose(fid);
+    diary(fullfile(folder,'native.log'));closeLog=onCleanup(@()diary('off'));
+    [~,~,r]=pop_pipecompare(EEG,'measure','P3','events',{'11','31'},'recipe',recipe{1}, ...
+        'artifactvariance',varianceMode,'reference','average','show','off');
+    seconds=toc(fitTimer);diary('off');clear closeLog
     feasible=find(strcmp(r.ranking.table.status,'feasible'))';
     C=pipecompare.eval.Calibration.rows(r,feasible,population,realized,subject);
     writetable(C,fullfile(folder,'calibration.csv'));

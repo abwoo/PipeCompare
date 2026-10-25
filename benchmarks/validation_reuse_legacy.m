@@ -4,6 +4,16 @@ used=false;source=fullfile(legacyDir,'standard');
 if ~isfolder(source)||~isfile(fullfile(source,'execution.json')),return;end
 execution=jsondecode(fileread(fullfile(source,'execution.json')));
 if ~execution.completed,return;end
+backendFile=getenv('PIPECOMPARE_NATIVE_BACKEND_REPORT');
+if isfile(backendFile)
+    current=jsondecode(fileread(backendFile));
+    if ~isfield(execution,'nativeBackend')|| ...
+            ~strcmp(execution.nativeBackend.matconvnetCommit,current.matconvnetCommit)|| ...
+            ~strcmp(execution.nativeBackend.cpuBuildPatch,current.cpuBuildPatch)
+        fprintf('PIPECOMPARE_LEGACY_NOT_REUSED reason=native-backend-differs\n');
+        return;
+    end
+end
 if strcmp(kind,'public')
     meta=jsondecode(fileread(fullfile(legacyDir,'metadata.json')));
     assert(meta.subject==id&&strcmp(meta.stage,'development'),'PipeCompare:Validation','Wrong legacy participant.');
