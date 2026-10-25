@@ -1,0 +1,11 @@
+{
+  "scope": "Engineering admission to a held-out study, not evidence of superiority or clinical noninferiority",
+  "minimum_paired_development_records": 3,
+  "maximum_relative_paired_mse_increase": 0.05,
+  "maximum_additional_outside_injection_marking": 0.005,
+  "minimum_short_fault_recall_gain_if_no_accuracy_gain": 0.5,
+  "require_no_recommendation_coverage_loss": true,
+  "development_run": 40159157180,
+  "algorithm_head": "5e22e7534be739dea0d7a41ef4b95c92038f51fc",
+  "base_head": "7151821edf8a5a54c3167d7f18b66c530911b568"
+}
