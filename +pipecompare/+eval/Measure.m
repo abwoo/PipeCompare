@@ -277,7 +277,7 @@ classdef Measure
                 o.X = cell(1, nC); o.estimate = nan(1, nC); o.sme = nan(1, nC);
                 % what blinks add to each condition's mean (Measure.eyeBias;
                 % 0 without eye channels, for peak measures and band power)
-                o.eyeBias = zeros(1, nC); o.eyeBiasSq = zeros(1, nC); o.eyeBiasSE=zeros(1,nC);
+                o.eyeBias = zeros(1, nC); o.eyeBiasSq = zeros(1, nC); o.eyeBiasSE=nan(1,nC);
                 if strcmp(o.kind, 'scalar') && numel(blink) >= k && ~isempty(blink{k})
                     o.eyeBiasAssessed = false(1, nC);
                 end

@@ -871,8 +871,22 @@ classdef Presets
             for o = 1:numel(ref.objectives)
                 col = matlab.lang.makeValidName(['eyeBias_' ref.objectives{o}]);
                 if ismember(col, T.Properties.VariableNames) && abs(T.(col)(k)) > 0
-                    parts{end+1} = sprintf('blinks, eye movements and muscle activity in the trials it keeps add about %.2g %s to the %s mean', ...
+                    parts{end+1} = sprintf('artifact association (blinks, eye movements and muscle activity in the trials it keeps): weighted %.2g %s difference for %s', ...
                         T.(col)(k), ref.units{o}, ref.objectives{o}); %#ok<AGROW>
+                end
+                sensitivity=matlab.lang.makeValidName(['associationRisk_' ref.objectives{o}]);
+                if ismember(sensitivity,T.Properties.VariableNames)&&isfinite(T.(sensitivity)(k))
+                    parts{end+1}=sprintf('unshrunk-association sensitivity %.2g %s RMS for %s', ...
+                        T.(sensitivity)(k),ref.units{o},ref.objectives{o}); %#ok<AGROW>
+                end
+                uncertainty=matlab.lang.makeValidName(['artifactBiasSE_' ref.objectives{o}]);
+                if ismember(uncertainty,T.Properties.VariableNames)
+                    if isfinite(T.(uncertainty)(k))
+                        parts{end+1}=sprintf('largest-condition association standard error %.2g %s', ...
+                            T.(uncertainty)(k),ref.units{o}); %#ok<AGROW>
+                    else
+                        parts{end+1}='artifact-association standard error unavailable'; %#ok<AGROW>
+                    end
                 end
                 col = matlab.lang.makeValidName(['shapeSpread_' ref.objectives{o}]);
                 if ismember(col, T.Properties.VariableNames) && T.(col)(k) >= 0.01
@@ -881,8 +895,9 @@ classdef Presets
                 end
             end
             if ~isempty(parts)
-                t = sprintf(['In pipeline %d, %s. This bias counts in its error together with the noise ', ...
-                    '(the error column).'], k, strjoin(parts, '; '));
+                t = sprintf(['In pipeline %d, %s. The fitted score shrinks the association and combines it with noise. ', ...
+                    'Association can include genuine neural differences; this is not a calibrated absolute error.'], ...
+                    k, strjoin(parts, '; '));
             end
             info = pipecompare.utils.fieldOr(ref, 'blinkInfo', struct('channels', {{}}));
             if isfield(result, 'contract') && strcmp(result.contract.analysis, 'erp') && isempty(info.channels)

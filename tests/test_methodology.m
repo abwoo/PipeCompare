@@ -579,3 +579,9 @@ verifyEqual(tc,height(C),0);verifyEqual(tc,width(C),20);
 verifyClass(tc,C.recording,'double');verifyClass(tc,C.selected,'logical');
 S=pipecompare.eval.Calibration.summarize(C);verifyEqual(tc,S.nRecords,0);verifyTrue(tc,isnan(S.ratio));
 end
+
+function testUnknownArtifactUncertaintyDoesNotBecomeZero(tc)
+c=nqc_cand((1:40)');o=c.m.objectives;
+[~,~,~,s]=pipecompare.eval.Rank.conditionErrors(o,1,0);
+verifyTrue(tc,all(isnan(s.artifactBiasSE)));
+end
