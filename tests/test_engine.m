@@ -1976,19 +1976,19 @@ ctx=struct();d=tempname;mkdir(d);clean=onCleanup(@()rmdir(d,'s')); %#ok<NASGU>
 verifyEqual(tc,B,A);verifyEqual(tc,cb,ca);verifyEqual(tc,ib,ia);verifyEqual(tc,rng,nativeState);
 % runica activates legacy RNG mode; explicitly choose the disturbance generator.
 rng(913,'twister');
-[C,cc,ic]=pipecompare.run.IcaCheckpoint.run(EEG,in,ctx,d,'test-search',@()error('test:UnexpectedCompute','Must reuse'));
+[C,cc,ic]=pipecompare.run.IcaCheckpoint.run(EEG,in,ctx,d,'test-search',@()checkpointTestFailure('test:UnexpectedCompute','Must reuse'));
 verifyEqual(tc,C,A);verifyEqual(tc,cc,ca);verifyEqual(tc,ic,ia);verifyEqual(tc,rng,nativeState);
 changed=EEG;changed.data(1,1)=changed.data(1,1)+1;
 verifyError(tc,@()pipecompare.run.IcaCheckpoint.run(changed,in,ctx,d,'test-search', ...
-    @()error('test:Fresh','Changed input')),'test:Fresh');
+    @()checkpointTestFailure('test:Fresh','Changed input')),'test:Fresh');
 verifyError(tc,@()pipecompare.run.IcaCheckpoint.run(EEG,in,struct('icaSeed',1),d,'test-search', ...
-    @()error('test:Fresh','Changed seed')),'test:Fresh');
+    @()checkpointTestFailure('test:Fresh','Changed seed')),'test:Fresh');
 verifyError(tc,@()pipecompare.run.IcaCheckpoint.run(EEG,in,ctx,d,'different-search', ...
-    @()error('test:Fresh','Changed identity')),'test:Fresh');
+    @()checkpointTestFailure('test:Fresh','Changed identity')),'test:Fresh');
 f=dir(fullfile(d,'ica_cache','*.mat'));file=fullfile(f(1).folder,f(1).name);
 S=load(file);S.key='corrupt';save(file,'-struct','S','-v7.3');
 verifyError(tc,@()pipecompare.run.IcaCheckpoint.run(EEG,in,ctx,d,'test-search', ...
-    @()error('test:UnexpectedCompute','Corruption must be refused')),'PipeCompare:Checkpoint');
+    @()checkpointTestFailure('test:UnexpectedCompute','Corruption must be refused')),'PipeCompare:Checkpoint');
 end
 
 function testResumeRetainsIcaSeedsAndRecommendation(tc)
@@ -2027,4 +2027,9 @@ verifyTrue(tc,isfile(fullfile(d,'manifest.mat')));
 verifyError(tc,@()pipecompare.PipeCompare.resume(d,struct('icaSeeds',0)),'PipeCompare:Options');
 r=pipecompare.PipeCompare.resume(d,struct('maxSeconds',Inf));
 verifyEqual(tc,r.notRun,0);verifyTrue(tc,all(strcmp({r.cands.status},'ok')));
+end
+
+function [E,coms,info]=checkpointTestFailure(identifier,message) %#ok<STOUT>
+% Match the three-output compute interface before raising the intended sentinel.
+error(identifier,'%s',message);
 end
