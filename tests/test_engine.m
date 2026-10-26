@@ -1974,7 +1974,8 @@ ctx=struct();d=tempname;mkdir(d);clean=onCleanup(@()rmdir(d,'s')); %#ok<NASGU>
 [~,A,ca,ia]=evalc('pipecompare.run.Steps.run(in,EEG,ctx)');nativeState=rng;
 [~,B,cb,ib]=evalc('pipecompare.run.IcaCheckpoint.run(EEG,in,ctx,d,''test-search'',@()pipecompare.run.Steps.run(in,EEG,ctx))');
 verifyEqual(tc,B,A);verifyEqual(tc,cb,ca);verifyEqual(tc,ib,ia);verifyEqual(tc,rng,nativeState);
-rng(913);
+% runica activates legacy RNG mode; explicitly choose the disturbance generator.
+rng(913,'twister');
 [C,cc,ic]=pipecompare.run.IcaCheckpoint.run(EEG,in,ctx,d,'test-search',@()error('test:UnexpectedCompute','Must reuse'));
 verifyEqual(tc,C,A);verifyEqual(tc,cc,ca);verifyEqual(tc,ic,ia);verifyEqual(tc,rng,nativeState);
 changed=EEG;changed.data(1,1)=changed.data(1,1)+1;
