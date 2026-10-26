@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: abwoo/PipeCompare
-          ref: 9d35ba963cfd821122451feac5b503dcabec97be
+          ref: 4116ea11f3d5d39e4d3d282894dcf487172bd50d
           path: PipeCompare
       - uses: ./PipeCompare/.github/actions/setup-2026
       - name: Run the three native checkpoint regression tests first
