@@ -1483,20 +1483,25 @@ end
 function st=strongShortStretches(X,Wr,fs,zLimit,ratioLimit)
 % A high-amplitude path for events too short for the persistent HMM.
 % Both robust evidence and a fourfold residual-SD increase are required.
-w=max(1,round(0.5*fs));nw=floor(size(X,2)/w);nc=size(X,1);
-L=zeros(nc,nw);
-for k=1:nw
-    L(:,k)=log(std(Wr*double(X(:,(k-1)*w+(1:w))),0,2)+eps);
+w=max(1,round(0.5*fs));n=size(X,2);nw=floor(n/w);nc=size(X,1);
+starts=1:w:n-w+1;
+% Keep the original complete windows and baseline. Inspect a terminal
+% remainder in one additional full-length window ending at the last sample:
+% no zero padding or unstable variance estimate from a one-sample tail.
+if starts(end)+w-1<n,starts(end+1)=n-w+1;end
+L=zeros(nc,numel(starts));
+for k=1:numel(starts)
+    L(:,k)=log(std(Wr*double(X(:,starts(k)+(0:w-1))),0,2)+eps);
 end
-L=L-median(L,1);center=median(L,2);
-scale=max(0.05,median(1.4826*median(abs(L-center),2)));
+L=L-median(L,1);baseline=L(:,1:nw);center=median(baseline,2);
+scale=max(0.05,median(1.4826*median(abs(baseline-center),2)));
 st=struct('row',{},'samples',{});
 for c=1:nc
     relative=L(c,:)-center(c);
     on=relative/scale>=zLimit & relative>=log(ratioLimit);
     edges=diff([false on false]);a=find(edges==1);b=find(edges==-1)-1;
     for k=1:numel(a)
-        st(end+1)=struct('row',c,'samples',[(a(k)-1)*w+1 b(k)*w]); %#ok<AGROW>
+        st(end+1)=struct('row',c,'samples',[starts(a(k)) starts(b(k))+w-1]); %#ok<AGROW>
     end
 end
 end

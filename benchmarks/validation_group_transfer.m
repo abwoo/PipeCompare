@@ -1,7 +1,22 @@
 function result=validation_group_transfer(S,C,outDir,trainingSubjects,testSubjects)
 % The participant split comes from frozen source metadata. Intervals are
 % conditional on that fitted training prior, not on new training cohorts.
-id=arrayfun(@(s)sscanf(s.name,'S%dR01.mat'),S);
+for cohort={trainingSubjects,testSubjects}
+    v=cohort{1};
+    assert(isnumeric(v)&&isreal(v)&&(isempty(v)||isvector(v))&& ...
+        all(isfinite(v(:))&v(:)>0&v(:)==fix(v(:)))&&numel(unique(v))==numel(v), ...
+        'PipeCompare:Validation','Cohort IDs must be unique positive integers.');
+end
+assert(isempty(intersect(trainingSubjects,testSubjects)), ...
+    'PipeCompare:Validation','Training and test participants must be disjoint.');
+id=zeros(1,numel(S));
+for j=1:numel(S)
+    token=regexp(S(j).name,'^S([0-9]+)R01\.mat$','tokens','once');
+    assert(~isempty(token),'PipeCompare:Validation','Malformed participant recording name.');
+    id(j)=str2double(token{1});
+end
+assert(all(isfinite(id)&id>0&id==fix(id))&&numel(unique(id))==numel(id), ...
+    'PipeCompare:Validation','Each participant must have exactly one uniquely identified recording.');
 train=find(ismember(id,trainingSubjects));test=find(ismember(id,testSubjects));
 train=train(:)';test=test(:)';
 result=struct('trainingRequested',numel(trainingSubjects),'testRequested',numel(testSubjects),'trainingObserved',0, ...

@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import shutil
+import tempfile
 from pathlib import Path
 
 SOURCE_RUN = 40159157180
@@ -12,6 +13,12 @@ SOURCE_HEAD = '5e22e7534be739dea0d7a41ef4b95c92038f51fc'
 BACKEND = '092ecb8c04031ddcb1d9a7ba6ebe76a250c4672c'
 PATCH = 'cpu-gcc12-unused-gpu-include-and-explicit-limits-header'
 RESULTS = ('execution.json', 'benchmark.csv', 'calibration.csv')
+# Match the writers in pipecompare_benchmark and Calibration.empty. An empty
+# calibration table is valid unavailable evidence; a missing schema is not.
+CSV_FIELDS = {
+    'benchmark.csv': set('recording pipeline steps trueTarget trueStandard target standard errTarget errStandard errDifference kept badChannel lockedBlinkShare'.split()),
+    'calibration.csv': set('recording steps condition actualError reportedError sme eyeBias gain selected conditionalError shapeSpread totalBias rawError rawConditionalError rawEstimate correctedEstimate populationTruth realizedTruth associationSensitivityError artifactBiasSE'.split()),
+}
 
 def completed(folder, seed, recipe):
     f = folder / 'execution.json'
@@ -28,10 +35,12 @@ def completed(folder, seed, recipe):
     assert b['mex'].endswith('vl_nnconv.mexa64'), 'Native MEX evidence missing'
     assert '2026' in b['matlab'], 'Wrong MATLAB release'
     for name in ('benchmark.csv', 'calibration.csv'):
-        with (folder / name).open(newline='') as f:
+        with (folder / name).open(newline='', encoding='utf-8-sig') as f:
             reader = csv.DictReader(f)
-            assert 'recording' in reader.fieldnames, 'Missing recording column'
+            fields = reader.fieldnames
+            assert fields and len(fields) == len(set(fields)) and CSV_FIELDS[name] <= set(fields), 'Missing or duplicate result columns: ' + name
             rows = list(reader)
+        assert all(None not in r and all(v is not None for v in r.values()) for r in rows), 'Malformed result row: ' + name
         assert all(float(r['recording']) == seed for r in rows), 'Wrong result seed'
         if name == 'benchmark.csv':
             assert len(rows) == 3 and {r['pipeline'] for r in rows} == {'PipeCompare', 'minimal', 'common'}
@@ -49,21 +58,42 @@ def prepare(state, source, seed, recipe, stage, revision, protocol):
         assert json.loads(snapshot.read_text()) == token, 'Different checkpoint experiment'
     else:
         assert not any(folder.iterdir()), 'Unidentified checkpoint contents'
-        snapshot.write_text(json.dumps(token))
-        if stage == 'development' and source is not None and completed(source / recipe, seed, recipe):
-            for name in RESULTS + ('benchmark_summary.txt',):
-                f = source / recipe / name
-                if f.exists():
-                    shutil.copy2(f, folder / name)
-            provenance = dict(sourceRun=SOURCE_RUN, sourceCommit=SOURCE_HEAD, targetRevision=revision,
-                              reason='Completed frozen CPU-MEX arm; execution-only recovery after parity tests',
-                              sha256={name: hashlib.sha256((folder/name).read_bytes()).hexdigest() for name in RESULTS})
-            (folder / 'reused_control.json').write_text(json.dumps(provenance, indent=2))
+        # Publish the snapshot and imported evidence together; interrupted copies
+        # must remain retryable and must never look like a completed current arm.
+        with tempfile.TemporaryDirectory(prefix='.import-', dir=state) as temp:
+            pending = Path(temp) / recipe
+            pending.mkdir()
+            if stage == 'development' and source is not None and completed(source / recipe, seed, recipe):
+                execution = json.loads((source / recipe / 'execution.json').read_text())
+                assert execution.get('sourceCommit', SOURCE_HEAD) == SOURCE_HEAD and execution.get('stage', stage) == stage, 'Wrong imported execution source'
+                for name in RESULTS + ('benchmark_summary.txt',):
+                    f = source / recipe / name
+                    if f.exists():
+                        shutil.copy2(f, pending / name)
+                provenance = dict(sourceRun=SOURCE_RUN, sourceCommit=SOURCE_HEAD, targetRevision=revision,
+                                  reason='Completed frozen CPU-MEX arm; execution-only recovery after parity tests',
+                                  sha256={name: hashlib.sha256((pending/name).read_bytes()).hexdigest() for name in RESULTS})
+                (pending / 'reused_control.json').write_text(json.dumps(provenance, indent=2))
+            (pending / 'snapshot.json').write_text(json.dumps(token))
+            folder.rmdir()  # Refuse unexpected concurrent writes.
+            pending.rename(folder)
     proof = folder / 'reused_control.json'
     if proof.exists():
+        assert stage == 'development', 'Confirmation cannot reuse development results'
         p = json.loads(proof.read_text())
+        assert set(p['sha256']) == set(RESULTS), 'Incomplete imported digest manifest'
         assert p['sourceRun'] == SOURCE_RUN and p['sourceCommit'] == SOURCE_HEAD and p['targetRevision'] == revision
         assert all(hashlib.sha256((folder/name).read_bytes()).hexdigest() == digest for name, digest in p['sha256'].items()), 'Imported result modified'
+    execution_file = folder / 'execution.json'
+    if execution_file.exists():
+        execution = json.loads(execution_file.read_text())
+        if proof.exists():
+            # The pinned 5e22 source predates embedded revision/stage fields.
+            # Its run identity is checked by the workflow; the full digest proof
+            # binds those unchanged legacy bytes to this development snapshot.
+            assert execution.get('sourceCommit', SOURCE_HEAD) == SOURCE_HEAD and execution.get('stage', stage) == stage, 'Wrong imported execution source'
+        else:
+            assert execution.get('sourceCommit') == revision and execution.get('stage') == stage, 'Wrong execution source or missing provenance'
     return completed(folder, seed, recipe)
 
 def main():
@@ -82,3 +112,4 @@ def main():
     print(json.dumps(dict(seed=a.seed,recipe=a.recipe,completed=done)))
 
 if __name__ == '__main__':main()
+

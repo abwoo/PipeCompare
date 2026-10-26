@@ -6,6 +6,82 @@ function setupOnce(~)
 addpath(fullfile(fileparts(mfilename('fullpath')), '..'));
 end
 
+function testMultiscaleCoversStrongFaultInTerminalRemainder(tc)
+rs=RandStream('mt19937ar','Seed',20261026);fs=250;
+for tail=[1 20 124]
+    X=randn(rs,12,60*fs+tail);at=60*fs+(1:tail);
+    X(3,at)=X(3,at)+100*(-1).^(1:tail);
+    [st,check]=pipecompare.run.Steps.badStretches(X,fs,'multiscale');
+    hit=false(1,size(X,2));
+    for k=find([st.row]==3),hit(st(k).samples(1):st(k).samples(2))=true;end
+    verifyTrue(tc,check.assessed);
+    verifyTrue(tc,all(hit(at)),sprintf('Missed terminal remainder of %d samples.',tail));
+    verifyLessThanOrEqual(tc,nnz(hit),round(0.5*fs));
+    verifyEmpty(tc,pipecompare.run.Steps.badStretches(X,fs,'long'));
+end
+end
+
+function testMultiscaleTerminalWindowDoesNotRepairQuietNoise(tc)
+rs=RandStream('mt19937ar','Seed',82107);
+for fs=[100 125.5 250]
+    X=randn(rs,12,round(60*fs)+17);
+    [st,check]=pipecompare.run.Steps.badStretches(X,fs,'multiscale');
+    verifyTrue(tc,check.assessed);verifyEmpty(tc,st);
+end
+end
+
+function testMultitaperAgreesWithIndependentDpssPeriodograms(tc)
+assumeTrue(tc,exist('dpss','file')==2&&exist('periodogram','file')==2, ...
+    'Independent spectral reference requires Signal Processing Toolbox.');
+rs=RandStream('mt19937ar','Seed',82108);fs=250;
+for n=[127 250 501]
+    band=[0 fs/2];X=randn(rs,2,n,3);
+    [got,info]=pipecompare.eval.Measure.bandScores(X,fs,band);
+    % Independent DPSS and one-sided normalization, including DC/Nyquist.
+    H=dpss(n,info.NW,info.tapers);expected=zeros(3,1);
+    for trial=1:3
+        density=[];
+        for channel=1:2
+            p=0;
+            for k=1:size(H,2)
+                p=p+periodogram(reshape(X(channel,:,trial),[],1),H(:,k),n,fs,'onesided');
+            end
+            density(:,channel)=p/size(H,2); %#ok<AGROW>
+        end
+        expected(trial)=log10(mean(density(:)));
+    end
+    verifyEqual(tc,got,expected,'AbsTol',1e-7);
+end
+end
+
+function testGroupValidationRejectsOverlappingAndRepeatedCohorts(tc)
+oldPath=path;cleanup=onCleanup(@()path(oldPath)); %#ok<NASGU>
+addpath(fullfile(fileparts(mfilename('fullpath')),'..','benchmarks'));
+S=struct('name',{});
+verifyError(tc,@()validation_group_transfer(S,[],tempdir,[81 82],[82 90]),'PipeCompare:Validation');
+verifyError(tc,@()validation_group_transfer(S,[],tempdir,[81 81],90),'PipeCompare:Validation');
+verifyError(tc,@()validation_group_transfer(S,[],tempdir,81,[90 90]),'PipeCompare:Validation');
+verifyError(tc,@()validation_group_transfer(S,[],tempdir,NaN,90),'PipeCompare:Validation');
+end
+
+function testGroupValidationRejectsDuplicateOrMalformedRecordIdentities(tc)
+oldPath=path;cleanup=onCleanup(@()path(oldPath)); %#ok<NASGU>
+addpath(fullfile(fileparts(mfilename('fullpath')),'..','benchmarks'));
+S=struct('name',{'S081R01.mat','S081R01.mat'},'keys',{{},{}});
+verifyError(tc,@()validation_group_transfer(S,[],tempdir,81,90),'PipeCompare:Validation');
+S=struct('name','S081R01.mat.extra','keys',{{}});
+verifyError(tc,@()validation_group_transfer(S,[],tempdir,81,90),'PipeCompare:Validation');
+end
+
+function testGroupValidationKeepsMissingCohortExplicit(tc)
+oldPath=path;cleanup=onCleanup(@()path(oldPath)); %#ok<NASGU>
+addpath(fullfile(fileparts(mfilename('fullpath')),'..','benchmarks'));
+S=struct('name',{});
+r=validation_group_transfer(S,[],tempdir,81:89,90:109);
+verifyEqual(tc,r.trainingRequested,9);verifyEqual(tc,r.testRequested,20);
+verifyEqual(tc,r.trainingObserved,0);verifyEqual(tc,r.testCovered,0);
+end
+
 function testArtifactBiasIsInvariantToWeightScale(tc)
 x = [zeros(20,1); 10*ones(20,1)]; b = [false(20,1); true(20,1)];
 K = [ones(40,1), linspace(0.2,1,40)'];

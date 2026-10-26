@@ -1986,7 +1986,10 @@ verifyError(tc,@()pipecompare.run.IcaCheckpoint.run(EEG,in,struct('icaSeed',1),d
 verifyError(tc,@()pipecompare.run.IcaCheckpoint.run(EEG,in,ctx,d,'different-search', ...
     @()checkpointTestFailure('test:Fresh','Changed identity')),'test:Fresh');
 f=dir(fullfile(d,'ica_cache','*.mat'));file=fullfile(f(1).folder,f(1).name);
-S=load(file);S.key='corrupt';save(file,'-struct','S','-v7.3');
+S=load(file);validState=S.rngState;S.rngState=struct('Type','invalid-generator');save(file,'-struct','S','-v7.3');
+verifyError(tc,@()pipecompare.run.IcaCheckpoint.run(EEG,in,ctx,d,'test-search', ...
+    @()checkpointTestFailure('test:UnexpectedCompute','Invalid random state must be refused')),'PipeCompare:Checkpoint');
+S.rngState=validState;S.key='corrupt';save(file,'-struct','S','-v7.3');
 verifyError(tc,@()pipecompare.run.IcaCheckpoint.run(EEG,in,ctx,d,'test-search', ...
     @()checkpointTestFailure('test:UnexpectedCompute','Corruption must be refused')),'PipeCompare:Checkpoint');
 end

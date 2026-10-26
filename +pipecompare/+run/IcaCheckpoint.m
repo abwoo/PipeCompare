@@ -24,7 +24,10 @@ classdef IcaCheckpoint
                     'PipeCompare:Checkpoint','Incomplete ICA checkpoint.');
                 assert(isfield(d,'key')&&strcmp(d.key,key)&&isfield(d,'identity')&&strcmp(d.identity,identity), ...
                     'PipeCompare:Checkpoint','ICA checkpoint identity mismatch.');
-                E2=d.E2;coms=d.coms;info=d.info;rng(d.rngState);
+                try,rng(d.rngState);catch ME
+                    error('PipeCompare:Checkpoint','Cannot restore ICA checkpoint random state: %s',ME.message);
+                end
+                E2=d.E2;coms=d.coms;info=d.info;
                 pipecompare.utils.log('Reused exact ICA checkpoint (seed %d).',pipecompare.utils.fieldOr(ctx,'icaSeed',0));
                 return;
             end

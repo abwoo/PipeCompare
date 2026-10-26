@@ -1,4 +1,5 @@
 import importlib.util
+import csv
 import json
 import tempfile
 import unittest
@@ -14,8 +15,14 @@ class SliceTest(unittest.TestCase):
         self.e=dict(seed=40101,recipe='standard',completed=True,artifactVariance='legacy-total',nativeBackend=dict(
             matconvnetCommit=m.BACKEND,cpuBuildPatch=m.PATCH,sameWinningClasses=True,maxProbabilityDifference=1e-7,mex='/matlab/mex/vl_nnconv.mexa64',matlab='R2026a'))
         self.write()
-        (self.folder/'benchmark.csv').write_text('recording,pipeline\n40101,PipeCompare\n40101,minimal\n40101,common\n')
-        (self.folder/'calibration.csv').write_text('recording,actualError\n40101,0.2\n')
+        self.benchmark_fields='recording pipeline steps trueTarget trueStandard target standard errTarget errStandard errDifference kept badChannel lockedBlinkShare'.split()
+        self.calibration_fields='recording steps condition actualError reportedError sme eyeBias gain selected conditionalError shapeSpread totalBias rawError rawConditionalError rawEstimate correctedEstimate populationTruth realizedTruth associationSensitivityError artifactBiasSE'.split()
+        self.csv('benchmark.csv',self.benchmark_fields,[dict(recording=40101,pipeline=name) for name in ('PipeCompare','minimal','common')])
+        self.csv('calibration.csv',self.calibration_fields,[dict(recording=40101,actualError=0.2)])
+    def csv(self,name,fields,rows):
+        with (self.folder/name).open('w',newline='') as f:
+            w=csv.DictWriter(f,fieldnames=fields);w.writeheader()
+            for row in rows:w.writerow({key:row.get(key,0) for key in fields})
     def write(self):(self.folder/'execution.json').write_text(json.dumps(self.e))
     def prepare(self,**kw):
         args=dict(state=self.root/'state',source=self.source,seed=40101,recipe='standard',stage='development',revision='abc',protocol=self.protocol);args.update(kw)
@@ -34,7 +41,7 @@ class SliceTest(unittest.TestCase):
     def test_incomplete_or_tampered_result_is_rejected(self):
         (self.folder/'calibration.csv').unlink()
         with self.assertRaises(FileNotFoundError):self.prepare()
-        (self.folder/'calibration.csv').write_text('recording\n40101\n')
+        self.csv('calibration.csv',self.calibration_fields,[dict(recording=40101)])
         self.assertTrue(self.prepare(state=self.root/'fresh'))
         (self.root/'fresh/standard/benchmark.csv').write_text('changed')
         with self.assertRaises(AssertionError):self.prepare(state=self.root/'fresh')
@@ -44,13 +51,85 @@ class SliceTest(unittest.TestCase):
         d=self.root/'state/standard';d.mkdir(parents=True);(d/'unexpected.mat').write_text('old')
         with self.assertRaises(AssertionError):self.prepare()
     def test_empty_calibration_is_valid_unavailable_not_missing(self):
-        (self.folder/'calibration.csv').write_text('recording,actualError\n')
+        self.csv('calibration.csv',self.calibration_fields,[])
         self.assertTrue(self.prepare())
+
+    def test_empty_digest_manifest_is_rejected(self):
+        self.prepare()
+        f=self.root/'state/standard/reused_control.json'
+        proof=json.loads(f.read_text());proof['sha256']={};f.write_text(json.dumps(proof))
+        with self.assertRaises(AssertionError):self.prepare()
+
+    def test_partial_digest_manifest_is_rejected(self):
+        self.prepare()
+        f=self.root/'state/standard/reused_control.json'
+        proof=json.loads(f.read_text());del proof['sha256']['calibration.csv'];f.write_text(json.dumps(proof))
+        with self.assertRaises(AssertionError):self.prepare()
+
+    def test_missing_provenance_is_rejected(self):
+        self.prepare();(self.root/'state/standard/reused_control.json').unlink()
+        with self.assertRaises(AssertionError):self.prepare()
+
+    def test_wrong_source_commit_is_rejected_before_import(self):
+        self.e['sourceCommit']='wrong';self.write()
+        with self.assertRaises(AssertionError):self.prepare()
+
+    def test_current_result_requires_matching_stage_and_commit(self):
+        self.assertFalse(self.prepare(source=None))
+        import shutil
+        dst=self.root/'state/standard'
+        self.e['sourceCommit']='abc';self.e['stage']='development';self.write()
+        for name in m.RESULTS:shutil.copy2(self.folder/name,dst/name)
+        self.assertTrue(self.prepare(source=None))
+        self.e['stage']='confirmation';self.write();shutil.copy2(self.folder/'execution.json',dst/'execution.json')
+        with self.assertRaises(AssertionError):self.prepare(source=None)
+
+    def test_partial_current_execution_with_wrong_revision_is_rejected(self):
+        self.assertFalse(self.prepare(source=None))
+        self.e.update(completed=False,sourceCommit='wrong',stage='development')
+        (self.root/'state/standard/execution.json').write_text(json.dumps(self.e))
+        with self.assertRaises(AssertionError):self.prepare(source=None)
+
+    def test_copy_failure_after_first_file_remains_retryable(self):
+        from unittest.mock import patch
+        copy=m.shutil.copy2
+        calls=[]
+        def interrupted(source,target):
+            calls.append(source)
+            if len(calls)==2:raise OSError('interrupted after execution')
+            return copy(source,target)
+        with patch.object(m.shutil,'copy2',side_effect=interrupted):
+            with self.assertRaises(OSError):self.prepare()
+        self.assertFalse((self.root/'state/standard/execution.json').exists())
+        self.assertTrue(self.prepare())
+
+    def test_failed_import_can_retry_without_partial_state(self):
+        from unittest.mock import patch
+        with patch.object(m.shutil,'copy2',side_effect=OSError('interrupted copy')):
+            with self.assertRaises(OSError):self.prepare()
+        self.assertTrue(self.prepare())
+
+    def test_incomplete_csv_schema_is_rejected(self):
+        (self.folder/'calibration.csv').write_text('recording,actualError\n40101,0.2\n')
+        with self.assertRaises(AssertionError):self.prepare()
+
+    def test_duplicate_header_and_truncated_row_are_rejected(self):
+        fields=self.calibration_fields+[self.calibration_fields[-1]]
+        self.csv('calibration.csv',fields,[])
+        with self.assertRaises(AssertionError):self.prepare()
+        self.csv('calibration.csv',self.calibration_fields,[])
+        with (self.folder/'calibration.csv').open('a') as f:f.write('40101,only-two-fields\n')
+        with self.assertRaises(AssertionError):self.prepare()
+
+    def test_zero_byte_csv_is_rejected_with_clear_error(self):
+        (self.folder/'calibration.csv').write_text('')
+        with self.assertRaises(AssertionError):self.prepare()
 
 
 class CollectorTest(unittest.TestCase):
     prepare=SliceTest.prepare
     write=SliceTest.write
+    csv=SliceTest.csv
     def setUp(self):
         SliceTest.setUp(self)
         import sys
@@ -77,4 +156,30 @@ class CollectorTest(unittest.TestCase):
         t['revision']='abc';t['seed']=999;f.write_text(json.dumps(t))
         with self.assertRaises(AssertionError):self.run_collect()
 
+    def test_missing_arm_does_not_publish_partial_summary(self):
+        self.protocol['development_synthetic_seeds'].append(40102)
+        # Refresh the existing arm token for the expanded frozen plan.
+        d=next(self.input.iterdir());f=d/'standard/snapshot.json'
+        t=json.loads(f.read_text())
+        import hashlib
+        t['protocol_sha256']=hashlib.sha256(json.dumps(self.protocol,sort_keys=True).encode()).hexdigest()
+        f.write_text(json.dumps(t))
+        with self.assertRaises(AssertionError):self.run_collect()
+        self.assertFalse(self.output.exists())
+
+    def test_nonempty_output_is_not_mixed_with_new_results(self):
+        self.output.mkdir();old=self.output/'old.csv';old.write_text('preserve')
+        with self.assertRaises(AssertionError):self.run_collect()
+        self.assertEqual(old.read_text(),'preserve')
+        self.assertEqual(list(self.output.iterdir()),[old])
+
+    def test_copy_failure_does_not_publish_partial_summary(self):
+        from unittest.mock import patch
+        with patch('collect_synthetic_slices.shutil.copy2',side_effect=OSError('copy interrupted')):
+            with self.assertRaises(OSError):self.run_collect()
+        self.assertFalse(self.output.exists())
+        self.run_collect()
+        self.assertTrue((self.output/'optimization-synthetic-40101/standard/benchmark.csv').exists())
+
 if __name__=='__main__':unittest.main()
+
