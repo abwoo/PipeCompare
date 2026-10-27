@@ -44,7 +44,12 @@ jobs:
             mkdir('component_artifacts');diary(fullfile('component_artifacts','tests.log'));
             assert(strcmp(version('-release'),'2026a'));
             r=runtests(fullfile('tests','test_component_audit.m'));disp(table(r));
-            assert(numel(r)==3&&all([r.Passed]));diary off;
+            assert(numel(r)==3&&all([r.Passed]));
+            o=struct('seconds',24,'nPerCond',4);
+            [legacy,t0]=bench_synth_reference(871301,o);rng0=rng;
+            [current,t1]=bench_synth(871301,o);rng1=rng;
+            assert(isequal(legacy.data,current.data)&&isequal(legacy.event,current.event)&&isequal(t0,t1)&&isequal(rng0,rng1));
+            fprintf('FROZEN_LEGACY_SIMULATOR_IDENTICAL=true\n');diary off;
       - uses: actions/download-artifact@v4
         with:
           name: pr50-reference-guard

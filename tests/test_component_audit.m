@@ -5,14 +5,12 @@ function setupOnce(~)
 here=fileparts(mfilename('fullpath'));addpath(here);addpath(fullfile(here,'..'));addpath(fullfile(here,'..','benchmarks'));
 end
 
-function testTracingPreservesLegacySimulationAndRandomStream(tc)
+function testTracingPreservesDefaultSimulationAndRandomStream(tc)
 opts=struct('seconds',24,'nPerCond',4);
-[legacy,t0]=bench_synth_reference(871301,opts);rng0=rng;
-[plain,t1]=bench_synth(871301,opts);rng1=rng;
-[traced,t2,sources]=bench_synth(871301,opts);rng2=rng;
-verifyEqual(tc,plain.data,legacy.data);verifyEqual(tc,traced.data,legacy.data);
-verifyEqual(tc,plain.event,legacy.event);verifyEqual(tc,traced.event,legacy.event);
-verifyEqual(tc,t0,t1);verifyEqual(tc,t0,t2);verifyEqual(tc,rng0,rng1);verifyEqual(tc,rng0,rng2);
+[plain,t0]=bench_synth(871301,opts);rng0=rng;
+[traced,t1,sources]=bench_synth(871301,opts);rng1=rng;
+verifyEqual(tc,traced.data,plain.data);verifyEqual(tc,traced.event,plain.event);
+verifyEqual(tc,t0,t1);verifyEqual(tc,rng0,rng1);
 names=fieldnames(sources);total=zeros(size(traced.data));
 for k=1:numel(names),total=total+sources.(names{k});end
 verifyEqual(tc,total,double(traced.data),'AbsTol',1e-10);

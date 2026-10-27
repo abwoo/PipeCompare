@@ -1394,3 +1394,67 @@ This is not a new completed four-record whole-procedure comparison and
 must not be used to mark the development admission gate as passed.
 New adaptive cutoffs, component choices and independent generalization
 remain outside this fixed-candidate replay. Confirmation remains unopened.
+
+
+### Source-resolved diagnosis of the remaining selection error
+
+[Run 40460170075](https://github.com/abwoo/PipeCompare/actions/runs/40460170075)
+adds optional source tracing to the simulator and replays the stored
+decisions of seven candidate cases on the existing 40102/40103 recordings.
+Three tests passed, including comparison with the frozen 719f293 simulator:
+recording bytes, event identities, truth and RNG state were unchanged.
+No ICA was fitted. Cached observed estimates were reproduced and additive
+source-score closure was within 1.51e-6 microvolts.
+
+This audit refines the interpretation of the reference guard. For 40103,
+the original selected MSE was 1.352610, a counterpart changing only the
+bad-channel step gave 1.276643, and the repaired branch with component
+removal and its resulting rejection/weighting decisions gave 0.218319.
+Repair alone accounts for only a small part of the observed improvement.
+The large remaining improvement is associated with suppressing residual
+blink and movement contamination in the component-removal branch.
+
+In the target condition, the original corrected error was -1.434438 uV.
+The fixed-operator contributions included -0.863877 from generated blinks,
+-0.258517 from movement, and -0.207697 from background; pure-P3 transform
+error after gain correction was only -0.005114. The guarded branch reduced
+the blink contribution to -0.032602 and movement to zero while preserving
+its pure-P3 gain. These two examples do not identify signal attenuation as
+the principal failure.
+
+The original fitted association was -1.347869 uV with SE 1.015999 uV.
+The current soft-threshold proxy, max(abs(association)-2*SE,0)^2, was zero.
+Zero in that proxy is absence of evidence under its shrinkage rule, not
+evidence that residual contamination or true bias is zero. The same proxy
+is used in rejection/component choices and final ranking; conditional
+bootstrap or empirical-Bayes shrinkage does not establish that the
+underlying bias model is calibrated.
+
+For 40102, the original target-condition error +0.040231 included +0.309684
+background, -0.160546 blink and -0.119825 movement contributions. Its small
+observed error partly reflects cancellation. The guarded branch retained
+a -0.707520 blink contribution. This explains why a structural protection
+can help one record while hurting another; the total score alone conceals
+the distinction.
+
+The signed source identity is:
+
+    observed/g - population =
+        (realized - population)
+      + (retained-weighted-clean - realized)
+      + (processed-clean/g - retained-weighted-clean)
+      + sum(processed-nuisance-sources/g)
+
+The nuisance sources are background, blink, movement, muscle, bad-channel
+noise and floating-point rounding. Squared error contains cross terms:
+the sum of squared component errors is not total MSE. The exported signed
+allocation mean(component_error * total_error) includes those cross terms
+and may be negative. It is a conditional accounting identity, not a
+population causal-effect estimate.
+
+The four-record original paired MSE difference was 0.262252 with conditional
+record-bootstrap 95% interval [-0.027165, 0.780829]. Thus the observed +53.84%
+does not itself establish a population-wide regression. Source tracing
+changes neither the operational selector nor the locked confirmation
+cohort. It makes future objective-model changes testable against signal
+loss, selection effects and residual nuisance separately.
