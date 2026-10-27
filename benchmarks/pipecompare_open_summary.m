@@ -53,9 +53,23 @@ for j=1:numel(folders)
     checkpoints=dir(fullfile(folder,'score_*.mat'));
     for q=1:numel(checkpoints)
         D=load(fullfile(checkpoints(q).folder,checkpoints(q).name));
+        % Version-skew guard (same class as below): a checkpoint item may
+        % carry a different top-level field set than the folder's part
+        % (archives predate the 'levels' field). Pad missing fields with
+        % [] on both sides; no stored value is dropped or rewritten.
+        for f = setdiff(fieldnames(part), fieldnames(D.item))', D.item.(f{1}) = []; end
+        for f = setdiff(fieldnames(D.item), fieldnames(part))', part.(f{1}) = []; end
         at=find(strcmp({part.name},D.item.name),1);
         if isempty(at),part(end+1)=D.item;else,part(at)=D.item;end %#ok<AGROW>
     end
+    % Version-skew guard for the cross-folder concatenation: the frozen
+    % source archives (source run fa295f9) carry 7 top-level fields while
+    % the current empty schema carries 8 ('levels'), so horzcat fails
+    % here without padding. Downstream in this script never reads .levels
+    % (only .name/.keys/.table/.cands/.ref/.ranking), so empty padding is
+    % safe; a future reader that needs levels must treat [] as unknown.
+    for f = setdiff(fieldnames(S), fieldnames(part))', part.(f{1}) = []; end
+    for f = setdiff(fieldnames(part), fieldnames(S))', S.(f{1}) = []; end
     S=[S part]; %#ok<AGROW>
     if isfile(fullfile(folder,'calibration.csv'))
         D=readtable(fullfile(folder,'calibration.csv'),'TextType','char');

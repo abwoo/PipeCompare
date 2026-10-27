@@ -68,26 +68,28 @@ verifyEqual(tc,se^2,p^2*var(x)*(1/nnz(b)+1/nnz(~b)),'AbsTol',1e-12);
 end
 
 function testUpgradeGuardRequiresEvidenceBeyondThePairedBound(tc)
+% Round 1 flipped the guard default: the proposal is maintained unless the baseline is shown significantly better (reverse bound < 0); 'promote' is now 'maintain', and missing evidence is 'unassessed'.
 [p,g]=pipecompare.eval.Rank.guardUpgrade([1;0.99],2,1,0.02);
-verifyEqual(tc,p,1);verifyEqual(tc,g.decision,'retain-baseline');
+verifyEqual(tc,p,2);verifyEqual(tc,g.decision,'maintain');
 [p,g]=pipecompare.eval.Rank.guardUpgrade([1;0.5],2,1,0.1);
-verifyEqual(tc,p,2);verifyEqual(tc,g.decision,'promote');verifyLessThan(tc,g.upperDifference,0);
+verifyEqual(tc,p,2);verifyEqual(tc,g.decision,'maintain');verifyLessThan(tc,g.upperDifference,0);
 [p,g]=pipecompare.eval.Rank.guardUpgrade([1;0.5],2,1,Inf);
-verifyEqual(tc,p,1);verifyEqual(tc,g.upperDifference,Inf);
+verifyEqual(tc,p,2);verifyEqual(tc,g.upperDifference,Inf);
 [p,g]=pipecompare.eval.Rank.guardUpgrade([1;NaN],2,1,0.1);
-verifyEqual(tc,p,1);verifyEqual(tc,g.upperDifference,Inf);
+verifyEqual(tc,p,2);verifyEqual(tc,g.upperDifference,Inf);
 end
 
 function testUpgradeGuardIsUsedByRankingAndStability(tc)
+% Round 1 flipped the guard default (maintain unless the baseline is significantly better); the stability share can only move toward the baseline, so equality is the expected outcome when no resample shows the baseline significantly better.
 n=80;x=sin((1:n)'*1.7);z=cos((1:n)'*1.3);z=z*std(x)/std(z);
 c=[nqc_cand(x);nqc_cand(0.99*z)];ref=nqc_ref(n);
 opts=pipecompare.eval.Rank.defaults();opts.nBoot=199;opts.nSplits=0;
 R=pipecompare.eval.Rank.run(c,ref,opts);verifyEqual(tc,R.recommended,2);
 opts.upgradeBaseline=1;G=pipecompare.eval.Rank.run(c,ref,opts);
-verifyEqual(tc,G.recommended,1);verifyEqual(tc,G.byStratum.upgradeGuard.decision,'retain-baseline');
-verifyGreaterThan(tc,G.table.chosenShare(1),R.table.chosenShare(1));
+verifyEqual(tc,G.recommended,2);verifyEqual(tc,G.byStratum.upgradeGuard.decision,'maintain');
+verifyGreaterThanOrEqual(tc,G.table.chosenShare(1),R.table.chosenShare(1));
 c(2)=nqc_cand(0.2*x);G=pipecompare.eval.Rank.run(c,ref,opts);
-verifyEqual(tc,G.recommended,2);verifyEqual(tc,G.byStratum.upgradeGuard.decision,'promote');
+verifyEqual(tc,G.recommended,2);verifyEqual(tc,G.byStratum.upgradeGuard.decision,'maintain');
 end
 
 function testUpgradeGuardRefusesAnIneligibleBaseline(tc)
@@ -123,24 +125,26 @@ verifyEqual(tc,repaired,logical([0;1;0;0;0]));verifyEqual(tc,needed,logical([1;1
 end
 
 function testReferenceGuardProtectsCleanupOnlyWithoutDemonstratedImprovement(tc)
+% Round 1 flipped the guard default: the cleanup guard now maintains the skip unless the repaired candidate is shown significantly better.
 repaired=logical([1;0]);needed=true(2,1);
 [k,g]=pipecompare.eval.Rank.guardReference([1;0.99],[1;0.99],[0;0],repaired,needed,2,0.1);
-verifyEqual(tc,k,1);verifyEqual(tc,g.origin,'average-reference-cleanup');
+verifyEqual(tc,k,2);verifyEqual(tc,g.origin,'average-reference-cleanup');
 [k,g]=pipecompare.eval.Rank.guardReference([1;0.5],[1;0.5],[0;0],repaired,needed,2,0.1);
-verifyEqual(tc,k,2);verifyEqual(tc,g.decision,'promote');
+verifyEqual(tc,k,2);verifyEqual(tc,g.decision,'maintain');
 [k,g]=pipecompare.eval.Rank.guardReference([NaN;0.5],[NaN;0.5],[0;0],repaired,needed,2,0.1);
 verifyEqual(tc,k,2);verifyEmpty(tc,g);
 end
 
 function testReferenceGuardIsAppliedToTheDefaultRankAndResamples(tc)
+% Round 1 flipped the guard default (maintain unless significantly better); the guard still runs in the default rank (origin assertion), and the share comparison is one-directional, so equality is expected when no resample flips.
 n=80;x=sin((1:n)'*1.7);z=cos((1:n)'*1.3);z=z*std(x)/std(z);
 c=[nqc_cand(x,'key','badchannels(action=interpolate) > reref(mode=average)'); ...
     nqc_cand(0.99*z,'key','reref(mode=average)')];
 opts=pipecompare.eval.Rank.defaults();opts.nBoot=199;opts.nSplits=0;
 R=pipecompare.eval.Rank.run(c,nqc_ref(n),opts);
-verifyEqual(tc,R.recommended,1);verifyEqual(tc,R.byStratum.upgradeGuard.origin,'average-reference-cleanup');
+verifyEqual(tc,R.recommended,2);verifyEqual(tc,R.byStratum.upgradeGuard.origin,'average-reference-cleanup');
 opts.protectReferenceCleanup=false;old=pipecompare.eval.Rank.run(c,nqc_ref(n),opts);
-verifyEqual(tc,old.recommended,2);verifyGreaterThan(tc,R.table.chosenShare(1),old.table.chosenShare(1));
+verifyEqual(tc,old.recommended,2);verifyGreaterThanOrEqual(tc,R.table.chosenShare(1),old.table.chosenShare(1));
 opts.protectReferenceCleanup=true;c(1).interpolatedFraction=0.8;
 R=pipecompare.eval.Rank.run(c,nqc_ref(n),opts);
 verifyEqual(tc,R.recommended,2);verifyEqual(tc,R.table.status{1},'rejected');
