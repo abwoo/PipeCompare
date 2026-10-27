@@ -129,7 +129,7 @@ classdef Rank
                 'maxAmplitudeError', 0.10, 'maxLatencyShiftMs', 10, 'maxArtifactPct', 0.05, ...
                 'minWaveformCorr', 0.95, 'minTopoCorr', 0.90, ...
                 'objective', 'composite', 'nBoot', 1999, 'nBootPeakOuter', 999, 'nBootPeakInner', 100, ...
-                'nBootPeak', 1000, 'alpha', 0.02, 'seed', 1, 'equivalenceMargin', 0.05, 'nSplits', 20, 'upgradeBaseline', []);
+                'nBootPeak', 1000, 'alpha', 0.02, 'seed', 1, 'equivalenceMargin', 0.05, 'nSplits', 20, 'upgradeBaseline', [], 'protectReferenceCleanup', true);
         end
 
         function R = run(cands, ref, opts, levels)
@@ -234,16 +234,23 @@ classdef Rank
                 th = pipecompare.eval.Rank.shrink(F, pts(:)); shrunk(feas) = th;
                 biased = double(bias > pipecompare.eval.Rank.BiasShare * noise);
                 rec = feas(choose(keep, th, biased(feas), equiv(feas), minRet(feas), ampStep(ampErr(feas))));
-                base=[];guard=[];
+                base=[];guard=[];pick=find(feas==rec);
+                [repaired,needsRepair]=pipecompare.eval.Rank.referenceProtection(cands(feas));
+                if ~opts.protectReferenceCleanup,repaired(:)=false;needsRepair(:)=false;end
                 if ~isempty(opts.upgradeBaseline)
                     base=find(feas==opts.upgradeBaseline);
-                    [pick,guard]=pipecompare.eval.Rank.guardUpgrade(pts,find(feas==rec),base,max(crit,0));
-                    guard.baseline=feas(guard.baseline);guard.proposed=feas(guard.proposed);
-                    rec=feas(pick);
+                    [pick,guard]=pipecompare.eval.Rank.guardUpgrade(pts,pick,base,max(crit,0));
+                    guard.origin='explicit-baseline';
+                else
+                    [pick,guard]=pipecompare.eval.Rank.guardReference(pts,th,biased(feas),repaired,needsRepair,pick,max(crit,0));
                 end
+                if ~isempty(guard)
+                    guard.baseline=feas(guard.baseline);guard.proposed=feas(guard.proposed);
+                end
+                rec=feas(pick);
                 cf = pipecompare.eval.Rank.crossfit(cands(feas), ref, opts, objName, pts(ib), F);
                 if ~isempty(cf),cf.upgradeGuardApplied=false;end
-                [f, unavailableShare] = selectionFrequency(boot{1}, crit, minRet(feas), ampStep(ampErr(feas)), biased(feas), equiv(feas), F,base);
+                [f, unavailableShare] = selectionFrequency(boot{1}, crit, minRet(feas), ampStep(ampErr(feas)), biased(feas), equiv(feas), F,base,repaired,needsRepair);
                 completeShare=mean(all(isfinite(boot{1}),1));
                 if completeShare<1
                     for q=feas(:)'
@@ -277,6 +284,37 @@ classdef Rank
             R = struct('table', T, 'whyList', {whyList}, 'order', order, 'best', best, 'recommended', recommended, ...
                 'byStratum', byStratum, 'objective', objName, 'options', opts, 'units', {ref.units}, ...
                 'validationScope','conditional-on-fitted-candidates','fullyHeldOut',false);
+        end
+
+        function [repaired, needsRepair] = referenceProtection(cands)
+            % Catalog keys identify interpolation BEFORE average reference.
+            % Native commands and other reference definitions are not inferred.
+            n=numel(cands);repaired=false(n,1);needsRepair=false(n,1);
+            for k=1:n
+                key=pipecompare.utils.fieldOr(cands(k),'key','');
+                parts=strsplit(char(key),' > ');
+                av=find(startsWith(parts,'reref(')&contains(parts,'mode=average'),1);
+                if isempty(av),continue;end
+                needsRepair(k)=true;
+                repair=find(startsWith(parts,'badchannels(')&contains(parts,'action=interpolate'));
+                repaired(k)=any(repair<av);
+            end
+        end
+
+        function [pick, guard] = guardReference(pts, th, biased, repaired, needsRepair, proposed, critical)
+            % Skipping channel repair before average reference can distribute
+            % one faulty channel across the montage. Compare that skip with
+            % an eligible repaired candidate before accepting a tiny gain.
+            pick=proposed;guard=[];
+            if ~needsRepair(proposed)||repaired(proposed),return;end
+            eligible=repaired(:)&isfinite(pts(:))&isfinite(th(:));
+            if ~any(eligible),return;end
+            eligible=eligible & pts(:)-min(pts(eligible))<=critical;
+            unbiased=eligible&~logical(biased(:));
+            if any(unbiased),eligible=unbiased;end
+            ids=find(eligible);[~,at]=min(th(ids));base=ids(at);
+            [pick,guard]=pipecompare.eval.Rank.guardUpgrade(pts,proposed,base,critical);
+            guard.origin='average-reference-cleanup';
         end
 
         function [pick, guard] = guardUpgrade(pts, proposed, baseline, critical)
@@ -684,8 +722,15 @@ classdef Rank
             for s = 1:numel(R.byStratum)
                 b = R.byStratum(s);
                 lab = ''; if ~isempty(b.stratum), lab = sprintf(' [stratum %s]', b.stratum); end
+                if isfield(b,'upgradeGuard')&&~isempty(b.upgradeGuard)
+                    g=b.upgradeGuard;
+                    pipecompare.utils.log('Recommended (*)%s: candidate %d after the upgrade guard; best objective: candidate %d.',lab,b.recommended,b.best);
+                    pipecompare.utils.log('Upgrade guard (%s): %s; proposed %d, baseline %d, simultaneous upper score difference %.4g.', ...
+                        g.origin,g.decision,g.proposed,g.baseline,g.upperDifference);
+                else
                 pipecompare.utils.log(['Recommended (*)%s: candidate %d (fewest trials lost, then least distortion, among the %d ', ...
                     'not distinguished from the best); best objective: candidate %d.'], lab, b.recommended, numel(b.set), b.best);
+                end
                 if isfield(b,'bootstrapCompleteShare')&&isfinite(b.bootstrapCompleteShare)&&b.bootstrapCompleteShare<1
                     pipecompare.utils.log('Paired bootstrap: %.1f%% complete draws; %.1f%% had no assessed recommendation. Incomplete maxima contribute unbounded uncertainty.', ...
                         100*b.bootstrapCompleteShare,100*b.bootstrapUnavailableShare);
@@ -845,7 +890,7 @@ E = unique([U(eqv(U)); U(j)]);
 k = E(o(1));
 end
 
-function [f, unavailable] = selectionFrequency(Bq, c, ret, amp, biased, eqv, F, baseline)
+function [f, unavailable] = selectionFrequency(Bq, c, ret, amp, biased, eqv, F, baseline, repaired, needsRepair)
 % The share of the bootstrap resamples (columns of Bq, K x B) in which
 % each of K candidates is recommended: those within c of the lowest
 % objective of the resample, then the rule of step 5 (choose) on the
@@ -857,7 +902,12 @@ for b = 1:size(Bq, 2)
     if ~any(ok) || (~isempty(baseline) && ~ok(baseline)), continue; end
     th = pipecompare.eval.Rank.shrink(F, v);
     k = choose(ok & v - min(v(ok)) <= c, th, biased, eqv, ret, amp);
-    if ~isempty(baseline),k=pipecompare.eval.Rank.guardUpgrade(v,k,baseline,max(c,0));end
+    if ~isempty(baseline)
+        k=pipecompare.eval.Rank.guardUpgrade(v,k,baseline,max(c,0));
+    else
+        if needsRepair(k)&&~repaired(k)&&any(repaired)&&~any(repaired&ok),continue;end
+        k=pipecompare.eval.Rank.guardReference(v,th,biased,repaired,needsRepair,k,max(c,0));
+    end
     cnt(k) = cnt(k) + 1; used = used + 1;
 end
 B=size(Bq,2);f=cnt/max(B,1);unavailable=(B-used)/max(B,1);

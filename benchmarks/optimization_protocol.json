@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "scope": "Paired optimization development and locked confirmation; no tuning on confirmation outcomes.",
   "development_subjects": [
     51,
@@ -136,7 +136,7 @@
     "precision": "Retain original 30-assessable-record / 10% half-width criterion; 29 remaining public participants cannot alone establish that target.",
     "decision": "Inspect development before rearming confirmation; legacy control artifacts may be reused only with completed execution and matched identities/truth."
   },
-  "development_round": 3,
+  "development_round": 4,
   "legacy_development_source_run": 40153112163,
   "legacy_algorithm_head": "f58e9ebafad580939c3cac14027a02d9c2dba818",
   "artifact_variance": {
@@ -145,5 +145,7 @@
     "note": "Corrected model uses within-group variance plus artifact-share uncertainty; the control reproduces the prior convention."
   },
   "reuse_legacy_controls": false,
-  "native_backend": "Pinned CPU MEX with matched MATLAB-reference parity; both recipe controls recomputed on this backend"
+  "native_backend": "Pinned CPU MEX with matched MATLAB-reference parity; both recipe controls recomputed on this backend",
+  "reference_cleanup_guard": true,
+  "reference_cleanup_guard_scope": "Conditional paired evidence is required before skipping feasible channel repair ahead of average reference; frozen Balanced recommendations cannot be imported as this algorithm's results."
 }

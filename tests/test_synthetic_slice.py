@@ -126,6 +126,18 @@ class SliceTest(unittest.TestCase):
         with self.assertRaises(AssertionError):self.prepare()
 
 
+    def test_changed_ranking_cannot_import_old_balanced_recommendations(self):
+        import shutil
+        self.folder=self.source/'balanced'
+        shutil.copytree(self.source/'standard',self.folder)
+        self.e.update(recipe='balanced',artifactVariance='pooled');self.write()
+        self.protocol['reference_cleanup_guard']=True
+        self.assertFalse(self.prepare(recipe='balanced'))
+        self.assertFalse((self.root/'state/balanced/reused_control.json').exists())
+        self.assertFalse((self.root/'state/balanced/benchmark.csv').exists())
+        self.assertTrue(self.prepare(recipe='standard',state=self.root/'legacy'))
+
+
 class CollectorTest(unittest.TestCase):
     prepare=SliceTest.prepare
     write=SliceTest.write

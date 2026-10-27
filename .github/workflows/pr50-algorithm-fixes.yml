@@ -1,4 +1,4 @@
-name: PR50 scoped algorithm audit
+name: PR50 reference cleanup guard
 on:
   push:
     branches: [codex/pr50-algorithm-fixes-20261027]
@@ -10,25 +10,45 @@ concurrency:
   group: pr50-scoped-algorithm-audit
   cancel-in-progress: false
 jobs:
-  changed-algorithms:
+  reference-guard:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
           path: PipeCompare
+      - name: Check changed reuse and protocol guards
+        run: |
+          python -m unittest discover -s PipeCompare/tests -p 'test_synthetic_slice.py'
+          python -m unittest discover -s PipeCompare/tests -p 'test_optimization_protocol.py'
       - uses: ./PipeCompare/.github/actions/setup-2026
-      - name: Test only affected statistical and archive contracts
+      - name: Test only the changed decision and stability logic
         uses: matlab-actions/run-command@v2
         with:
           command: |
             addpath(fullfile(pwd,'eeglab'));eeglab nogui;
             cd PipeCompare;addpath(pwd);addpath(fullfile(pwd,'tests'));
-            mkdir('algorithm_artifacts');diary(fullfile('algorithm_artifacts','tests.log'));
+            mkdir('reference_artifacts');diary(fullfile('reference_artifacts','tests.log'));
             assert(strcmp(version('-release'),'2026a'));
-            r=run_all({'test_algorithm_regressions','test_statistics','test_methodology'});
-            fprintf('ALGORITHM_TESTS total=%d passed=%d failed=%d skipped=%d\n',numel(r),nnz([r.Passed]),nnz([r.Failed]),nnz([r.Incomplete]));
-            assert(all([r.Passed]),'Changed-algorithm tests must all execute and pass');diary off;
+            s=testsuite(fullfile('tests','test_algorithm_regressions.m'));
+            names=string({s.Name});pick=contains(names,'/testReferenceGuard')|contains(names,'/testUpgradeGuard');
+            assert(nnz(pick)==6,'Missing decision regressions');
+            r=run(s(pick));
+            fprintf('REFERENCE_TESTS total=%d passed=%d failed=%d skipped=%d\n',numel(r),nnz([r.Passed]),nnz([r.Failed]),nnz([r.Incomplete]));
+            assert(all([r.Passed]));diary off;
+      - name: Verify the completed score audit before reusing its bounds
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const r=await github.rest.actions.getWorkflowRun({...context.repo,run_id:40430435867});
+            if(r.data.head_sha!=='e6fd5f2f72469e0890562aa5ebf2f72e5ae86a93'||r.data.conclusion!=='success')
+              throw new Error('Unverified score audit');
+      - uses: actions/download-artifact@v4
+        with:
+          name: pr50-scoped-algorithm-audit
+          path: previous_audit
+          run-id: 40430435867
+          github-token: ${{ github.token }}
       - uses: actions/download-artifact@v4
         with:
           pattern: development-optimization-public-*
@@ -59,18 +79,17 @@ jobs:
           path: saved_scores/seed40103
           run-id: 40282756637
           github-token: ${{ github.token }}
-      - name: Re-score existing candidates without fitting EEG or touching confirmation
+      - name: Apply only the new decision to existing scores and bounds
         uses: matlab-actions/run-command@v2
         with:
           command: |
-            addpath(fullfile(pwd,'eeglab'));eeglab nogui;
             addpath(fullfile(pwd,'PipeCompare'));addpath(fullfile(pwd,'PipeCompare','benchmarks'));
-            diary(fullfile(pwd,'PipeCompare','algorithm_artifacts','replay.log'));
-            replay_algorithm_scores(fullfile(pwd,'saved_scores'),fullfile(pwd,'PipeCompare','algorithm_artifacts'));diary off;
+            diary(fullfile(pwd,'PipeCompare','reference_artifacts','replay.log'));
+            replay_reference_guard(fullfile(pwd,'saved_scores'),fullfile(pwd,'previous_audit'),fullfile(pwd,'PipeCompare','reference_artifacts'));diary off;
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: pr50-scoped-algorithm-audit
-          path: PipeCompare/algorithm_artifacts
+          name: pr50-reference-guard
+          path: PipeCompare/reference_artifacts
           if-no-files-found: error
           retention-days: 90

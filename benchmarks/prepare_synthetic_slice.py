@@ -49,6 +49,7 @@ def completed(folder, seed, recipe):
 def prepare(state, source, seed, recipe, stage, revision, protocol):
     assert stage in ('development', 'confirmation') and recipe in protocol['recipes']
     assert seed in protocol[stage + '_synthetic_seeds'] and revision
+    reuse_allowed = recipe == 'standard' or not protocol.get('reference_cleanup_guard', False)
     folder = state / recipe
     folder.mkdir(parents=True, exist_ok=True)
     token = dict(seed=seed, recipe=recipe, stage=stage, revision=revision,
@@ -63,7 +64,7 @@ def prepare(state, source, seed, recipe, stage, revision, protocol):
         with tempfile.TemporaryDirectory(prefix='.import-', dir=state) as temp:
             pending = Path(temp) / recipe
             pending.mkdir()
-            if stage == 'development' and source is not None and completed(source / recipe, seed, recipe):
+            if reuse_allowed and stage == 'development' and source is not None and completed(source / recipe, seed, recipe):
                 execution = json.loads((source / recipe / 'execution.json').read_text())
                 assert execution.get('sourceCommit', SOURCE_HEAD) == SOURCE_HEAD and execution.get('stage', stage) == stage, 'Wrong imported execution source'
                 for name in RESULTS + ('benchmark_summary.txt',):
@@ -79,6 +80,7 @@ def prepare(state, source, seed, recipe, stage, revision, protocol):
             pending.rename(folder)
     proof = folder / 'reused_control.json'
     if proof.exists():
+        assert reuse_allowed, 'Changed ranking cannot import frozen balanced recommendations'
         assert stage == 'development', 'Confirmation cannot reuse development results'
         p = json.loads(proof.read_text())
         assert set(p['sha256']) == set(RESULTS), 'Incomplete imported digest manifest'

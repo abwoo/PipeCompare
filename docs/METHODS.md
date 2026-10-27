@@ -1343,3 +1343,30 @@ positive-part bias-squared minus variance: its raw-score-minimum MSE is
 1.05960, versus 0.74934 for the saved balanced recommendations. This comparison
 is descriptive (the recommendation rule also uses shrinkage and equivalence),
 and supplies no justification for changing the default or opening confirmation.
+
+
+### Protect channel repair before average reference
+
+The default ranking decision now guards the specific choice to skip a
+feasible channel-interpolation candidate before an average-reference step.
+A noisy channel in the reference can contaminate every measured electrode.
+A small fitted-score advantage is insufficient evidence to remove that
+protection. Among eligible repaired candidates, the rule retains candidates
+within the simultaneous critical distance of the best repaired score,
+prefers the existing low-bias class, and chooses the lowest shrunk score.
+It then requires the proposed skip's all-pairs upper difference bound to
+be below zero. An already repaired recommendation is unchanged; an
+ineligible repair is never adopted. The same rule is applied in bootstrap
+selection frequencies. `protectReferenceCleanup=false` reproduces the
+unguarded decision for diagnostic controls.
+
+This uses catalog-defined average reference and interpolation before that
+reference, with no ground truth in selection. Other references and native
+commands are not inferred. Optional ICA and EOG branches remain available.
+The existing candidate family is retained, so cached fits and bootstrap
+statistics can test this decision change without fitting ICA again.
+It is a conservative decision rule under the current fitted score, not a
+proof that the channel detector or true MSE is correct. Development
+protocol version 4 rejects imports of frozen Balanced recommendations
+computed without this rule; unchanged explicit legacy Standard controls
+retain their provenance checks.

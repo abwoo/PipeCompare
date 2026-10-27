@@ -111,3 +111,37 @@ save(file,'S','-v7');saved=load(file);
 G=pipecompare.eval.Rank.run(saved.S.cands,saved.S.ref,opts,saved.S.levels);
 verifyEqual(tc,G.recommended,R.recommended);verifyEqual(tc,G.table.objective,R.table.objective);
 end
+
+
+function testReferenceGuardRecognizesOnlyRepairBeforeAverageReference(tc)
+keys={'reref(mode=average)','badchannels(action=interpolate) > reref(mode=average)', ...
+    'reref(mode=average) > badchannels(action=interpolate)', ...
+    'badchannels(action=mark) > reref(mode=average)','badchannels(action=interpolate) > reref(mode=channels)'};
+c=struct('key',keys);
+[repaired,needed]=pipecompare.eval.Rank.referenceProtection(c);
+verifyEqual(tc,repaired,logical([0;1;0;0;0]));verifyEqual(tc,needed,logical([1;1;1;1;0]));
+end
+
+function testReferenceGuardProtectsCleanupOnlyWithoutDemonstratedImprovement(tc)
+repaired=logical([1;0]);needed=true(2,1);
+[k,g]=pipecompare.eval.Rank.guardReference([1;0.99],[1;0.99],[0;0],repaired,needed,2,0.1);
+verifyEqual(tc,k,1);verifyEqual(tc,g.origin,'average-reference-cleanup');
+[k,g]=pipecompare.eval.Rank.guardReference([1;0.5],[1;0.5],[0;0],repaired,needed,2,0.1);
+verifyEqual(tc,k,2);verifyEqual(tc,g.decision,'promote');
+[k,g]=pipecompare.eval.Rank.guardReference([NaN;0.5],[NaN;0.5],[0;0],repaired,needed,2,0.1);
+verifyEqual(tc,k,2);verifyEmpty(tc,g);
+end
+
+function testReferenceGuardIsAppliedToTheDefaultRankAndResamples(tc)
+n=80;x=sin((1:n)'*1.7);z=cos((1:n)'*1.3);z=z*std(x)/std(z);
+c=[nqc_cand(x,'key','badchannels(action=interpolate) > reref(mode=average)'); ...
+    nqc_cand(0.99*z,'key','reref(mode=average)')];
+opts=pipecompare.eval.Rank.defaults();opts.nBoot=199;opts.nSplits=0;
+R=pipecompare.eval.Rank.run(c,nqc_ref(n),opts);
+verifyEqual(tc,R.recommended,1);verifyEqual(tc,R.byStratum.upgradeGuard.origin,'average-reference-cleanup');
+opts.protectReferenceCleanup=false;old=pipecompare.eval.Rank.run(c,nqc_ref(n),opts);
+verifyEqual(tc,old.recommended,2);verifyGreaterThan(tc,R.table.chosenShare(1),old.table.chosenShare(1));
+opts.protectReferenceCleanup=true;c(1).interpolatedFraction=0.8;
+R=pipecompare.eval.Rank.run(c,nqc_ref(n),opts);
+verifyEqual(tc,R.recommended,2);verifyEqual(tc,R.table.status{1},'rejected');
+end
