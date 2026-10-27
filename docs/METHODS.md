@@ -1469,3 +1469,99 @@ does not itself establish a population-wide regression. Source tracing
 changes neither the operational selector nor the locked confirmation
 cohort. It makes future objective-model changes testable against signal
 loss, selection effects and residual nuisance separately.
+
+
+### Shadow selection (held-out, fitted-family variant A)
+
+Variant A evaluates the production selector on fresh synthetic seeds
+without touching production ranking, guard defaults, or search recipes.
+It is the first of two shadow variants: variant A isolates the decision
+rule on one fitted candidate family per seed; variant B (not yet built)
+re-runs the full search per arm, including adaptive leaves, and is the
+only variant whose output can close the fresh-evidence item for the
+four-record descriptive MSE. Variant A output must never be reported as
+variant B output.
+
+Method. For each held-out seed, the script
+`benchmarks/pipecompare_shadow_selection.m` runs two searches: one
+Standard search (`artifactVariance` legacy-total) and one Balanced
+search (`artifactVariance` pooled). The guarded Balanced pick is the
+stored production recommendation of the Balanced search. The unguarded
+Balanced pick is a re-execution of `Rank.run` on the same fitted
+Balanced family with only `protectReferenceCleanup` switched from true
+to false; the re-execution must reproduce the stored recommendation
+exactly, otherwise the script fails instead of reporting drifted
+decisions. If the stored search carries an explicit `upgradeBaseline`,
+both Balanced arms are unavailable for that seed, because the guard path
+is then `guardUpgrade` rather than `guardReference` and a protect=false
+re-run would not be a genuine unguarded decision. No checkpoint is
+written: each matrix job runs one seed, so the per-seed fragment is the
+crash-safe unit, and the run-level files are produced by merging
+fragments, never by re-running searches.
+
+Each arm's selected MSE is computed against the population P3 truth of
+the Balanced contract. The primary measure is gain-corrected:
+mean((estimate / gain - population)^2) over the truth vector. The raw
+selected MSE, mean((estimate - population)^2), is reported alongside it
+as a secondary measure. The Standard contract must agree with the
+Balanced contract on the first component's region, window, baseline and
+condition events, otherwise the Standard arm is unavailable for that
+seed (the two arms would not be comparable). A failed or partial search
+makes only its own arm unavailable; a seed is never silently skipped.
+
+Pairing and statistics. Paired differences are computed per seed and
+averaged only over seeds assessable in both arms of the pair
+(`guardedMinusStandard` and `guardedMinusUnguarded`); single-arm-only
+seeds are listed under `unavailable` and never folded into a mean.
+The record-bootstrap 95% interval resamples paired seeds with
+replacement (10000 draws, seed 1), and the stored replicates let an
+independent checker recompute the interval exactly. The negative
+control is enforced inside the script: when the guarded and unguarded
+picks coincide, both MSE differences must be below 1e-12, otherwise the
+run fails as a pipeline bug rather than reporting a result.
+
+Labels. The three labels are defined as follows and are stored verbatim
+in every output file. `fullyHeldOut` means every seed is fresh (at or
+above 20031, not in the design set 40101-40104, not in the locked
+confirmation set 41001-41030). `preprocessingRefitted` is false because
+the guarded and unguarded decisions share one fitted Balanced family;
+neither arm re-fits EEG, ICA, or candidates. `adaptiveLeavesIncluded`
+is false because adaptive leaves are not re-derived per arm; both
+decisions share the single search's family. Note the precise reading:
+a single search with the default search options may itself generate
+adaptive candidates, and those candidates are then common to both
+decisions. What variant A does not measure is the per-arm adaptive-leaf
+effect; that is variant B's question.
+
+Frozen criteria. The decision rule is frozen in the three-layer
+validation plan, section 3.1, and quoted in each output file under
+`frozenCriteria`. The primary verdict concerns `guardedMinusStandard`:
+established when the paired mean difference is at most 0 and the 95%
+interval upper bound is at most 5% of the Standard mean; failed when
+the interval lower bound exceeds that 5% tolerance (or when there are
+no paired seeds at all); otherwise not-established, which triggers the
+pre-registered expansion of the held-out set rather than any change of
+rule, threshold, or partition. A variant A "established" verdict is
+conditional only: it does not close the fresh-evidence item, and it says
+nothing about calibration, which is a separate step with its own gate.
+Calibration conclusions drawn from variant A numbers are labelled as
+being on an unverified error scale until the calibration step passes.
+
+Output and verification. Run-level files are
+`benchmarks/results/shadow_selection_<head7>_<firstSeed>_<nSeeds>.json`
+and the matching `.csv` plus `_summary.csv`; per-seed fragments are
+`shadow_selection_seed_<seed>.json`. Every output carries the evidence
+passport: script path, input artifact run id (null for fresh seeds, as
+no frozen input artifact is used), output path, commit SHA, guard
+switches and variance modes, and MATLAB/EEGLAB versions. The workflow
+`.github/workflows/shadow-selection.yml` merges fragments and then runs
+`benchmarks/check_shadow_selection.py`, which recomputes paired
+differences, means, bootstrap intervals, coverage counts, and verdicts
+from the fragments and CSVs and fails on any mismatch with the run
+JSON; it also checks field completeness and label constants. The
+workflow runs on pull requests touching only the shadow files, plus
+manual dispatch (defaults: first seed 20031, 8 seeds), on MATLAB R2026a
+with EEGLAB 2026.0.0, with a 340-minute per-seed job timeout matching
+the benchmark per-record anchor. The confirmation seeds 41001-41030 and
+participants 81-109 stay locked throughout and are never used as shadow
+seeds.

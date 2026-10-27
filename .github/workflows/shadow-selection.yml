@@ -1,0 +1,200 @@
+name: shadow-selection
+
+# Variant A shadow selection (fitted-family, held-out seeds): run the
+# Standard, guarded Balanced, and unguarded Balanced arms on fresh
+# synthetic seeds, then merge the per-seed fragments into one run-level
+# JSON + CSV and verify them with an independent Python checker.
+#
+# Trigger policy (deliberate, do not widen without a design note):
+# - pull_request, path-filtered to the four shadow files below. A
+#   docs/METHODS.md-only change must NOT launch hours-long ICA jobs.
+# - workflow_dispatch for manual runs (default: first seed 20031, 8 seeds).
+# - No push trigger and no branch pin: unlike
+#   pr50-component-audit.yml (a one-off diagnosis pinned to a codex
+#   branch), this workflow is a standing gate and must run on any PR.
+#
+# Timeouts: each matrix job runs ONE seed, i.e. one Standard search
+# plus one Balanced search (an ICA per pipeline). benchmark.yml gives
+# the same per-record workload a 340-minute job timeout, so this
+# workflow uses the same anchor; the MATLAB step is capped at 330 so
+# the artifact upload still has room. No timeout is unbounded.
+#
+# Checkout pin: both MATLAB jobs check out the prep job's head SHA
+# explicitly (not the pull_request merge commit), so the commit recorded
+# in provenance is exactly the code that ran.
+
+on:
+  pull_request:
+    paths:
+      - benchmarks/pipecompare_shadow_selection.m
+      - benchmarks/check_shadow_selection.py
+      - tests/test_shadow_selection.m
+      - .github/workflows/shadow-selection.yml
+  workflow_dispatch:
+    inputs:
+      first_seed:
+        description: 'First held-out seed (fresh range; 20031 is the frozen default)'
+        default: '20031'
+      n_seeds:
+        description: 'Number of held-out seeds (1-30)'
+        default: '8'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  prep:
+    name: Plan held-out seeds and validate the range
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      seeds: ${{ steps.prep.outputs.seeds }}
+      first_seed: ${{ steps.prep.outputs.first_seed }}
+      n_seeds: ${{ steps.prep.outputs.n_seeds }}
+      head_sha: ${{ steps.prep.outputs.head_sha }}
+      head_short: ${{ steps.prep.outputs.head_short }}
+    steps:
+      - id: prep
+        env:
+          FIRST_SEED_INPUT: ${{ inputs.first_seed }}
+          N_SEEDS_INPUT: ${{ inputs.n_seeds }}
+          HEAD_SHA_PR: ${{ github.event.pull_request.head.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF_SHA: ${{ github.sha }}
+        run: |
+          python3 - <<'EOF'
+          import json, os
+          first = int(os.environ.get("FIRST_SEED_INPUT") or 20031)
+          n = int(os.environ.get("N_SEEDS_INPUT") or 8)
+          head = os.environ["HEAD_SHA_PR"] if os.environ["EVENT_NAME"] == "pull_request" else os.environ["REF_SHA"]
+          assert 1 <= n <= 30, f"n_seeds must be 1-30, got {n}"
+          seeds = list(range(first, first + n))
+          assert all(s >= 20031 for s in seeds), "all seeds must be >= 20031 (fresh range)"
+          assert not any(40101 <= s <= 40104 for s in seeds), "seeds overlap the design set 40101-40104"
+          assert not any(41001 <= s <= 41030 for s in seeds), "seeds overlap the locked confirmation set 41001-41030"
+          assert len(head) >= 7, "head SHA too short"
+          out = os.environ["GITHUB_OUTPUT"]
+          with open(out, "a") as f:
+              f.write(f"seeds={json.dumps(seeds)}\nfirst_seed={first}\nn_seeds={n}\n")
+              f.write(f"head_sha={head}\nhead_short={head[:7]}\n")
+          print(f"seeds={seeds} head={head}")
+          EOF
+
+  shadow:
+    name: Shadow seed ${{ matrix.seed }}
+    needs: prep
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        seed: ${{ fromJSON(needs.prep.outputs.seeds) }}
+    env:
+      DISPLAY: ":99"
+      SHADOW_HEAD_SHA: ${{ needs.prep.outputs.head_sha }}
+      SHADOW_RUN_ID: ${{ github.run_id }}
+      PIPECOMPARE_EEGLAB_VERSION: "2026.0.0"
+    steps:
+      - name: Checkout PipeCompare
+        uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+          ref: ${{ needs.prep.outputs.head_sha }}
+
+      - name: Checkout EEGLAB
+        run: git clone --depth 1 --branch 2026.0.0 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
+
+      - name: Bound MATLAB dependency downloads
+        if: runner.os == 'Linux'
+        run: bash PipeCompare/.github/scripts/prepare-matlab.sh
+
+      - name: Start a virtual display
+        timeout-minutes: 10
+        run: bash PipeCompare/.github/scripts/start-display.sh
+
+      - name: Set up MATLAB
+        uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+          products: Signal_Processing_Toolbox
+
+      - name: Run the shadow search for one seed
+        timeout-minutes: 330
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd, 'eeglab')); eeglab nogui;
+            cd PipeCompare; addpath(pwd); addpath(fullfile(pwd, 'benchmarks'));
+            mkdir('shadow_out');
+            pipecompare_shadow_selection(fullfile(pwd, 'shadow_out'), ${{ matrix.seed }}, 1, 'headSha', getenv('SHADOW_HEAD_SHA'), 'workflowRunId', getenv('SHADOW_RUN_ID'), 'maxSeconds', Inf);
+
+      - name: Keep the seed fragment
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shadow-seed-${{ matrix.seed }}
+          path: PipeCompare/shadow_out
+
+  collect:
+    name: Merge fragments and verify the run
+    needs: [prep, shadow]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SHADOW_FIRST_SEED: ${{ needs.prep.outputs.first_seed }}
+      SHADOW_N_SEEDS: ${{ needs.prep.outputs.n_seeds }}
+      SHADOW_HEAD_SHA: ${{ needs.prep.outputs.head_sha }}
+      SHADOW_HEAD_SHORT: ${{ needs.prep.outputs.head_short }}
+      SHADOW_RUN_ID: ${{ github.run_id }}
+    steps:
+      - name: Checkout PipeCompare
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prep.outputs.head_sha }}
+
+      - name: Download seed fragments
+        uses: actions/download-artifact@v4
+        with:
+          pattern: shadow-seed-*
+          path: fragments
+
+      - name: Bound MATLAB dependency downloads
+        if: runner.os == 'Linux'
+        run: bash ./.github/scripts/prepare-matlab.sh
+
+      # Merge uses MATLAB core only (JSON I/O, tables): no EEGLAB, no
+      # Signal Processing Toolbox, no search is run here.
+      - name: Set up MATLAB
+        uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+
+      - name: Merge fragments into the run-level output
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(pwd); addpath(fullfile(pwd, 'benchmarks'));
+            pipecompare_shadow_selection(fullfile(pwd, 'shadow_final'), str2double(getenv('SHADOW_FIRST_SEED')), str2double(getenv('SHADOW_N_SEEDS')), 'mode', 'merge', 'fragmentsDir', fullfile(pwd, 'fragments'), 'headSha', getenv('SHADOW_HEAD_SHA'), 'workflowRunId', getenv('SHADOW_RUN_ID'));
+
+      - name: Independently recompute and verify the run
+        run: |
+          FINAL_JSON="shadow_final/shadow_selection_${SHADOW_HEAD_SHORT}_${SHADOW_FIRST_SEED}_${SHADOW_N_SEEDS}.json"
+          FINAL_CSV="shadow_final/shadow_selection_${SHADOW_HEAD_SHORT}_${SHADOW_FIRST_SEED}_${SHADOW_N_SEEDS}.csv"
+          FINAL_SUMMARY="shadow_final/shadow_selection_${SHADOW_HEAD_SHORT}_${SHADOW_FIRST_SEED}_${SHADOW_N_SEEDS}_summary.csv"
+          test -f "$FINAL_JSON" && test -f "$FINAL_CSV" && test -f "$FINAL_SUMMARY"
+          python3 benchmarks/check_shadow_selection.py fragments "$FINAL_JSON" "$FINAL_CSV" "$FINAL_SUMMARY" "$SHADOW_HEAD_SHA"
+
+      # No `if: always()` here: a failed independent check must NOT
+      # publish the run-level output as if verified. The per-seed
+      # fragments are already uploaded and stay available for diagnosis.
+      - name: Keep the verified run output
+        uses: actions/upload-artifact@v4
+        with:
+          name: shadow-selection
+          path: shadow_final
