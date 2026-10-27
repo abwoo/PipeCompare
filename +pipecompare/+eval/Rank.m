@@ -209,7 +209,8 @@ classdef Rank
             lo = nan(n, 1); hi = nan(n, 1); hiKept = nan(n, 1); notDist = false(n, 1); equiv = false(n, 1);
             recommended = []; best = [];
             byStratum = struct('stratum', {}, 'best', {}, 'recommended', {}, 'set', {}, 'crossfit', {}, 'stability', {}, ...
-                'factorial', {}, 'bootstrapCompleteShare', {}, 'bootstrapUnavailableShare', {}, 'upgradeGuard', {});
+                'factorial', {}, 'bootstrapCompleteShare', {}, 'bootstrapUnavailableShare', {}, 'upgradeGuard', {}, ...
+                'guardDisabled', {}, 'guardSuperseded', {}, 'bootstrapRepairUnavailableShare', {});
             chosen = nan(n, 1); shrunk = nan(n, 1);
             strata = unique(stratum(strcmp(status, 'feasible')), 'stable');
             if ~isempty(opts.upgradeBaseline)
@@ -235,9 +236,11 @@ classdef Rank
                 biased = double(bias > pipecompare.eval.Rank.BiasShare * noise);
                 rec = feas(choose(keep, th, biased(feas), equiv(feas), minRet(feas), ampStep(ampErr(feas))));
                 base=[];guard=[];pick=find(feas==rec);
+                guardDisabled=~opts.protectReferenceCleanup;
+                guardSuperseded=~isempty(opts.upgradeBaseline);
                 [repaired,needsRepair]=pipecompare.eval.Rank.referenceProtection(cands(feas));
-                if ~opts.protectReferenceCleanup,repaired(:)=false;needsRepair(:)=false;end
-                if ~isempty(opts.upgradeBaseline)
+                if guardDisabled,repaired(:)=false;needsRepair(:)=false;end
+                if guardSuperseded
                     base=find(feas==opts.upgradeBaseline);
                     [pick,guard]=pipecompare.eval.Rank.guardUpgrade(pts,pick,base,max(crit,0));
                     guard.origin='explicit-baseline';
@@ -246,11 +249,24 @@ classdef Rank
                 end
                 if ~isempty(guard)
                     guard.baseline=feas(guard.baseline);guard.proposed=feas(guard.proposed);
+                    guard.artifactVariance=pipecompare.utils.fieldOr(ref,'artifactVariance','pooled');
                 end
                 rec=feas(pick);
+                if guardDisabled
+                    note='reference cleanup guard disabled (protectReferenceCleanup=false); the recommendation is unguarded';
+                    pieces={notes{rec},note};notes{rec}=strjoin(pieces(~cellfun(@isempty,pieces)),'; ');
+                end
+                if guardSuperseded
+                    note='reference cleanup guard superseded by an explicit upgradeBaseline';
+                    pieces={notes{rec},note};notes{rec}=strjoin(pieces(~cellfun(@isempty,pieces)),'; ');
+                    if ~isempty(guard) && strcmp(guard.decision,'baseline-already-selected')
+                        note='guard idle warning: upgradeBaseline equals the proposed candidate, so the guard did not change the choice';
+                        pieces={notes{rec},note};notes{rec}=strjoin(pieces(~cellfun(@isempty,pieces)),'; ');
+                    end
+                end
                 cf = pipecompare.eval.Rank.crossfit(cands(feas), ref, opts, objName, pts(ib), F);
                 if ~isempty(cf),cf.upgradeGuardApplied=false;end
-                [f, unavailableShare] = selectionFrequency(boot{1}, crit, minRet(feas), ampStep(ampErr(feas)), biased(feas), equiv(feas), F,base,repaired,needsRepair);
+                [f, unavailableShare, repairUnavailableShare] = selectionFrequency(boot{1}, crit, minRet(feas), ampStep(ampErr(feas)), biased(feas), equiv(feas), F,base,repaired,needsRepair);
                 completeShare=mean(all(isfinite(boot{1}),1));
                 if completeShare<1
                     for q=feas(:)'
@@ -261,7 +277,8 @@ classdef Rank
                 chosen(feas) = f;
                 byStratum(end+1) = struct('stratum', strata{s}, 'best', feas(ib), 'recommended', rec, 'set', t, ...
                     'crossfit', cf, 'stability', f(feas == rec), 'factorial', F, ...
-                    'bootstrapCompleteShare',completeShare,'bootstrapUnavailableShare',unavailableShare,'upgradeGuard',guard); %#ok<AGROW>
+                    'bootstrapCompleteShare',completeShare,'bootstrapUnavailableShare',unavailableShare,'upgradeGuard',guard, ...
+                    'guardDisabled',guardDisabled,'guardSuperseded',guardSuperseded,'bootstrapRepairUnavailableShare',repairUnavailableShare); %#ok<AGROW>
             end
             if isscalar(byStratum)
                 recommended = byStratum.recommended; best = byStratum.best;
@@ -318,22 +335,37 @@ classdef Rank
         end
 
         function [pick, guard] = guardUpgrade(pts, proposed, baseline, critical)
-            % A predeclared feasible baseline is replaced only if the upper
-            % simultaneous paired-bootstrap bound is below zero. critical
-            % must cover ALL candidate pairs (bestSet), including selection.
-            % This controls fitted-score promotion, not unknown true error.
+            % The proposal is maintained unless the baseline is shown
+            % significantly better: only the reverse simultaneous
+            % paired-bootstrap bound below zero replaces it. Indistinguishable
+            % evidence, and missing evidence, both maintain the proposal;
+            % they are told apart by decision ('maintain' vs 'unassessed').
+            % critical must cover ALL candidate pairs (bestSet), including
+            % selection. This controls fitted-score promotion, not unknown
+            % true error. lowerDifference is the reverse bound; critical and
+            % ptsDifference are recorded for audit. artifactVariance is
+            % filled in by the caller (Rank.run) where the run's variance
+            % mode is known.
             validateattributes(pts,{'numeric'},{'vector','real','nonempty'});
             validateattributes(proposed,{'numeric'},{'scalar','integer','positive','<=',numel(pts)});
             validateattributes(baseline,{'numeric'},{'scalar','integer','positive','<=',numel(pts)});
             validateattributes(critical,{'numeric'},{'scalar','real','nonnegative','nonnan'});
-            pick=baseline;upper=Inf;decision='retain-baseline';
+            pick=proposed;upper=Inf;lower=Inf;decision='unassessed';
             if proposed==baseline
-                upper=0;decision='baseline-already-selected';
-            elseif all(isfinite(pts([proposed baseline])))
+                upper=0;lower=0;decision='baseline-already-selected';
+            elseif all(isfinite(pts([proposed baseline]))) && isfinite(critical)
                 upper=pts(proposed)-pts(baseline)+critical;
-                if upper<0,pick=proposed;decision='promote';end
+                lower=pts(baseline)-pts(proposed)+critical;
+                if upper<0
+                    decision='maintain';
+                elseif lower<0
+                    pick=baseline;decision='retain-baseline';
+                else
+                    decision='maintain';
+                end
             end
             guard=struct('baseline',baseline,'proposed',proposed,'upperDifference',upper, ...
+                'lowerDifference',lower,'critical',critical,'ptsDifference',pts(proposed)-pts(baseline), ...
                 'decision',decision,'scope','conditional-on-fitted-score; not a guarantee of true error');
         end
 
@@ -566,13 +598,21 @@ classdef Rank
             % (Efron & Morris, 1973; empirical Bayes): the interactions
             % the data show are kept, the rest is taken for noise. F: the
             % pipelines in the model (use), H, s, df; [] when fewer than 4
-            % pipelines are in it, df < 3, or paired covariance is unassessed.
+            % pipelines are in it, df < 3, fewer than 20 complete paired
+            % draws, or paired covariance is unassessed. The covariance
+            % uses the complete draws only (Sig below), so a few incomplete
+            % draws no longer veto the model outright: the old "every draw
+            % complete" gate refused shrinkage exactly when the data were
+            % messy, which let a single NaN fall through to an unshrunk
+            % choice. The 20-complete-draw floor keeps the statistical
+            % requirement (a covariance over 4+ pipelines needs enough
+            % draws) without the veto.
             F = [];
             K = numel(pts);
             if numel(levels) ~= K, return; end
             use = find(~cellfun(@isempty, levels(:)'));
             ok = all(isfinite(Bq(use, :)), 1);
-            if numel(use) < 4 || size(Bq,2) < 20 || ~all(ok) || ~all(isfinite(pts(use))), return; end
+            if numel(use) < 4 || size(Bq,2) < 20 || sum(ok) < 20 || ~all(isfinite(pts(use))), return; end
             slots = {};
             for i = use, slots = [slots levels{i}(:, 1)']; end %#ok<AGROW>
             slots = unique(slots, 'stable');
@@ -598,14 +638,26 @@ classdef Rank
         function th = shrink(F, v)
             % The objectives v (K x 1) through the factorial model F
             % (factorialModel): H v + s (I - H) v for the pipelines in it,
-            % v itself for the others, and all of v when F is [] or a value
-            % in the model is not finite.
+            % v itself for the others, and all of v when F is []. A value
+            % that is not finite is never shrunk and never poisons the
+            % others: only the finite entries are shrunk (through the
+            % finite sub-block of H, which is the full projection when
+            % every entry is finite), and the non-finite entries keep NaN.
+            % The old whole-vector veto returned v unchanged when any
+            % model value was NaN, so one unassessed candidate silently
+            % disabled shrinkage for all the others.
             th = v;
             if isempty(F), return; end
             x = v(F.use);
-            if ~all(isfinite(x)), return; end
-            fit = F.H * x;
-            th(F.use) = fit + F.s * (x - fit);
+            finite = isfinite(x);
+            if ~any(finite), return; end
+            if all(finite)
+                fit = F.H * x;
+                th(F.use) = fit + F.s * (x - fit);
+            else
+                fit = F.H(finite, finite) * x(finite);
+                th(F.use(finite)) = fit + F.s * (x(finite) - fit);
+            end
         end
 
         function T = marginal(R, leaves, searched)
@@ -881,22 +933,37 @@ function k = choose(keep, th, biased, eqv, ret, amp)
 % best), the unbiased ones (all when none is); among them the one with the
 % lowest shrunk objective th, and with it those shown equivalent to the
 % best (eqv); of these, the highest minimum retention, the smallest
-% amplitude error (to AmpStep), the lowest shrunk objective.
+% amplitude error (to AmpStep), the lowest shrunk objective. A candidate
+% whose shrunk objective is not finite was not assessed and is excluded
+% before the minimum: min() propagates NaN and would select it. (Only
+% when no kept candidate has a finite objective at all is the filter
+% skipped, preserving the old degenerate behaviour rather than returning
+% no choice.)
 U = find(keep(:) & ~biased(:));
 if isempty(U), U = find(keep(:)); end
+finite = U(isfinite(th(U)));
+if ~isempty(finite), U = finite; end
 [~, j] = min(th(U));
 E = unique([U(eqv(U)); U(j)]);
 [~, o] = sortrows(round([-ret(E), amp(E), th(E)], 10));
 k = E(o(1));
 end
 
-function [f, unavailable] = selectionFrequency(Bq, c, ret, amp, biased, eqv, F, baseline, repaired, needsRepair)
+function [f, unavailable, repairUnavailable] = selectionFrequency(Bq, c, ret, amp, biased, eqv, F, baseline, repaired, needsRepair)
 % The share of the bootstrap resamples (columns of Bq, K x B) in which
 % each of K candidates is recommended: those within c of the lowest
 % objective of the resample, then the rule of step 5 (choose) on the
 % resample's objectives shrunk with the same model F; which ones are
-% equivalent to the best (eqv) is that of all trials.
-K = size(Bq, 1); cnt = zeros(K, 1); used = 0;
+% equivalent to the best (eqv) is that of all trials. The frequency is
+% conditional on the full-sample critical value c: every resample is
+% judged against the same c, not a per-resample one. unavailable counts
+% the resamples with no usable choice at all (no finite objective, or the
+% explicit baseline not finite); repairUnavailable counts separately the
+% resamples skipped because the chosen candidate needed repair but no
+% repaired candidate was finite in that resample. The three shares
+% (sum(f), unavailable, repairUnavailable) sum to 1, so a skipped
+% resample is never silently folded into the generic unavailable share.
+K = size(Bq, 1); cnt = zeros(K, 1); used = 0; repairSkipped = 0;
 for b = 1:size(Bq, 2)
     v = Bq(:, b); ok = isfinite(v);
     if ~any(ok) || (~isempty(baseline) && ~ok(baseline)), continue; end
@@ -905,14 +972,14 @@ for b = 1:size(Bq, 2)
     if ~isempty(baseline)
         k=pipecompare.eval.Rank.guardUpgrade(v,k,baseline,max(c,0));
     else
-        if needsRepair(k)&&~repaired(k)&&any(repaired)&&~any(repaired&ok),continue;end
+        if needsRepair(k)&&~repaired(k)&&any(repaired)&&~any(repaired&ok),repairSkipped=repairSkipped+1;continue;end
         k=pipecompare.eval.Rank.guardReference(v,th,biased,repaired,needsRepair,k,max(c,0));
     end
     cnt(k) = cnt(k) + 1; used = used + 1;
 end
-B=size(Bq,2);f=cnt/max(B,1);unavailable=(B-used)/max(B,1);
+B=size(Bq,2);f=cnt/max(B,1);unavailable=(B-used-repairSkipped)/max(B,1);repairUnavailable=repairSkipped/max(B,1);
 if used==0,f(:)=NaN;end
-if B==0,unavailable=NaN;end
+if B==0,unavailable=NaN;repairUnavailable=NaN;end
 end
 
 function v = upperQuantile(z, alpha)
@@ -986,8 +1053,14 @@ for k = 1:numel(cands)
             if strcmp(objs(o).kind, 'scalar') && numel(blink) >= o && ~isempty(blink{o})
                 K = W{c};
                 if isfield(objs(o), 'w') && ~isempty(objs(o).w), wt = objs(o).w{c}; wt(isnan(wt)) = 0; K = K .* wt; end
+                % Artifact-variance mode: the objective's own mode when set,
+                % else the run's mode (ref.artifactVariance, set by
+                % Measure.reference from the run options), else pooled, the
+                % Measure default. An explicit legacy-total mode on the
+                % objective is preserved; only the missing-field fallback
+                % changed (it used to be legacy-total).
                 [~, eq] = pipecompare.eval.Measure.eyeBias(objs(o).X{c}(:, 1), blink{o}{c}, K, W{c}, ...
-                    pipecompare.utils.fieldOr(objs(o),'eyeBiasSEMode','legacy-total'));
+                    pipecompare.utils.fieldOr(objs(o),'eyeBiasSEMode',pipecompare.utils.fieldOr(ref,'artifactVariance','pooled')));
             end
             oc = struct('estimate', objs(o).estimate(c));
             b2 = b2 + biasOf(oc, g(o), sp(o), eq) .^ 2;
@@ -1069,7 +1142,10 @@ for j = 1:numel(use), shape(j, :) = biasOf(struct('estimate', objs(j).estimate),
 blink = pipecompare.utils.fieldOr(ref, 'blink', {});
 bl = {};
 if numel(blink) >= max(use) && all(~cellfun(@isempty, blink(use))), bl = blink(use); end
-modes=arrayfun(@(j)pipecompare.utils.fieldOr(objs(j),'eyeBiasSEMode','legacy-total'),use,'UniformOutput',false);
+% Same fallback chain as perObjective: objective mode, else the run's
+% ref.artifactVariance, else pooled (Measure default). An explicit
+% legacy-total mode on the objective is preserved.
+modes=arrayfun(@(j)pipecompare.utils.fieldOr(objs(j),'eyeBiasSEMode',pipecompare.utils.fieldOr(ref,'artifactVariance','pooled')),use,'UniformOutput',false);
 in = struct('options', {opt}, 'ok', logical(cv.ok), 'w', {w}, 'shape', shape, 'blink', {bl},'biasVarianceMode',{modes});
 end
 

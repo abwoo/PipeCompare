@@ -1382,18 +1382,29 @@ whose 103 affected-statistics/archive tests passed.
 
 On the saved public candidate families, all four recommendations were
 unchanged. On cached simulation main trees (later adaptive leaves absent),
-selected MSE was 0.780581 to 0.780581 for 40101, 0.000992 to 0.121838 for
-40102, and 1.352610 to 0.218319 for 40103. The second recording worsens;
-the rule is not a guarantee of improvement for every recording.
-For the frozen final family of 40104, the original recommendation already
+the three fixed-candidate replays are:
+
+   - 40101: selected MSE 0.780581 to 0.780581 (unchanged);
+   - 40102: selected MSE 0.000992 to 0.121838 (worsens);
+   - 40103: selected MSE 1.352610 to 0.218319 (improves).
+
+The second recording worsens; the rule is not a guarantee of improvement
+for every recording. The fourth record is not a replay at all: for the
+frozen final family of 40104, the original recommendation already
 includes interpolation before average reference, so the decision guard is
 the identity there; its old MSE of 0.863168 is carried forward, not newly
-measured. Combining that unchanged value with the three cache replays gives
-a descriptive MSE of 0.495976 (1.83% above the old Standard's 0.487085).
-This is not a new completed four-record whole-procedure comparison and
-must not be used to mark the development admission gate as passed.
-New adaptive cutoffs, component choices and independent generalization
-remain outside this fixed-candidate replay. Confirmation remains unopened.
+measured. Combining that unchanged value with the three cache replays
+gives a descriptive mixed estimator of 0.495976 — descriptive mixed
+estimator: three frozen-family recomputed values plus the 40104
+carried-forward value; not paired, not a whole procedure, not admissible
+to the gate, and confirmation remains unopened. Its 1.83% gap to the old
+Standard's mean of 0.487085 is an arithmetic note on that blend, not a
+benchmark comparison: do not compare the blended MSE with the Standard
+mean as a percentage. This is not a new completed four-record
+whole-procedure comparison and must not be used to mark the development
+admission gate as passed. New adaptive cutoffs, component choices and
+independent generalization remain outside this fixed-candidate replay.
+Confirmation remains unopened.
 
 
 ### Source-resolved diagnosis of the remaining selection error

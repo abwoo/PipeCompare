@@ -566,7 +566,15 @@ function testIncompleteBootstrapCannotFitFactorialVariance(tc)
 rs=RandStream('mt19937ar','Seed',20261023);
 pts=(1:5)';B=pts+0.1*randn(rs,5,99);levels=repmat({{'step','same'}},1,5);
 F=pipecompare.eval.Rank.factorialModel(levels,B,pts);verifyNotEmpty(tc,F);
+% A few incomplete draws no longer veto the model: the covariance uses
+% the complete draws only, and the gate is now "at least 20 complete
+% draws", not "every draw complete". With 98 complete draws the model
+% still fits.
 B(1,1)=NaN;
+F=pipecompare.eval.Rank.factorialModel(levels,B,pts);verifyNotEmpty(tc,F);
+% Below the complete-draw floor the model is still refused, and shrink
+% then returns its input unchanged.
+B(1,20:99)=NaN;
 F=pipecompare.eval.Rank.factorialModel(levels,B,pts);verifyEmpty(tc,F);
 verifyEqual(tc,pipecompare.eval.Rank.shrink(F,pts),pts);
 end
@@ -719,4 +727,41 @@ for j=1:numel(L)
     if ~isempty(eog)&&~isempty(ica),verifyLessThan(tc,eog,ica);end
 end
 verifyTrue(tc,onlyEog);verifyTrue(tc,both);verifyTrue(tc,none);
+end
+
+function testGuardUpgradeMaintainsProposalUnlessBaselineIsSignificantlyBetter(tc)
+% The guard's default action changed: indistinguishable evidence maintains
+% the proposal; only a baseline shown significantly better replaces it,
+% and missing evidence is recorded as unassessed rather than as a veto.
+critical=0.05;
+[pick,guard]=pipecompare.eval.Rank.guardUpgrade([1.0;1.01],2,1,critical);
+verifyEqual(tc,pick,2);verifyEqual(tc,guard.decision,'maintain');
+verifyEqual(tc,guard.critical,critical);verifyEqual(tc,guard.ptsDifference,0.01,'AbsTol',1e-12);
+% Baseline significantly better: reverse bound below zero.
+[pick,guard]=pipecompare.eval.Rank.guardUpgrade([1.0;1.2],2,1,critical);
+verifyEqual(tc,pick,1);verifyEqual(tc,guard.decision,'retain-baseline');
+% Proposal significantly better: upper bound below zero, proposal kept.
+[pick,guard]=pipecompare.eval.Rank.guardUpgrade([1.0;0.9],2,1,critical);
+verifyEqual(tc,pick,2);verifyEqual(tc,guard.decision,'maintain');
+% Missing evidence: unbounded critical records unassessed, proposal kept.
+[pick,guard]=pipecompare.eval.Rank.guardUpgrade([1.0;1.01],2,1,Inf);
+verifyEqual(tc,pick,2);verifyEqual(tc,guard.decision,'unassessed');
+% Missing evidence: non-finite objective records unassessed, proposal kept.
+[pick,guard]=pipecompare.eval.Rank.guardUpgrade([1.0;NaN],2,1,critical);
+verifyEqual(tc,pick,2);verifyEqual(tc,guard.decision,'unassessed');
+% Baseline already selected: no change, explicit decision.
+[pick,guard]=pipecompare.eval.Rank.guardUpgrade([1.0;1.01],1,1,critical);
+verifyEqual(tc,pick,1);verifyEqual(tc,guard.decision,'baseline-already-selected');
+end
+
+function testShrinkKeepsNonFiniteEntriesUnchanged(tc)
+% Element-wise shrinkage: finite entries are shrunk through the model,
+% non-finite entries keep NaN instead of vetoing shrinkage for all.
+rs=RandStream('mt19937ar','Seed',20261023);
+pts=(1:5)';B=pts+0.1*randn(rs,5,99);levels=repmat({{'step','same'}},1,5);
+F=pipecompare.eval.Rank.factorialModel(levels,B,pts);verifyNotEmpty(tc,F);
+v=pts;v(2)=NaN;
+th=pipecompare.eval.Rank.shrink(F,v);
+verifyTrue(tc,isnan(th(2)));verifyTrue(tc,all(isfinite(th([1 3 4 5]))));
+verifyTrue(tc,all(isfinite(pipecompare.eval.Rank.shrink(F,pts))));
 end

@@ -28,6 +28,15 @@ classdef Group
     %     the most trials kept in its worst recording, then the smallest
     %     largest signal change, then the lowest objective.
     %
+    %   The group recommendation and each recording's own pipeline pass
+    %   through the same reference-cleanup guard the single-recording
+    %   ranking applies (Rank.guardReference): a pipeline that skips
+    %   channel repair before average reference is not accepted for a
+    %   recording when a feasible repaired alternative exists and the
+    %   paired-bootstrap evidence does not promote the skip. Recordings
+    %   on which the guard cannot run are marked in G.guardProtection
+    %   (status 'unprotected'); they are never silently skipped.
+    %
     %   G.table: one row per pipeline run on every recording (id, pipeline,
     %   status, objective, notDistinguished, equivalent, minRetention: in
     %   the worst recording, ampError: the largest, passedIn: on how many
@@ -143,12 +152,54 @@ classdef Group
                 covariance{j} = nan(nK);
                 covariance{j}(Fm(j,:), Fm(j,:)) = cov(b{1}');
             end
+            % Reference-cleanup guard, per recording (Rank.guardReference).
+            % The group choice must not resurrect a skip-before-average-
+            % reference pipeline that the single-recording guard would have
+            % blocked. The critical value is recovered from each
+            % recording's own ranking table (diffHi holds Dhat + c from
+            % bestSet), so the group guard uses exactly the
+            % single-recording guard's critical value instead of a
+            % recomputed one. Recordings that cannot run the guard are
+            % marked, never silently skipped (see G.guardProtection).
+            emptyGi = struct('feasIdx', [], 'pts', [], 'th', [], 'biased', [], 'repaired', [], ...
+                'needsRepair', [], 'crit', NaN, 'critOK', false, 'disabled', false, 'reason', '');
+            guardInfo = repmat(emptyGi, 1, nU);
+            for j = 1:nU
+                guardInfo(j) = referenceGuardInputs(S(u(j)), keys);
+            end
+            if any([guardInfo.disabled])
+                pipecompare.utils.log('Group guard: reference guard disabled by option on %d recording(s); those recordings are marked disabled-by-option, not guarded.', sum([guardInfo.disabled]));
+            end
+            G.groupGuardBlocked = false(1, nK);
+            G.guardGroupStatus = 'no-group-choice';
             G.own = table(); G.ownShrunk = nan(nU, nK); G.share = NaN;
+            ownStatus = repmat({''}, nU, 1); ownDecision = repmat({''}, nU, 1);
             if nU >= 2
                 Y = G.perRecording; Y(~Fm) = NaN;
                 [G.ownShrunk, G.share, ~, G.twoLevelModel] = pipecompare.Group.twoLevel(Y, V, covariance);
                 th = G.ownShrunk; th(~Fm) = Inf;
                 [best, own] = min(th, [], 2); own(~isfinite(best)) = NaN;
+                % Guard each recording's own pick with the same rule the
+                % single-recording ranking applies (Rank.guardReference).
+                for j = 1:nU
+                    if ~isfinite(own(j)), ownStatus{j} = 'no-pick'; continue; end
+                    gi = guardInfo(j);
+                    if gi.disabled, ownStatus{j} = 'disabled-by-option'; continue; end
+                    if ~gi.critOK
+                        ownStatus{j} = 'unprotected';
+                        pipecompare.utils.log('Group guard: recording %s cannot run the reference guard (%s); its own pipeline is UNPROTECTED.', S(u(j)).name, gi.reason);
+                        continue;
+                    end
+                    p = find(gi.feasIdx == own(j), 1);
+                    if isempty(p), ownStatus{j} = 'unprotected'; continue; end
+                    [npick, guard] = pipecompare.eval.Rank.guardReference(gi.pts, gi.th, gi.biased, gi.repaired, gi.needsRepair, p, gi.crit);
+                    if ~isempty(guard), ownDecision{j} = guard.decision; end
+                    if npick ~= p
+                        pipecompare.utils.log('Group guard: recording %s own pipeline %d (%s) replaced by %d (%s) by the reference guard.', S(u(j)).name, own(j), G.labels{own(j)}, gi.feasIdx(npick), G.labels{gi.feasIdx(npick)});
+                        own(j) = gi.feasIdx(npick);
+                    end
+                    ownStatus{j} = 'guarded';
+                end
                 G.ownChoice = own;
             end
             if nU == 0
@@ -165,11 +216,62 @@ classdef Group
                 nd(F(keep)) = true; eq(F(equiv)) = true;
                 t = F(keep);
                 [~, o] = sortrows(round([-ret(t)', amp(t)', J(t)'], 10));
-                G.recommended = t(o(1));
+                order = t(o);
+                % Veto group candidates the per-recording guard blocks: a
+                % candidate survives only if no used recording's guard
+                % replaces it. Recordings that cannot run the guard do not
+                % veto (absence of evidence is not evidence of blocking),
+                % but they leave the decision partially unguarded.
+                blocked = false(1, numel(order));
+                for ci = 1:numel(order)
+                    k = order(ci);
+                    for j = 1:nU
+                        gi = guardInfo(j);
+                        if ~gi.critOK || gi.disabled, continue; end
+                        p = find(gi.feasIdx == k, 1);
+                        if isempty(p), continue; end
+                        [npick, ~] = pipecompare.eval.Rank.guardReference(gi.pts, gi.th, gi.biased, gi.repaired, gi.needsRepair, p, gi.crit);
+                        if npick ~= p, blocked(ci) = true; break; end
+                    end
+                end
+                G.groupGuardBlocked(order(blocked)) = true;
+                if all(blocked)
+                    % No surviving candidate: keep the original pick rather
+                    % than inventing a replacement rule, and say so loudly.
+                    G.recommended = order(1);
+                    G.guardGroupStatus = 'all-blocked-retained';
+                    pipecompare.utils.log('Group guard: every not-distinguished candidate is blocked by the reference guard on some recording; keeping pipeline %d and marking the group recommendation UNPROTECTED.', order(1));
+                else
+                    G.recommended = order(find(~blocked, 1));
+                    if any(blocked)
+                        pipecompare.utils.log('Group guard: %d candidate(s) blocked by the reference guard; group recommendation moved to pipeline %d.', sum(blocked), G.recommended);
+                    end
+                    if any(~[guardInfo.critOK] & ~[guardInfo.disabled])
+                        G.guardGroupStatus = 'partially-unguarded';
+                    elseif any([guardInfo.disabled])
+                        G.guardGroupStatus = 'partially-disabled';
+                    else
+                        G.guardGroupStatus = 'guarded';
+                    end
+                end
             end
             G.table = table((1:nK)', G.labels(:), status, J', nd, eq, ret', amp', passed', ...
                 'VariableNames', {'id', 'pipeline', 'status', 'objective', 'notDistinguished', 'equivalent', ...
                 'minRetention', 'ampError', 'passedIn'});
+            % Per-recording guard audit trail (additive; the fields above
+            % keep their meaning). 'unprotected' means the guard could not
+            % run for that recording (see reason); 'disabled-by-option'
+            % means the recording's own options switched the guard off.
+            gs = cell(nU, 1); gd = cell(nU, 1); gr = cell(nU, 1);
+            for j = 1:nU
+                gr{j} = guardInfo(j).reason;
+                if guardInfo(j).disabled, gs{j} = 'disabled-by-option';
+                elseif ~guardInfo(j).critOK, gs{j} = 'unprotected';
+                elseif nU >= 2, gs{j} = ownStatus{j}; gd{j} = ownDecision{j};
+                else, gs{j} = 'guarded'; end
+            end
+            G.guardProtection = table(G.recordings(u)', gs, gd, gr, ...
+                'VariableNames', {'recording', 'guardStatus', 'ownDecision', 'reason'});
             if isfield(G, 'ownChoice')
                 own = G.ownChoice; ok = isfinite(own);
                 lab = repmat({''}, nU, 1); lab(ok) = G.labels(own(ok));
@@ -343,6 +445,19 @@ classdef Group
             if ~isempty(G.leftOut)
                 pipecompare.utils.log('Left out (no pipeline passed on them): %s', strjoin(G.leftOut, ', '));
             end
+            if isfield(G, 'guardProtection') && ~isempty(G.guardProtection)
+                unp = strcmp(G.guardProtection.guardStatus, 'unprotected');
+                if any(unp)
+                    pipecompare.utils.log('Group guard: UNPROTECTED on %s (see G.guardProtection).', strjoin(G.guardProtection.recording(unp), ', '));
+                end
+                dis = strcmp(G.guardProtection.guardStatus, 'disabled-by-option');
+                if any(dis)
+                    pipecompare.utils.log('Group guard: switched off by option on %s.', strjoin(G.guardProtection.recording(dis), ', '));
+                end
+            end
+            if isfield(G, 'guardGroupStatus') && strcmp(G.guardGroupStatus, 'all-blocked-retained')
+                pipecompare.utils.log('Group guard: group recommendation retained although every candidate was guard-blocked (see G.groupGuardBlocked).');
+            end
             if isempty(G.recommended), pipecompare.utils.log('%s', G.note); return; end
             k = G.recommended;
             pipecompare.utils.log(['Recommended for the group: pipeline %d, %s (noise %.3g, root mean square over the ', ...
@@ -386,6 +501,63 @@ classdef Group
             pipecompare.PipeCompare.writeScript(G.first, idx, file);
         end
     end
+end
+
+function info = referenceGuardInputs(s, keys)
+% Per-recording inputs for the reference-cleanup guard (Rank.guardReference).
+% crit is recovered from the recording's own ranking table instead of
+% recomputed: diffHi holds Dhat + c from bestSet, so c = diffHi(k) -
+% (pts(k) - pts(ib)) for any non-best feasible k. This reuses exactly
+% the single-recording guard's critical value; recomputing it from the
+% group's re-drawn bootstrap would answer a different question.
+% critOK is false when the guard cannot run for this recording (the
+% caller marks it 'unprotected' and never silently skips it).
+    info = struct('feasIdx', [], 'pts', [], 'th', [], 'biased', [], 'repaired', [], ...
+        'needsRepair', [], 'crit', NaN, 'critOK', false, 'disabled', false, 'reason', '');
+    opts = pipecompare.utils.withDefaults(s.ranking.options, pipecompare.eval.Rank.defaults());
+    if ~opts.protectReferenceCleanup
+        info.disabled = true;
+        info.reason = 'reference guard switched off by option';
+        return;
+    end
+    [~, loc] = ismember(keys, s.keys);
+    T = s.table;
+    need = {'status', 'objective', 'shrunk', 'bias', 'noise', 'diffHi'};
+    if ~all(ismember(need, T.Properties.VariableNames))
+        info.reason = 'ranking table lacks guard inputs';
+        return;
+    end
+    feas = strcmp(T.status(loc), 'feasible')';
+    info.feasIdx = find(feas);
+    if isempty(info.feasIdx)
+        info.reason = 'no feasible candidate';
+        return;
+    end
+    pos = loc(info.feasIdx);
+    info.pts = T.objective(pos)';
+    info.th = T.shrunk(pos)';
+    info.biased = T.bias(pos)' > pipecompare.eval.Rank.BiasShare * T.noise(pos)';
+    [info.repaired, info.needsRepair] = pipecompare.eval.Rank.referenceProtection(s.cands(pos));
+    if numel(info.feasIdx) < 2
+        info.reason = 'only one feasible candidate; guard cannot trigger';
+        return;
+    end
+    [~, ib] = min(info.pts);
+    diffHi = T.diffHi(pos)';
+    dhat = info.pts - info.pts(ib);
+    ok = isfinite(diffHi) & isfinite(dhat) & ((1:numel(info.pts)) ~= ib);
+    if ~any(ok)
+        info.reason = 'critical value not recoverable from ranking table';
+        return;
+    end
+    k = find(ok, 1);
+    c = diffHi(k) - dhat(k);
+    if ~isfinite(c)
+        info.reason = 'critical value unbounded (incomplete paired bootstrap)';
+        return;
+    end
+    info.crit = max(c, 0);
+    info.critOK = true;
 end
 
 function [D, components, active, component] = groupDesign(record,pipeline,nR,nP)

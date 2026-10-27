@@ -59,6 +59,18 @@ classdef Executor
     %                   A callback that takes two arguments is also told
     %                   each step as it starts: f(0, inst), inst being the
     %                   plan's step (type, params, label).
+    %     artifactVariance 'pooled' (default) | 'legacy-total' |
+    %                   'heteroscedastic': how the artifact contribution
+    %                   to the paired bootstrap variance is pooled
+    %                   (pipecompare.eval.Measure.defaults); run() and
+    %                   execute() share this one default.
+
+    properties (Constant)
+        % The one default for opts.artifactVariance, shared by run() and
+        % execute(): a resumed search must not silently change its
+        % variance model, and it matches pipecompare.eval.Measure.defaults.
+        ArtifactVarianceDefault = 'pooled';
+    end
 
     methods (Static)
         function result = run(plan, contract, opts)
@@ -70,7 +82,7 @@ classdef Executor
                 'A time-limited search requires a checkpoint folder.');
             assert(isinf(opts.maxSeconds)||~opts.parallel,'PipeCompare:Options', ...
                 'Time slices use serial prefix sharing; run independent recordings in parallel.');
-            opts.artifactVariance=pipecompare.utils.fieldOr(opts,'artifactVariance','pooled');
+            opts.artifactVariance=pipecompare.utils.fieldOr(opts,'artifactVariance',pipecompare.run.Executor.ArtifactVarianceDefault);
             assert(any(strcmp(opts.artifactVariance,{'pooled','legacy-total','heteroscedastic'})),'PipeCompare:Options','Unknown artifact variance model.');
             assert(isnumeric(opts.icaSeeds) && isscalar(opts.icaSeeds) && opts.icaSeeds >= 0 && opts.icaSeeds == round(opts.icaSeeds), ...
                 'PipeCompare:Options', 'icaSeeds must be a whole number >= 0.');
@@ -124,6 +136,17 @@ classdef Executor
             prev = repmat(emptyCand(), numel(result.leaves), 1);
             for f = 1:numel(files)
                 d = load(fullfile(dirName, files(f).name));
+                if isfield(d, 'id') && isscalar(d.id) && d.id > numel(result.leaves)
+                    % An adaptive candidate (refineCutoffs/eogCheck): saved
+                    % for audit and replay, but the manifest predates it, so
+                    % resume cannot restore it by id. Skipping it here keeps
+                    % resume working; the resumed search re-derives the
+                    % adaptive candidates when it reaches those phases.
+                    % The identity check below still applies, unchanged, to
+                    % every file that is actually loaded.
+                    pipecompare.utils.log('Skipping adaptive leaf file %s (id %d beyond the manifest leaves; saved for audit, re-derived on resume).', files(f).name, d.id);
+                    continue;
+                end
                 assert(isfield(d, 'identity') && strcmp(d.identity, M.identity) && d.id <= numel(result.leaves) && ...
                     strcmp(d.key, result.leaves(d.id).key), 'PipeCompare:Checkpoint', ...
                     'Checkpoint file %s does not belong to this search.', files(f).name);
@@ -144,7 +167,11 @@ classdef Executor
 
         function result = execute(result, done)
             opts = result.options;
-            opts.artifactVariance=pipecompare.utils.fieldOr(opts,'artifactVariance','legacy-total');
+            % Single default (was 'legacy-total' here): a checkpoint made
+            % before this option existed now resumes under 'pooled', the
+            % same model run() uses, rather than silently changing models
+            % between the two entry points.
+            opts.artifactVariance=pipecompare.utils.fieldOr(opts,'artifactVariance',pipecompare.run.Executor.ArtifactVarianceDefault);
             result.options=opts;
             contract = result.contract; leaves = result.leaves; tree = result.tree;
             root = result.root;
@@ -227,6 +254,7 @@ classdef Executor
                     c = emptyCand(); c.id = li; c.key = leaves(li).key; c.stratum = leaves(li).stratum;
                     c.status = 'excluded'; c.message = why{li};
                     pre(end+1, 1) = c; env.done(li) = true; tick(env, 1); %#ok<AGROW>
+                    saveLeaf(env, c);   % an excluded candidate is still part of the ranking input
                     pipecompare.utils.log('candidate %d excluded before running: %s', li, c.message);
                 end
                 if ~isempty(out)
@@ -277,6 +305,9 @@ classdef Executor
             end
             result.cands = allc;
             result.ranking = R;
+            if isempty(notRun)
+                saveRanking(env, R, result.labels);
+            end
             result.marginal = pipecompare.eval.Rank.marginal(R, result.leaves, result.report.searched);
             result.robustness = pipecompare.eval.Rank.robustness(allc, R, result.leaves, result.report.searched, ref);
             pipecompare.eval.Rank.print(R, result.labels);
@@ -1146,6 +1177,8 @@ cand.notes{end+1} = sprintf(['filter cutoffs fine-tuned from these data, startin
     cinfo.objectiveBase, cinfo.objectiveBest);
 result.leaves(li) = leaf; result.labels{li} = key2;
 allc(li, 1) = cand;
+saveLeaf(env, cand);   % an adaptive candidate is ranking input too: without
+                       % this file the recommendation cannot be replayed
 added = true;
 end
 
@@ -1216,6 +1249,8 @@ if strcmp(cand.status, 'ok') && strcmp(c.status, 'ok')
 end
 result.leaves(li) = leaf; result.labels{li} = key2;
 allc(li, 1) = cand;
+saveLeaf(env, cand);   % an adaptive candidate is ranking input too: without
+                       % this file the recommendation cannot be replayed
 added = true;
 end
 
@@ -1373,6 +1408,20 @@ if isfield(env.opts, 'stopAfter') && numel(dir(fullfile(env.checkpoint, 'leaf_*.
     % simulated interruption (tests): everything saved so far is kept
     error('PipeCompare:Interrupted', 'Search interrupted after %d candidates (opts.stopAfter).', env.opts.stopAfter);
 end
+end
+
+function saveRanking(env, R, labels)
+% The final ranking, saved with the checkpoint for audit and replay: it
+% covers the adaptive candidates too, which the manifest predates (the
+% manifest is written before the search runs, so it cannot list them).
+% resume() never reads this file — it rebuilds the ranking from the leaf
+% files — so saving it cannot disturb a resumed search. Only saved for a
+% completed search: a stopped search has no final ranking.
+if isempty(env.checkpoint), return; end
+identity = env.identity; %#ok<NASGU>
+tmp = fullfile(env.checkpoint, 'ranking.tmp.mat');
+save(tmp, 'R', 'labels', 'identity', '-v7.3');
+movefile(tmp, fullfile(env.checkpoint, 'ranking.mat'), 'f');
 end
 
 function n = dataLevels(path, fs0)

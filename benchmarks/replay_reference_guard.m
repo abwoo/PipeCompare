@@ -36,9 +36,34 @@ d=load(fullfile(previous,sprintf('%s_%d.mat',population,id)),'R','report');R=d.R
 assert(height(R.table)==numel(cands)&&~isempty(R.recommended));
 [repaired,needed]=pipecompare.eval.Rank.referenceProtection(cands);
 feasible=strcmp(R.table.status,'feasible');repaired=repaired&feasible;
-best=R.best;others=find(feasible & (1:numel(cands))'~=best);critical=0;
-if ~isempty(others)
-    at=others(1);critical=max(0,R.table.diffHi(at)-(R.table.objective(at)-R.table.objective(best)));
+best=R.best;
+% Production critical value, recovered from the saved bestSet intervals.
+% Rank.bestSet (+pipecompare/+eval/Rank.m, bestSet) sets hi = Dhat(:,ib) + c,
+% so c = diffHi - (objective - objective(best)) for every feasible
+% non-best candidate; the saved table already stores bestSet's output, and
+% the replay deliberately does not refit the bootstrap, so the production
+% critical is recovered here rather than recomputed from replicates
+% (bestSet itself is a file-local function in Rank.m and cannot be called
+% from this script). All feasible non-best candidates must agree:
+% disagreement means the saved artifact is not a bestSet table. (The best
+% candidate itself is excluded: bestSet writes hi(ib) = 0, not Dhat + c.)
+% An unbounded critical (Inf, from incomplete bootstrap draws) is kept as
+% Inf, which the guard records as 'unassessed' rather than as evidence
+% for either side.
+others=find(feasible & (1:numel(cands))'~=best);
+if isempty(others)
+    critical=0;
+else
+    recovered=R.table.diffHi(others)-(R.table.objective(others)-R.table.objective(best));
+    if all(isinf(recovered))
+        critical=Inf;
+    else
+        finiteRecovered=recovered(isfinite(recovered));
+        assert(numel(finiteRecovered)==numel(recovered) && ...
+            max(finiteRecovered)-min(finiteRecovered)<1e-9*max(1,max(abs(finiteRecovered))), ...
+            'Saved diffHi does not encode a single bestSet critical value');
+        critical=max(0,recovered(1));
+    end
 end
 proposed=R.recommended;
 [pick,guard]=pipecompare.eval.Rank.guardReference(R.table.objective,R.table.shrunk, ...
@@ -52,6 +77,7 @@ oldMse=mse(cands,proposed,truth);newMse=mse(cands,pick,truth);
 assert(abs(oldMse-old.pooledReplay.mse)<1e-9,'Candidate ordering does not reproduce the source artifact');
 report=struct('record',id,'population',population,'scope',old.scope,'originalMSE',oldMse, ...
     'guardedMSE',newMse,'proposed',proposed,'selected',pick,'guard',guard, ...
+    'productionGuardCritical',critical, ...
     'originalKey',cands(proposed).key,'selectedKey',cands(pick).key, ...
     'sourceRun',40282756637,'scoringRun',40430435867,'fullyHeldOut',false,'preprocessingRefitted',false);
 fprintf('REFERENCE_REPLAY %s\n',jsonencode(report));
