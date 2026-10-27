@@ -1,4 +1,4 @@
-name: Diagnose completed PR50 development results
+name: Inspect saved PR50 error components
 on:
   push:
     branches: [codex/pr50-regression-diagnosis-20261027]
@@ -18,10 +18,5 @@ jobs:
           path: source_results
           run-id: 40282756637
           github-token: ${{ github.token }}
-      - name: Attribute errors using saved candidates only
-        run: python benchmarks/diagnose_paired_regression.py source_results diagnosis/paired_regression.json
-      - uses: actions/upload-artifact@v4
-        with:
-          name: pr50-paired-regression-attribution
-          path: diagnosis
-          retention-days: 90
+      - name: Read saved components without fitting candidates
+        run: python benchmarks/diagnose_bias_components.py
