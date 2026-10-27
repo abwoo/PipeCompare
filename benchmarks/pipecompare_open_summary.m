@@ -57,8 +57,15 @@ for j=1:numel(folders)
         % carry a different top-level field set than the folder's part
         % (archives predate the 'levels' field). Pad missing fields with
         % [] on both sides; no stored value is dropped or rewritten.
-        for f = setdiff(fieldnames(part), fieldnames(D.item))', D.item.(f{1}) = []; end
-        for f = setdiff(fieldnames(D.item), fieldnames(part))', part.(f{1}) = []; end
+        % Per-element assignment: MATLAB rejects S.(f) = [] on a nonscalar
+        % struct array ("Scalar structure required for this assignment"),
+        % so each element is padded individually (works for 0, 1 or N).
+        for f = setdiff(fieldnames(part), fieldnames(D.item))'
+            for i = 1:numel(D.item), D.item(i).(f{1}) = []; end
+        end
+        for f = setdiff(fieldnames(D.item), fieldnames(part))'
+            for i = 1:numel(part), part(i).(f{1}) = []; end
+        end
         at=find(strcmp({part.name},D.item.name),1);
         if isempty(at),part(end+1)=D.item;else,part(at)=D.item;end %#ok<AGROW>
     end
@@ -68,8 +75,14 @@ for j=1:numel(folders)
     % here without padding. Downstream in this script never reads .levels
     % (only .name/.keys/.table/.cands/.ref/.ranking), so empty padding is
     % safe; a future reader that needs levels must treat [] as unknown.
-    for f = setdiff(fieldnames(S), fieldnames(part))', part.(f{1}) = []; end
-    for f = setdiff(fieldnames(part), fieldnames(S))', S.(f{1}) = []; end
+    % Per-element assignment (see above): whole-array S.(f) = [] fails on
+    % nonscalar struct arrays, which is what broke the round-2 head here.
+    for f = setdiff(fieldnames(S), fieldnames(part))'
+        for i = 1:numel(part), part(i).(f{1}) = []; end
+    end
+    for f = setdiff(fieldnames(part), fieldnames(S))'
+        for i = 1:numel(S), S(i).(f{1}) = []; end
+    end
     S=[S part]; %#ok<AGROW>
     if isfile(fullfile(folder,'calibration.csv'))
         D=readtable(fullfile(folder,'calibration.csv'),'TextType','char');
