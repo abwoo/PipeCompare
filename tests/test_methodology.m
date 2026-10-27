@@ -765,3 +765,54 @@ th=pipecompare.eval.Rank.shrink(F,v);
 verifyTrue(tc,isnan(th(2)));verifyTrue(tc,all(isfinite(th([1 3 4 5]))));
 verifyTrue(tc,all(isfinite(pipecompare.eval.Rank.shrink(F,pts))));
 end
+
+function testGuardReferenceReplacesSkipOnlyWhenBaselineIsSignificantlyBetter(tc)
+% guardReference is the rule Group.rank reuses per recording: a candidate
+% that skips channel repair before average reference is replaced only by
+% an eligible repaired candidate shown significantly better, never by
+% indistinguishable evidence.
+pts=[1.0;0.9];th=pts;biased=[false;false];repaired=[false;true];needsRepair=[true;true];
+[pick,guard]=pipecompare.eval.Rank.guardReference(pts,th,biased,repaired,needsRepair,1,0.05);
+verifyEqual(tc,pick,2);verifyEqual(tc,guard.decision,'retain-baseline');
+% Baseline only 0.02 better with critical 0.05: evidence is insufficient,
+% so the proposal is maintained rather than vetoed.
+[pick,guard]=pipecompare.eval.Rank.guardReference([1.0;0.98],[1.0;0.98],biased,repaired,needsRepair,1,0.05);
+verifyEqual(tc,pick,1);verifyEqual(tc,guard.decision,'maintain');
+% A biased repaired candidate is still the baseline when it is the only
+% eligible repaired candidate (the unbiased preference only narrows a
+% choice among several eligible candidates, it does not drop the last one).
+[pick,guard]=pipecompare.eval.Rank.guardReference(pts,th,[false;true],repaired,needsRepair,1,0.05);
+verifyEqual(tc,pick,2);verifyEqual(tc,guard.decision,'retain-baseline');
+% Proposal already repaired: the guard is idle and returns an empty guard.
+[pick,guard]=pipecompare.eval.Rank.guardReference(pts,th,biased,repaired,needsRepair,2,0.05);
+verifyEqual(tc,pick,2);verifyTrue(tc,isempty(guard));
+% No eligible repaired candidate: the guard is idle, proposal kept.
+[pick,guard]=pipecompare.eval.Rank.guardReference(pts,th,biased,[false;false],needsRepair,1,0.05);
+verifyEqual(tc,pick,1);verifyTrue(tc,isempty(guard));
+end
+
+function testGroupGuardMarksRecordingsWithoutCriticalValueUnprotected(tc)
+% Group.rank must never silently skip a recording whose guard cannot run:
+% when its ranking table lacks the diffHi column the critical value is
+% unrecoverable, so that recording is marked 'unprotected', the group
+% status becomes 'partially-unguarded', and no candidate is vetoed on
+% that recording's behalf.
+rs=RandStream('mt19937ar','Seed',3007);x=randn(rs,60,1);
+Y=[1 1.05;1.08 1;1.01 1.02];opts=pipecompare.eval.Rank.defaults();
+opts.nBoot=199;opts.nSplits=0;
+S=struct('name',{},'keys',{},'labels',{},'table',{},'cands',{},'ref',{},'ranking',{});
+for i=1:size(Y,1)
+    c=[nqc_cand(x*Y(i,1)),nqc_cand(x*Y(i,2))];ref=nqc_ref(60);
+    R=pipecompare.eval.Rank.run(c,ref,opts);
+    T=R.table;if i==2,T=removevars(T,'diffHi');end
+    S(i)=struct('name',sprintf('record%d',i),'keys',{{'a','b'}},'labels',{{'a','b'}}, ...
+        'table',T,'cands',c,'ref',ref,'ranking',struct('options',opts,'objective',R.objective));
+end
+G=pipecompare.Group.rank(S);
+verifyTrue(tc,strcmp(G.guardProtection.guardStatus{2},'unprotected'));
+verifyTrue(tc,strcmp(G.guardProtection.reason{2},'ranking table lacks guard inputs'));
+verifyTrue(tc,strcmp(G.guardProtection.guardStatus{1},'guarded'));
+verifyTrue(tc,strcmp(G.guardProtection.guardStatus{3},'guarded'));
+verifyEqual(tc,G.guardGroupStatus,'partially-unguarded');
+verifyTrue(tc,all(~G.groupGuardBlocked));
+end
