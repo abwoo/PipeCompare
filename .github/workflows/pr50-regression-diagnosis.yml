@@ -1,0 +1,27 @@
+name: Diagnose completed PR50 development results
+on:
+  push:
+    branches: [codex/pr50-regression-diagnosis-20261027]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: development-optimization-*-summary
+          path: source_results
+          run-id: 40282756637
+          github-token: ${{ github.token }}
+      - name: Attribute errors using saved candidates only
+        run: python benchmarks/diagnose_paired_regression.py source_results diagnosis/paired_regression.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pr50-paired-regression-attribution
+          path: diagnosis
+          retention-days: 90
