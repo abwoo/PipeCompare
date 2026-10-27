@@ -1,0 +1,86 @@
+name: PR50 source-resolved error audit
+on:
+  push:
+    branches: [codex/pr50-root-cause-20261027]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: pr50-root-cause-audit
+  cancel-in-progress: false
+jobs:
+  source-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+          fetch-depth: 2
+      - name: Checkout EEGLAB 2026.0.0
+        run: git clone --depth 1 --branch 2026.0.0 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
+      - name: Bound MATLAB dependency downloads
+        run: bash PipeCompare/.github/scripts/prepare-matlab.sh
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+          products: Signal_Processing_Toolbox
+      - name: Keep the original simulator as a byte-and-RNG regression reference
+        run: |
+          python - <<'PY'
+          import subprocess
+          from pathlib import Path
+          source=subprocess.check_output(['git','show','719f29303095dfaa72afe596c7670fbbf3d0f67c:benchmarks/bench_synth.m'],cwd='PipeCompare',text=True)
+          source=source.replace('function [EEG, truth] = bench_synth(', 'function [EEG, truth] = bench_synth_reference(',1)
+          Path('PipeCompare/tests/bench_synth_reference.m').write_text(source)
+          PY
+      - name: Test source tracing and replay contracts only
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab'));eeglab nogui;
+            cd PipeCompare;addpath(pwd);addpath(fullfile(pwd,'tests'));addpath(fullfile(pwd,'benchmarks'));
+            mkdir('component_artifacts');diary(fullfile('component_artifacts','tests.log'));
+            assert(strcmp(version('-release'),'2026a'));
+            r=runtests(fullfile('tests','test_component_audit.m'));disp(table(r));
+            assert(numel(r)==3&&all([r.Passed]));diary off;
+      - uses: actions/download-artifact@v4
+        with:
+          name: pr50-reference-guard
+          path: saved/guard
+          run-id: 40458110149
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: development-optimization-synthetic-summary
+          path: saved/summary
+          run-id: 40282756637
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: development-synthetic-40102-balanced-slice-4
+          path: saved/seed40102
+          run-id: 40282756637
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: development-synthetic-40103-balanced-slice-3
+          path: saved/seed40103
+          run-id: 40282756637
+          github-token: ${{ github.token }}
+      - name: Decompose two existing recordings with their cached fitted decisions
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab'));eeglab nogui;
+            addpath(fullfile(pwd,'PipeCompare'));addpath(fullfile(pwd,'PipeCompare','benchmarks'));
+            diary(fullfile(pwd,'PipeCompare','component_artifacts','audit.log'));
+            pipecompare_component_audit(fullfile(pwd,'saved'),fullfile(pwd,'PipeCompare','component_artifacts'));diary off;
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pr50-source-resolved-error-audit
+          path: PipeCompare/component_artifacts
+          if-no-files-found: error
+          retention-days: 90
