@@ -206,7 +206,9 @@ classdef Measure
             % in the estimated artifact share. Mean separation is not
             % treated as within-group noise. This assumes common within-
             % group variance and fixed fitted labels/weights; uncertainty
-            % from learning preprocessing is not included.
+            % from learning preprocessing is not included. The explicit
+            % 'heteroscedastic' mode estimates the two within-group variances
+            % separately; each group must have residual degrees of freedom.
             % sq=max(abs(bias)-BiasZ*se,0)^2 is a fitted risk proxy, not a
             % calibrated absolute error or causal artifact effect.
             % Zero when no kept trial has a detected artifact. NaN
@@ -215,7 +217,7 @@ classdef Measure
             % assessed says which weighted means have an estimate. 1 x L.
             if nargin < 4, counts = ones(size(K)); end
             if nargin < 5,varianceMode='pooled';end
-            assert(any(strcmp(varianceMode,{'pooled','legacy-total'})),'PipeCompare:Weights','Unknown artifact variance model.');
+            assert(any(strcmp(varianceMode,{'pooled','legacy-total','heteroscedastic'})),'PipeCompare:Weights','Unknown artifact variance model.');
             assert(all(isfinite(K(:)) & K(:) >= 0), 'PipeCompare:Weights', 'Bias weights must be finite and nonnegative.');
             assert(all(isfinite(counts(:)) & counts(:) >= 0 & counts(:) == fix(counts(:))), ...
                 'PipeCompare:Weights', 'Resampling counts must be nonnegative integers.');
@@ -243,6 +245,16 @@ classdef Measure
             end
             p=nB./n;contrast=sB./nB-sN./nN;bias=p.*contrast;
             se2=p.^2.*v.*(qB./nB.^2+qN./nN.^2);
+            if strcmp(varianceMode,'heteroscedastic')
+                % Welch-type contrast variance: artifact and clean trials
+                % need not have equal residual variance. Q retains physical
+                % bootstrap multiplicities separately from reliability weights.
+                dofB=nB-qB./max(nB,realmin);dofN=nN-qN./max(nN,realmin);
+                vB=ssB./max(dofB,realmin);vN=ssN./max(dofN,realmin);
+                se2=p.^2.*(vB.*qB./nB.^2+vN.*qN./nN.^2);
+                varianceAssessed=dofB>10*eps.*max(nB,realmin) & ...
+                    dofN>10*eps.*max(nN,realmin);
+            end
             if ~strcmp(varianceMode,'legacy-total')
                 % The share is estimated too: retain its delta-method
                 % uncertainty without calling mean separation noise.

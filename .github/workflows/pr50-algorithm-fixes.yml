@@ -1,0 +1,76 @@
+name: PR50 scoped algorithm audit
+on:
+  push:
+    branches: [codex/pr50-algorithm-fixes-20261027]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: pr50-scoped-algorithm-audit
+  cancel-in-progress: false
+jobs:
+  changed-algorithms:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+      - uses: ./PipeCompare/.github/actions/setup-2026
+      - name: Test only affected statistical and archive contracts
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab'));eeglab nogui;
+            cd PipeCompare;addpath(pwd);addpath(fullfile(pwd,'tests'));
+            mkdir('algorithm_artifacts');diary(fullfile('algorithm_artifacts','tests.log'));
+            assert(strcmp(version('-release'),'2026a'));
+            r=run_all({'test_algorithm_regressions','test_statistics','test_methodology'});
+            fprintf('ALGORITHM_TESTS total=%d passed=%d failed=%d skipped=%d\n',numel(r),nnz([r.Passed]),nnz([r.Failed]),nnz([r.Incomplete]));
+            assert(all([r.Passed]),'Changed-algorithm tests must all execute and pass');diary off;
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: development-optimization-public-*
+          path: saved_scores
+          run-id: 40282756637
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: development-optimization-synthetic-summary
+          path: saved_scores/development-optimization-synthetic-summary
+          run-id: 40282756637
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: development-synthetic-40101-balanced-slice-2
+          path: saved_scores/seed40101
+          run-id: 40282756637
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: development-synthetic-40102-balanced-slice-4
+          path: saved_scores/seed40102
+          run-id: 40282756637
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: development-synthetic-40103-balanced-slice-3
+          path: saved_scores/seed40103
+          run-id: 40282756637
+          github-token: ${{ github.token }}
+      - name: Re-score existing candidates without fitting EEG or touching confirmation
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab'));eeglab nogui;
+            addpath(fullfile(pwd,'PipeCompare'));addpath(fullfile(pwd,'PipeCompare','benchmarks'));
+            diary(fullfile(pwd,'PipeCompare','algorithm_artifacts','replay.log'));
+            replay_algorithm_scores(fullfile(pwd,'saved_scores'),fullfile(pwd,'PipeCompare','algorithm_artifacts'));diary off;
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pr50-scoped-algorithm-audit
+          path: PipeCompare/algorithm_artifacts
+          if-no-files-found: error
+          retention-days: 90

@@ -86,6 +86,13 @@ for rec = 1:nRec
     end
     feas = find(strcmp(r.ranking.table.status, 'feasible'))';
     C = pipecompare.eval.Calibration.rows(r,feas,population,want,s);
+    % Keep reusable per-trial statistics outside the disposable checkpoints.
+    % Later scoring/uncertainty audits must not require another ICA fit.
+    score=pipecompare_record_summary(r,sprintf('synthetic_%d',s)); %#ok<NASGU>
+    source=struct('recording',s,'recipe',recipe,'artifactVariance',artifactVariance, ...
+        'revision',getenv('PIPECOMPARE_VALIDATION_REVISION'),'population',population,'realized',want); %#ok<NASGU>
+    save(fullfile(outDir,sprintf('scores_%d.mat',s)),'score','source','-v7');
+
     if ~isempty(C), if isempty(calib), calib = C; else, calib = [calib; C]; end, end %#ok<AGROW>
     % the fixed pipelines
     p = pipecompare.plan.Plan();

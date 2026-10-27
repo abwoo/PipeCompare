@@ -1294,3 +1294,52 @@ Automatic rejection/component-choice bootstrap now passes physical counts
 to the bias estimator; the legacy control preserves its previous convention.
 Both corrections can change adaptive choices and require whole-procedure
 outcome validation, not only rescoring selected outputs.
+
+
+### Unequal artifact-group noise and guarded upgrades
+
+The optional `artifactvariance='heteroscedastic'` mode replaces the shared
+within-group variance in the expression above by separate weighted variances:
+
+    Var(p*d) approximately p^2 * (s_B^2 * Q_B/W_B^2 + s_N^2 * Q_N/W_N^2)
+                          + d^2 * Var(p)
+
+Each variance uses its own residual degrees of freedom, W_g-Q_g/W_g.
+A group without residual degrees of freedom is unassessed, including a lone
+clean comparison trial. Reliability-weight scaling and physical bootstrap
+multiplicities retain their separate meanings. This is a Welch-type delta
+approximation conditional on fitted labels and weights. It corrects the
+common-variance assumption; it does not identify a causal artifact effect,
+validate the soft-thresholded bias proxy, or establish better EEG recovery.
+The pooled default and explicit legacy-total control remain reproducible.
+A change to the default requires paired whole-procedure validation.
+
+`Rank.run(..., struct('upgradeBaseline', baselineId), ...)` optionally
+protects a designated candidate in the same recording and comparison
+stratum. The baseline must be feasible. A proposed replacement is accepted
+only when its score difference plus the simultaneous all-pairs bootstrap
+critical value is strictly negative. Otherwise the baseline is retained.
+The same guard is used in conditional bootstrap selection frequencies.
+An incomplete family can yield an infinite bound and cannot justify an
+upgrade. Cross-fit diagnostics remain those of the underlying unguarded
+score selector and explicitly carry `upgradeGuardApplied=false`.
+This guards promotion on the fitted score; it is not a guarantee about
+unknown true MSE or independent generalization. Declare the baseline
+without consulting ground truth. The option is deliberately explicit.
+
+Synthetic benchmarks now preserve compact per-trial score archives outside
+disposable EEG/ICA checkpoints. These contain candidate statistics, factor
+levels, reference trial identities and truth/provenance metadata, so future
+ranking audits can reuse fits. A replay is a conditional development
+diagnostic, not a new independent validation or a rerun of adaptive
+preprocessing choices.
+
+The completed four-seed development comparison on revision
+4116ea11f3d5d39e4d3d282894dcf487172bd50d remains failed at its original
+admission threshold: balanced selected MSE increased 53.84%. Seed 40103
+contributes 1.04705 of the 1.04901 summed paired MSE increase. Saved-score
+diagnostics reject a blanket switch from the two-SE soft threshold to
+positive-part bias-squared minus variance: its raw-score-minimum MSE is
+1.05960, versus 0.74934 for the saved balanced recommendations. This comparison
+is descriptive (the recommendation rule also uses shrinkage and equivalence),
+and supplies no justification for changing the default or opening confirmation.

@@ -129,7 +129,7 @@ classdef Rank
                 'maxAmplitudeError', 0.10, 'maxLatencyShiftMs', 10, 'maxArtifactPct', 0.05, ...
                 'minWaveformCorr', 0.95, 'minTopoCorr', 0.90, ...
                 'objective', 'composite', 'nBoot', 1999, 'nBootPeakOuter', 999, 'nBootPeakInner', 100, ...
-                'nBootPeak', 1000, 'alpha', 0.02, 'seed', 1, 'equivalenceMargin', 0.05, 'nSplits', 20);
+                'nBootPeak', 1000, 'alpha', 0.02, 'seed', 1, 'equivalenceMargin', 0.05, 'nSplits', 20, 'upgradeBaseline', []);
         end
 
         function R = run(cands, ref, opts, levels)
@@ -209,9 +209,14 @@ classdef Rank
             lo = nan(n, 1); hi = nan(n, 1); hiKept = nan(n, 1); notDist = false(n, 1); equiv = false(n, 1);
             recommended = []; best = [];
             byStratum = struct('stratum', {}, 'best', {}, 'recommended', {}, 'set', {}, 'crossfit', {}, 'stability', {}, ...
-                'factorial', {}, 'bootstrapCompleteShare', {}, 'bootstrapUnavailableShare', {});
+                'factorial', {}, 'bootstrapCompleteShare', {}, 'bootstrapUnavailableShare', {}, 'upgradeGuard', {});
             chosen = nan(n, 1); shrunk = nan(n, 1);
             strata = unique(stratum(strcmp(status, 'feasible')), 'stable');
+            if ~isempty(opts.upgradeBaseline)
+                validateattributes(opts.upgradeBaseline,{'numeric'},{'scalar','integer','positive','<=',n});
+                assert(numel(strata)==1 && strcmp(status{opts.upgradeBaseline},'feasible'), ...
+                    'PipeCompare:Baseline','The upgrade baseline must be feasible in the single comparison stratum.');
+            end
             for s = 1:numel(strata)
                 feas = find(strcmp(status, 'feasible') & strcmp(stratum, strata{s}));
                 boot = pipecompare.eval.Rank.bootstrap(cands(feas), ref, opts, {objName});
@@ -229,8 +234,16 @@ classdef Rank
                 th = pipecompare.eval.Rank.shrink(F, pts(:)); shrunk(feas) = th;
                 biased = double(bias > pipecompare.eval.Rank.BiasShare * noise);
                 rec = feas(choose(keep, th, biased(feas), equiv(feas), minRet(feas), ampStep(ampErr(feas))));
+                base=[];guard=[];
+                if ~isempty(opts.upgradeBaseline)
+                    base=find(feas==opts.upgradeBaseline);
+                    [pick,guard]=pipecompare.eval.Rank.guardUpgrade(pts,find(feas==rec),base,max(crit,0));
+                    guard.baseline=feas(guard.baseline);guard.proposed=feas(guard.proposed);
+                    rec=feas(pick);
+                end
                 cf = pipecompare.eval.Rank.crossfit(cands(feas), ref, opts, objName, pts(ib), F);
-                [f, unavailableShare] = selectionFrequency(boot{1}, crit, minRet(feas), ampStep(ampErr(feas)), biased(feas), equiv(feas), F);
+                if ~isempty(cf),cf.upgradeGuardApplied=false;end
+                [f, unavailableShare] = selectionFrequency(boot{1}, crit, minRet(feas), ampStep(ampErr(feas)), biased(feas), equiv(feas), F,base);
                 completeShare=mean(all(isfinite(boot{1}),1));
                 if completeShare<1
                     for q=feas(:)'
@@ -241,7 +254,7 @@ classdef Rank
                 chosen(feas) = f;
                 byStratum(end+1) = struct('stratum', strata{s}, 'best', feas(ib), 'recommended', rec, 'set', t, ...
                     'crossfit', cf, 'stability', f(feas == rec), 'factorial', F, ...
-                    'bootstrapCompleteShare',completeShare,'bootstrapUnavailableShare',unavailableShare); %#ok<AGROW>
+                    'bootstrapCompleteShare',completeShare,'bootstrapUnavailableShare',unavailableShare,'upgradeGuard',guard); %#ok<AGROW>
             end
             if isscalar(byStratum)
                 recommended = byStratum.recommended; best = byStratum.best;
@@ -264,6 +277,26 @@ classdef Rank
             R = struct('table', T, 'whyList', {whyList}, 'order', order, 'best', best, 'recommended', recommended, ...
                 'byStratum', byStratum, 'objective', objName, 'options', opts, 'units', {ref.units}, ...
                 'validationScope','conditional-on-fitted-candidates','fullyHeldOut',false);
+        end
+
+        function [pick, guard] = guardUpgrade(pts, proposed, baseline, critical)
+            % A predeclared feasible baseline is replaced only if the upper
+            % simultaneous paired-bootstrap bound is below zero. critical
+            % must cover ALL candidate pairs (bestSet), including selection.
+            % This controls fitted-score promotion, not unknown true error.
+            validateattributes(pts,{'numeric'},{'vector','real','nonempty'});
+            validateattributes(proposed,{'numeric'},{'scalar','integer','positive','<=',numel(pts)});
+            validateattributes(baseline,{'numeric'},{'scalar','integer','positive','<=',numel(pts)});
+            validateattributes(critical,{'numeric'},{'scalar','real','nonnegative','nonnan'});
+            pick=baseline;upper=Inf;decision='retain-baseline';
+            if proposed==baseline
+                upper=0;decision='baseline-already-selected';
+            elseif all(isfinite(pts([proposed baseline])))
+                upper=pts(proposed)-pts(baseline)+critical;
+                if upper<0,pick=proposed;decision='promote';end
+            end
+            guard=struct('baseline',baseline,'proposed',proposed,'upperDifference',upper, ...
+                'decision',decision,'scope','conditional-on-fitted-score; not a guarantee of true error');
         end
 
         function why = signalReasons(sg, opts)
@@ -812,7 +845,7 @@ E = unique([U(eqv(U)); U(j)]);
 k = E(o(1));
 end
 
-function [f, unavailable] = selectionFrequency(Bq, c, ret, amp, biased, eqv, F)
+function [f, unavailable] = selectionFrequency(Bq, c, ret, amp, biased, eqv, F, baseline)
 % The share of the bootstrap resamples (columns of Bq, K x B) in which
 % each of K candidates is recommended: those within c of the lowest
 % objective of the resample, then the rule of step 5 (choose) on the
@@ -821,9 +854,10 @@ function [f, unavailable] = selectionFrequency(Bq, c, ret, amp, biased, eqv, F)
 K = size(Bq, 1); cnt = zeros(K, 1); used = 0;
 for b = 1:size(Bq, 2)
     v = Bq(:, b); ok = isfinite(v);
-    if ~any(ok), continue; end
+    if ~any(ok) || (~isempty(baseline) && ~ok(baseline)), continue; end
     th = pipecompare.eval.Rank.shrink(F, v);
     k = choose(ok & v - min(v(ok)) <= c, th, biased, eqv, ret, amp);
+    if ~isempty(baseline),k=pipecompare.eval.Rank.guardUpgrade(v,k,baseline,max(c,0));end
     cnt(k) = cnt(k) + 1; used = used + 1;
 end
 B=size(Bq,2);f=cnt/max(B,1);unavailable=(B-used)/max(B,1);

@@ -28,7 +28,8 @@ function [EEG, com, result] = pop_pipecompare(EEG, varargin)
 %              balanced also compares skipping automatic cleanup
 %              (standard: badchannels, ica, highpass, lowpass, reject,
 %              weight; filters: the two filters)
-%   'artifactvariance' 'pooled' (default) | 'legacy-total' (old-model control)
+%   'artifactvariance' 'pooled' (default) | 'heteroscedastic' (unequal group noise)
+%                      | 'legacy-total' (old-model control)
 %   'comparecleanup' false (default) | true: also compare skipping cleanup
 %   'steps'    instead of 'recipe', any of 'badchannels', 'ica',
 %              'icsme' (with 'ica': the components to remove also chosen
@@ -142,8 +143,8 @@ runOpts = pipecompare.simple.Presets.searchOptions();
 runOpts.dataUnit = state.unitGuess;
 runOpts.checkpoint=opts.checkpoint;runOpts.maxSeconds=opts.maxseconds;
 runOpts.artifactVariance=pipecompare.utils.fieldOr(opts,'artifactvariance','pooled');
-assert(any(strcmp(runOpts.artifactVariance,{'pooled','legacy-total'})), ...
-    'PipeCompare:Simple','artifactvariance must be pooled or legacy-total.');
+assert(any(strcmp(runOpts.artifactVariance,{'pooled','legacy-total','heteroscedastic'})), ...
+    'PipeCompare:Simple','artifactvariance must be pooled, heteroscedastic or legacy-total.');
 if strcmp(state.unitGuess, 'V'), pipecompare.utils.log('The data are in volts (judged from the amplitude scale); they are compared in uV.'); end
 prog = pipecompare.gui.Progress.empty;
 if ~strcmp(opts.show, 'off')
@@ -215,7 +216,7 @@ elseif ~pipecompare.simple.Presets.isBand(opts.measure)
 elseif opts.segment ~= 2, args = [args {'segment', opts.segment}]; end
 if isempty(recipe), args = [args {'steps', steps}]; else, args = [args {'recipe', recipe}]; end
 if opts.comparecleanup,args=[args {'comparecleanup',true}];end
-if strcmp(runOpts.artifactVariance,'legacy-total'),args=[args {'artifactvariance','legacy-total'}];end
+if ~strcmp(runOpts.artifactVariance,'pooled'),args=[args {'artifactvariance',runOpts.artifactVariance}];end
 if strcmp(opts.reference, 'average'), args = [args {'reference', 'average'}]; end
 if strcmp(opts.show, 'off'), args = [args {'show', 'off'}]; end
 com = sprintf('EEG = pop_pipecompare(EEG, %s);', vararg2str(args));
