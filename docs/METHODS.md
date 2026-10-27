@@ -1370,3 +1370,27 @@ proof that the channel detector or true MSE is correct. Development
 protocol version 4 rejects imports of frozen Balanced recommendations
 computed without this rule; unchanged explicit legacy Standard controls
 retain their provenance checks.
+
+The explicit `upgradeBaseline` option takes precedence over this automatic
+reference-cleanup guard.
+
+Targeted verification: [run 40458110149](https://github.com/abwoo/PipeCompare/actions/runs/40458110149)
+passed six MATLAB decision/stability tests and 27 Python reuse/protocol tests.
+It reused the bootstrap bounds and factorial scores from
+[run 40430435867](https://github.com/abwoo/PipeCompare/actions/runs/40430435867),
+whose 103 affected-statistics/archive tests passed.
+
+On the saved public candidate families, all four recommendations were
+unchanged. On cached simulation main trees (later adaptive leaves absent),
+selected MSE was 0.780581 to 0.780581 for 40101, 0.000992 to 0.121838 for
+40102, and 1.352610 to 0.218319 for 40103. The second recording worsens;
+the rule is not a guarantee of improvement for every recording.
+For the frozen final family of 40104, the original recommendation already
+includes interpolation before average reference, so the decision guard is
+the identity there; its old MSE of 0.863168 is carried forward, not newly
+measured. Combining that unchanged value with the three cache replays gives
+a descriptive MSE of 0.495976 (1.83% above the old Standard's 0.487085).
+This is not a new completed four-record whole-procedure comparison and
+must not be used to mark the development admission gate as passed.
+New adaptive cutoffs, component choices and independent generalization
+remain outside this fixed-candidate replay. Confirmation remains unopened.

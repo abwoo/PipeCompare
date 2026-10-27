@@ -52,6 +52,7 @@ end
 
 function report=inspect(cands,ref,opts,levels,original,name,population,root,outDir)
 opts.nSplits=0;opts.upgradeBaseline=[];opts.nBoot=1999;
+opts.protectReferenceCleanup=false; % isolate variance-model diagnostics from the later decision guard
 for j=1:numel(cands)
     if ~isfield(cands,'message')||isempty(cands(j).message),cands(j).message='saved candidate not eligible';end
 end
