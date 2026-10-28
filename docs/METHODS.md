@@ -1565,3 +1565,50 @@ with EEGLAB 2026.0.0, with a 340-minute per-seed job timeout matching
 the benchmark per-record anchor. The confirmation seeds 41001-41030 and
 participants 81-109 stay locked throughout and are never used as shadow
 seeds.
+
+### Round 6 amendment (2026-10-28): split-arm execution and contractMatch fix
+
+This amendment supersedes only the execution description in the
+shadow-selection section above; statistics, seeds, arm definitions,
+labels, and frozen criteria are unchanged. Round 5 (head 23f3010)
+failed for two independent reasons. First, one matrix job ran both
+searches for a seed and 7 of 8 seeds exceeded the 330-minute step
+timeout, producing no fragment at all. Second, `contractMatch` used
+`cellfun` on a struct array (`c.conditions`), which MATLAB rejects,
+and its `try/catch` swallowed the error and returned false on every
+call, so the Standard arm was unavailable on every seed even when
+both searches succeeded; the only completed Round 5 seed (20033)
+shows exactly the reason "contract mismatch with Balanced search",
+with no pick and no MSE for the Standard arm, while the two Balanced
+arms shared pick 6 and identical MSEs.
+
+Round 6 fixes both. `contractMatch` now uses `arrayfun`, the correct
+iterator for a struct array. Execution is split by search: each seed
+gets two independent matrix jobs, Standard-only and Balanced-only
+(each with a 360-minute job timeout and a 350-minute MATLAB step
+timeout, fragment upload with `if: always()`). The Balanced-only job
+derives both Balanced arms from its single fitted family, exactly as
+before; the Standard-only job computes its MSE against its own
+contract's population truth, and the merge step keeps the Standard
+arm assessable only when its contract fingerprint (first-component
+roi and window, baseline, condition events) matches the Balanced
+fingerprint, so a kept Standard MSE is on the same truth vector as
+before. Raising 330 to 360 alone was rejected (only +30 minutes
+while seed 20031 was still searching at 330 with an unknown
+remainder); shrinking the search scope was rejected (it would change
+the arm definitions and break comparability with production search).
+
+Partial runs are now published, not skipped: the collect job runs
+with `if: always()` even when search jobs fail, the merge step
+combines arm fragments into per-seed entries (a missing arm is
+unavailable with reason "arm fragment missing", a fingerprint
+mismatch makes the Standard arm unavailable with reason "contract
+mismatch with Balanced search"), and the run JSON lists only the
+seeds actually present while `nSeedsPlanned` records the planned
+count. The independent checker was updated to read arm fragments
+and to verify the fingerprint condition. The Round 5 run is void as
+paired evidence for the new run: its 20033 fragment is diagnostic
+only and is never counted in the new run's paired evidence set. If
+a single search still exceeds 360 minutes, GitHub-hosted runners
+offer no higher job timeout, so the next step is search slicing or
+checkpointing, not another timeout raise.

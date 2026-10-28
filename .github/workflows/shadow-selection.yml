@@ -13,11 +13,30 @@ name: shadow-selection
 #   pr50-component-audit.yml (a one-off diagnosis pinned to a codex
 #   branch), this workflow is a standing gate and must run on any PR.
 #
-# Timeouts: each matrix job runs ONE seed, i.e. one Standard search
-# plus one Balanced search (an ICA per pipeline). benchmark.yml gives
-# the same per-record workload a 340-minute job timeout, so this
-# workflow uses the same anchor; the MATLAB step is capped at 330 so
-# the artifact upload still has room. No timeout is unbounded.
+# Round 6 execution (supersedes the Round 5 per-seed job below in
+# spirit; statistics, seeds, arm definitions and frozen criteria are
+# unchanged): each matrix job runs ONE SEARCH for one seed, not both
+# searches. Round 5 ran one Standard search plus one Balanced search
+# per seed job and 7 of 8 seeds exceeded the 330-minute step timeout,
+# producing no fragment. A single search is therefore given the
+# GitHub-hosted maximum: job timeout 360 minutes, MATLAB step capped
+# at 350 so the artifact upload still has room. Raising 330 to 360
+# alone was rejected (only +30 minutes while a seed was still
+# searching at 330 with an unknown remainder); shrinking the search
+# scope was rejected (it would change the arm definitions). If a
+# single search still exceeds 360 minutes, the next step is search
+# slicing or checkpointing, not another timeout raise.
+#
+# Contract fix in the same round: contractMatch in the shadow script
+# used cellfun on a struct array and therefore returned false on
+# every seed, making the Standard arm unavailable even when both
+# searches succeeded; it now uses arrayfun.
+#
+# Partial runs: the collect job runs with 'if: always()' even when
+# search jobs fail, and the merge step publishes a run-level output
+# for the seeds actually present (run 'seeds' = present seeds,
+# 'nSeedsPlanned' = planned seeds), so a partial run is checked and
+# published instead of being skipped like Round 5's Merge fragments.
 #
 # Checkout pin: both MATLAB jobs check out the prep job's head SHA
 # explicitly (not the pull_request merge commit), so the commit recorded
@@ -86,15 +105,16 @@ jobs:
           EOF
 
   shadow:
-    name: Shadow seed ${{ matrix.seed }}
+    name: Shadow seed ${{ matrix.seed }} ${{ matrix.arm }}
     needs: prep
     runs-on: ubuntu-latest
-    timeout-minutes: 340
+    timeout-minutes: 360
     strategy:
       fail-fast: false
       max-parallel: 10
       matrix:
         seed: ${{ fromJSON(needs.prep.outputs.seeds) }}
+        arm: [standard, balanced]
     env:
       DISPLAY: ":99"
       SHADOW_HEAD_SHA: ${{ needs.prep.outputs.head_sha }}
@@ -124,26 +144,29 @@ jobs:
           release: R2026a
           products: Signal_Processing_Toolbox
 
-      - name: Run the shadow search for one seed
-        timeout-minutes: 330
+      - name: Run the shadow search for one seed and one search
+        timeout-minutes: 350
         uses: matlab-actions/run-command@v2
         with:
           command: |
             addpath(fullfile(pwd, 'eeglab')); eeglab nogui;
             cd PipeCompare; addpath(pwd); addpath(fullfile(pwd, 'benchmarks'));
             mkdir('shadow_out');
-            pipecompare_shadow_selection(fullfile(pwd, 'shadow_out'), ${{ matrix.seed }}, 1, 'headSha', getenv('SHADOW_HEAD_SHA'), 'workflowRunId', getenv('SHADOW_RUN_ID'), 'maxSeconds', Inf);
+            pipecompare_shadow_selection(fullfile(pwd, 'shadow_out'), ${{ matrix.seed }}, 1, 'arm', '${{ matrix.arm }}', 'headSha', getenv('SHADOW_HEAD_SHA'), 'workflowRunId', getenv('SHADOW_RUN_ID'), 'maxSeconds', Inf);
 
-      - name: Keep the seed fragment
+      - name: Keep the seed arm fragment
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: shadow-seed-${{ matrix.seed }}
+          name: shadow-seed-${{ matrix.seed }}-${{ matrix.arm }}
           path: PipeCompare/shadow_out
 
   collect:
     name: Merge fragments and verify the run
     needs: [prep, shadow]
+    # Run even when search jobs fail, so a partial run is merged,
+    # checked and published instead of being skipped (Round 5).
+    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:

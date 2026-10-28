@@ -163,6 +163,99 @@ verifyEqual(tc, height(S), 2);
 verifyEqual(tc, S.meanDifference(1), 3.125, 'AbsTol', 1e-12);
 end
 
+function testMergeArmFragmentsMatchingFingerprint(tc)
+% Round 6 merge: Standard + Balanced arm fragments with identical
+% contract fingerprints combine into one per-seed entry, and the
+% paired statistics are computed from the combined arms.
+fragDir = mkOutDir(tc, 'merge_match');
+stdFrag = mkArmFrag(20031, mkArm('standard', 1, 1.0), [], '', mkFingerprint([0.3 0.6]));
+balFrag = mkArmFrag(20031, [mkArm('balancedGuarded', 1, 0.5) mkArm('balancedUnguarded', 1, 0.5)], false, 'maintain', mkFingerprint([0.3 0.6]));
+writeFrag(fragDir, 'shadow_selection_seed_20031_standard.json', stdFrag);
+writeFrag(fragDir, 'shadow_selection_seed_20031_balanced.json', balFrag);
+outDir = mkOutDir(tc, 'merge_match_out');
+out = pipecompare_shadow_selection(outDir, 20031, 1, 'mode', 'merge', 'fragmentsDir', fragDir, ...
+    'headSha', 'testhead1234567890', 'workflowRunId', 'test');
+verifyFalse(tc, isempty(out.runJson));
+data = jsondecode(fileread(out.runJson));
+verifyEqual(tc, data.seeds, 20031);
+verifyEqual(tc, data.nSeedsPlanned, 1);
+ps = data.perSeed(1);
+verifyEqual(tc, ps.arms(1).mseGainCorrected, 1.0, 'AbsTol', 1e-12);
+verifyEqual(tc, ps.arms(2).mseGainCorrected, 0.5, 'AbsTol', 1e-12);
+verifyTrue(tc, ps.arms(1).assessable);
+verifyEqual(tc, data.pairedMeanDifference.guardedMinusStandard, -0.5, 'AbsTol', 1e-12);
+verifyEqual(tc, data.verdicts.guardedMinusStandard.verdict, 'established');
+end
+
+function testMergeArmFragmentsMismatchedFingerprint(tc)
+% Round 6 merge: differing contract fingerprints make the Standard
+% arm unavailable with the original contract-mismatch reason, while
+% the Balanced pair (guarded minus unguarded) is still computed.
+fragDir = mkOutDir(tc, 'merge_mismatch');
+stdFrag = mkArmFrag(20031, mkArm('standard', 1, 1.0), [], '', mkFingerprint([0.3 0.6]));
+balFrag = mkArmFrag(20031, [mkArm('balancedGuarded', 1, 0.5) mkArm('balancedUnguarded', 1, 0.5)], false, 'maintain', mkFingerprint([0.3 0.7]));
+writeFrag(fragDir, 'shadow_selection_seed_20031_standard.json', stdFrag);
+writeFrag(fragDir, 'shadow_selection_seed_20031_balanced.json', balFrag);
+outDir = mkOutDir(tc, 'merge_mismatch_out');
+out = pipecompare_shadow_selection(outDir, 20031, 1, 'mode', 'merge', 'fragmentsDir', fragDir, ...
+    'headSha', 'testhead1234567890', 'workflowRunId', 'test');
+data = jsondecode(fileread(out.runJson));
+ps = data.perSeed(1);
+verifyFalse(tc, ps.arms(1).assessable);
+verifyTrue(tc, strcmp(ps.arms(1).reason, 'contract mismatch with Balanced search'));
+verifyEqual(tc, data.coverage.paired_guardedMinusStandard, 0);
+verifyEqual(tc, data.verdicts.guardedMinusStandard.verdict, 'failed');
+verifyEqual(tc, data.pairedMeanDifference.guardedMinusUnguarded, 0, 'AbsTol', 1e-12);
+verifyEqual(tc, data.verdicts.guardedMinusUnguarded.verdict, 'established');
+end
+
+function testMergeArmFragmentsPartialOnlyBalanced(tc)
+% Round 6 partial publish: only the Balanced fragment for seed
+% 20031 is present and seed 20032 has no fragment at all. The run
+% JSON lists only the present seed, but its filename and
+% nSeedsPlanned record the planned count (2), and the Standard arm
+% is unavailable with reason 'arm fragment missing'.
+fragDir = mkOutDir(tc, 'merge_partial');
+balFrag = mkArmFrag(20031, [mkArm('balancedGuarded', 1, 0.5) mkArm('balancedUnguarded', 1, 0.5)], false, 'maintain', mkFingerprint([0.3 0.6]));
+writeFrag(fragDir, 'shadow_selection_seed_20031_balanced.json', balFrag);
+outDir = mkOutDir(tc, 'merge_partial_out');
+out = pipecompare_shadow_selection(outDir, 20031, 2, 'mode', 'merge', 'fragmentsDir', fragDir, ...
+    'headSha', 'testhead1234567890', 'workflowRunId', 'test');
+data = jsondecode(fileread(out.runJson));
+verifyEqual(tc, data.seeds, 20031);
+verifyEqual(tc, data.nSeedsPlanned, 2);
+verifyEqual(tc, numel(data.perSeed), 1);
+ps = data.perSeed(1);
+verifyFalse(tc, ps.arms(1).assessable);
+verifyTrue(tc, strcmp(ps.arms(1).reason, 'arm fragment missing'));
+verifyEqual(tc, data.coverage.paired_guardedMinusStandard, 0);
+verifyEqual(tc, data.pairedMeanDifference.guardedMinusUnguarded, 0, 'AbsTol', 1e-12);
+end
+
+function a = mkArm(name, pick, mse)
+a = struct('name', name, 'pick', pick, 'selectedKey', 'k', 'mseGainCorrected', mse, 'mseRaw', mse, 'assessable', true, 'reason', '');
+end
+
+function fp = mkFingerprint(window)
+fp = struct('roi', {{'Pz'}}, 'window', window, 'baseline', [-0.2 0], 'conditionEvents', {{ {'11'}, {'31'} }});
+end
+
+function frag = mkArmFrag(seed, arms, guardChanged, guardDecision, fp)
+frag = struct('seed', seed, 'arms', arms, 'guardChanged', guardChanged, 'guardDecision', guardDecision, ...
+    'contract', fp, 'labels', struct('fullyHeldOut', true, 'preprocessingRefitted', false, 'adaptiveLeavesIncluded', false), ...
+    'provenance', struct('script', 'benchmarks/pipecompare_shadow_selection.m', 'commit', 'testhead1234567890', ...
+    'workflowRunId', 'test', 'matlabVersion', 'test', 'eeglabVersion', 'test', ...
+    'inputArtifactRunId', [], 'inputArtifactNote', 'fresh synthetic seeds; no frozen input artifact'));
+end
+
+function writeFrag(dir, filename, frag)
+fid = fopen(fullfile(dir, filename), 'w');
+assert(fid >= 0, 'Cannot write fragment %s.', filename);
+cleanup = onCleanup(@() fclose(fid));
+fprintf(fid, '%s\n', jsonencode(frag));
+clear cleanup;
+end
+
 function cands = mkCands(estimates, gains)
 % One candidate per cell entry: m.objectives(1).estimate + signal.gain.
 n = numel(estimates);

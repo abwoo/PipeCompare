@@ -99,10 +99,68 @@ def main():
     expected_head = sys.argv[5] if len(sys.argv) > 5 else None
 
     run = json.loads(final_json.read_text())
+    # Round 6 arm fragments: shadow_selection_seed_<seed>_standard.json
+    # and shadow_selection_seed_<seed>_balanced.json combine into one
+    # per-seed fragment. Complete per-seed fragments
+    # (shadow_selection_seed_<seed>.json) are used as-is. When both
+    # arm fragments are present, their contract fingerprints must
+    # agree, otherwise the run's Standard arm must be unavailable
+    # (the merge step enforces this; the checker verifies it here).
     frags = {}
+    arm_parts = {}
     for path in sorted(frag_dir.rglob("shadow_selection_seed_*.json")):
         frag = json.loads(path.read_text())
-        frags[frag["seed"]] = frag
+        name = path.name
+        if name.endswith("_standard.json") or name.endswith("_balanced.json"):
+            seed = frag["seed"]
+            entry = arm_parts.setdefault(seed, {"arms": {}, "fingerprints": {}})
+            # A single arm encodes as a JSON object, not an array.
+            frag_arms = frag.get("arms", [])
+            if isinstance(frag_arms, dict):
+                frag_arms = [frag_arms]
+            for arm in frag_arms:
+                entry["arms"][arm["name"]] = arm
+            if "guardChanged" in frag:
+                entry["guardChanged"] = frag["guardChanged"]
+            if "guardDecision" in frag:
+                entry["guardDecision"] = frag["guardDecision"]
+            kind = "standard" if name.endswith("_standard.json") else "balanced"
+            entry["fingerprints"][kind] = frag.get("contract")
+            entry["labels"] = frag.get("labels")
+            entry["provenance"] = frag.get("provenance")
+        else:
+            frags[frag["seed"]] = frag
+    for seed, entry in arm_parts.items():
+        # Fill a missing arm with an unavailable placeholder, matching
+        # the merge step's 'arm fragment missing' arm (checker
+        # compares assessable/MSE/pick, not the reason string).
+        arms = []
+        for k in ("standard", "balancedGuarded", "balancedUnguarded"):
+            if k in entry["arms"]:
+                arms.append(entry["arms"][k])
+            else:
+                arms.append({"name": k, "pick": None, "selectedKey": "",
+                             "mseGainCorrected": None, "mseRaw": None,
+                             "assessable": False, "reason": "arm fragment missing"})
+        combined = {"seed": seed,
+                    "arms": arms,
+                    "labels": entry.get("labels"),
+                    "provenance": entry.get("provenance")}
+        if "guardChanged" in entry:
+            combined["guardChanged"] = entry["guardChanged"]
+        if "guardDecision" in entry:
+            combined["guardDecision"] = entry["guardDecision"]
+        # Fingerprint check: both present and differing means the
+        # run's Standard arm must be unavailable.
+        fps = entry["fingerprints"]
+        if "standard" in fps and "balanced" in fps:
+            if fps["standard"] != fps["balanced"]:
+                std = combined["arms"] and next(
+                    (a for a in combined["arms"] if a["name"] == "standard"), None)
+                if std is not None and std.get("assessable"):
+                    fail(f"seed {seed} contract fingerprints differ but "
+                         "Standard arm is assessable in the run")
+        frags[seed] = combined
 
     # ---- required top-level fields ----
     required = ["commit", "seeds", "recipes", "perSeed", "pairedDifferences",

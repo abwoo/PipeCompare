@@ -42,13 +42,61 @@ function out = pipecompare_shadow_selection(outDir, firstSeed, nSeeds, varargin)
 %       nSeeds > 1, the run-level JSON + CSV described below. A matrix
 %       job runs one seed (nSeeds = 1) and writes only its fragment; a
 %       collect job merges fragments with mode 'merge'.
-%   'merge': read per-seed fragment JSONs from 'fragmentsDir' and write
-%       the run-level JSON + CSV. Fails if the fragment count or the
-%       seed list does not match firstSeed/firstSeed+nSeeds-1 exactly.
+%   'search' with Name-Value 'arm': run only one search for the seed.
+%       'arm', 'standard' runs only the Standard search and writes
+%       shadow_selection_seed_<seed>_standard.json; 'arm', 'balanced'
+%       runs only the Balanced search and writes
+%       shadow_selection_seed_<seed>_balanced.json (both Balanced arms,
+%       derived from that one fitted family). 'arm', 'all' (default) is
+%       the original two-search runSeed path. The CI workflow uses the
+%       per-search arms (see Round 6 amendment below); the per-seed
+%       path is kept for local runs and backward compatibility.
+%   'merge': read fragment JSONs from 'fragmentsDir' and write the
+%       run-level JSON + CSV. Accepts complete per-seed fragments
+%       (shadow_selection_seed_<seed>.json) and/or per-search arm
+%       fragments (shadow_selection_seed_<seed>_standard.json and
+%       shadow_selection_seed_<seed>_balanced.json). Arm fragments for
+%       one seed are combined into one per-seed entry; a missing arm
+%       is unavailable with reason 'arm fragment missing'. If both arm
+%       fragments are present but their contract fingerprints differ,
+%       the Standard arm is unavailable with reason 'contract mismatch
+%       with Balanced search' (the original contractMatch semantics).
+%       A seed with no fragment at all is absent from the run output;
+%       the run JSON's 'seeds' field lists only the seeds actually
+%       present, while 'nSeedsPlanned' records the planned count, so a
+%       partial run can still be published and checked instead of
+%       being discarded. The collect job must therefore run even when
+%       search jobs fail (workflow 'if: always()').
 %   'test': unit-test hook. No EEG, no search: the caller supplies
 %       'testArms' (see below) and the script runs only the arm-MSE,
 %       pairing, bootstrap, negative-control and output code. The CI
 %       workflow never sets this mode.
+%
+% Round 6 amendment (2026-10-28, supersedes the execution description
+% below; statistics, seeds, arm definitions and frozen criteria are
+% UNCHANGED). Round 5 (head 23f3010) failed for two independent
+% reasons: (a) one matrix job ran both searches for a seed and 7 of 8
+% seeds exceeded the 330-minute step timeout, so no fragment was
+% produced; (b) contractMatch used cellfun on a struct array
+% (c.conditions), which MATLAB rejects with 'Input expected to be a
+% cell array, was struct instead', and its try/catch swallowed the
+% error and returned false every time, so the Standard arm was
+% unavailable on every seed even when both searches succeeded (the
+% only completed seed, 20033, shows exactly that reason). Round 6
+% fixes (b) by using arrayfun in contractMatch, and fixes (a) by
+% splitting each seed into two independent matrix jobs (Standard-only
+% and Balanced-only, each with a 360-minute job timeout and a
+% 350-minute step timeout, fragment upload with 'if: always()').
+% Raising 330 to 360 alone was rejected: it adds only 30 minutes
+% while seed 20031 was still searching at 330 minutes with an unknown
+% remainder. Shrinking the search scope was rejected: it would change
+% the arm definitions and break comparability with production search.
+% The Round 5 run is void as paired evidence for the new run: its
+% 20033 fragment is diagnostic only and is never counted in the new
+% run's paired evidence set. If a single search still exceeds
+% 360 minutes, GitHub-hosted runners offer no higher job timeout, so
+% the next step is search slicing or checkpointing, not another
+% timeout raise.
 %
 % Unavailable semantics (same mode as benchmarks/diagnose_paired_regression.py):
 % a seed arm with no recommendation, no finite estimate, or an ambiguous
@@ -101,9 +149,11 @@ function out = pipecompare_shadow_selection(outDir, firstSeed, nSeeds, varargin)
 % B, which runs two searches per seed; it must be settled there.)
 %
 % Workflow defaults (see .github/workflows/shadow-selection.yml):
-% first_seed 20031, 8 seeds, MATLAB R2026a + EEGLAB 2026.0.0, per-seed
-% job timeout 340 minutes (benchmark.yml per-record job bound), MATLAB
-% run-step timeout 330 minutes.
+% first_seed 20031, 8 seeds, MATLAB R2026a + EEGLAB 2026.0.0. Round 5
+% used one per-seed job (340 minutes, MATLAB step 330 minutes). Round 6
+% uses one per-search job (360 minutes, MATLAB step 350 minutes):
+% Standard-only and Balanced-only jobs per seed, each uploading its
+% arm fragment with 'if: always()'.
 %
 % This script never changes production ranking code: it only calls the
 % production search (pop_pipecompare) and the production ranker
@@ -114,6 +164,7 @@ function out = pipecompare_shadow_selection(outDir, firstSeed, nSeeds, varargin)
 if nargin < 2 || isempty(firstSeed), firstSeed = 20031; end
 if nargin < 3 || isempty(nSeeds), nSeeds = 8; end
 mode = 'search'; headSha = ''; workflowRunId = ''; maxSeconds = Inf;
+armMode = 'all';
 testArms = []; fragmentsDir = ''; eeglabVersion = getenv('PIPECOMPARE_EEGLAB_VERSION');
 if isempty(eeglabVersion), eeglabVersion = 'unknown'; end
 k = 1;
@@ -123,6 +174,7 @@ while k <= numel(varargin)
     value = varargin{k + 1};
     switch lower(name)
         case 'mode', mode = value;
+        case 'arm', armMode = value;
         case 'headsha', headSha = value;
         case 'workflowrunid', workflowRunId = value;
         case 'maxseconds', maxSeconds = value;
@@ -137,6 +189,7 @@ assert(ischar(outDir) && ~isempty(outDir), 'PipeCompare:Shadow', 'outDir must be
 assert(isscalar(firstSeed) && firstSeed == floor(firstSeed) && firstSeed > 0, 'PipeCompare:Shadow', 'firstSeed must be a positive integer.');
 assert(isscalar(nSeeds) && nSeeds == floor(nSeeds) && nSeeds >= 1 && nSeeds <= 30, 'PipeCompare:Shadow', 'nSeeds must be an integer in 1..30.');
 assert(ismember(mode, {'search', 'merge', 'test'}), 'PipeCompare:Shadow', 'mode must be search, merge or test.');
+assert(ismember(armMode, {'all', 'standard', 'balanced'}), 'PipeCompare:Shadow', 'arm must be all, standard or balanced.');
 if ~strcmp(mode, 'test')
     assert(ischar(headSha) && numel(headSha) >= 7, 'PipeCompare:Shadow', 'headSha is required for search and merge modes (pass the run commit SHA).');
 end
@@ -156,9 +209,10 @@ assert(~any(ismember(seeds, 41001:41030)), 'PipeCompare:Shadow', 'Shadow seeds m
 
 headShort = headSha(1:min(7, numel(headSha)));
 if strcmp(mode, 'merge')
-    perSeed = readFragments(fragmentsDir, seeds, headSha, workflowRunId);
-    runJson = writeRunOutputs(outDir, headSha, headShort, seeds, perSeed, workflowRunId, eeglabVersion);
-    out = struct('mode', mode, 'seeds', seeds, 'perSeed', perSeed, 'runJson', runJson);
+    [perSeed, presentSeeds] = readFragmentsOrArms(fragmentsDir, seeds, headSha, workflowRunId);
+    assert(~isempty(perSeed), 'PipeCompare:Shadow', 'No seed fragments found in %s.', fragmentsDir);
+    runJson = writeRunOutputs(outDir, headSha, headShort, presentSeeds, perSeed, workflowRunId, eeglabVersion, seeds);
+    out = struct('mode', mode, 'seeds', presentSeeds, 'perSeed', perSeed, 'runJson', runJson);
     return;
 end
 
@@ -166,6 +220,22 @@ if strcmp(mode, 'test')
     assert(numel(testArms) == nSeeds && isequal([testArms.seed], seeds), ...
         'PipeCompare:Shadow', 'testArms seeds must equal firstSeed:firstSeed+nSeeds-1 in order.');
     perSeed = armsToPerSeed(testArms);
+elseif strcmp(armMode, 'standard') || strcmp(armMode, 'balanced')
+    % Per-search matrix jobs (Round 6): one seed, one search, one arm
+    % fragment. A matrix job always runs exactly one seed.
+    assert(nSeeds == 1, 'PipeCompare:Shadow', 'arm mode requires exactly one seed per job.');
+    s = seeds(1);
+    if strcmp(armMode, 'standard')
+        armFrag = runArmStandard(s, maxSeconds, headSha, workflowRunId, eeglabVersion);
+    else
+        armFrag = runArmBalanced(s, maxSeconds, headSha, workflowRunId, eeglabVersion);
+    end
+    fragFile = fullfile(outDir, sprintf('shadow_selection_seed_%d_%s.json', s, armMode));
+    writeJson(fragFile, armFrag);
+    fprintf('[shadow] seed %d arm %s fragment written: %s\n', s, armMode, fragFile);
+    perSeed = struct('seed', {}, 'arms', {}, 'guardChanged', {}, 'guardDecision', {});
+    out = struct('mode', mode, 'seeds', seeds, 'perSeed', perSeed, 'runJson', '');
+    return;
 else
     perSeed = struct('seed', {}, 'arms', {}, 'guardChanged', {}, 'guardDecision', {});
     for s = seeds
@@ -233,9 +303,22 @@ end
 arms(end + 1) = stdArm; %#ok<AGROW>
 
 % ---- Balanced arms (shared family) ----
+[guardArm, unguardArm, entry.guardChanged, entry.guardDecision] = balancedArms(rBal, balErr, truthVec, seed);
+arms(end + 1) = guardArm; %#ok<AGROW>
+arms(end + 1) = unguardArm; %#ok<AGROW>
+
+entry.arms = arms;
+fprintf('[shadow] seed %d: standard pick %s, guarded pick %s, unguarded pick %s\n', ...
+    seed, pickText(stdArm.pick), pickText(guardArm.pick), pickText(unguardArm.pick));
+end
+
+function [guardArm, unguardArm, guardChanged, guardDecision] = balancedArms(rBal, balErr, truthVec, seed)
+% Balanced arms from ONE fitted family (shared by runSeed and by the
+% Round 6 Balanced-only job). Logic is exactly the former runSeed
+% balanced section, moved here so the two paths cannot drift apart.
 guardArm = emptyArm('balancedGuarded');
 unguardArm = emptyArm('balancedUnguarded');
-guardDecision = '';
+guardDecision = ''; guardChanged = [];
 if ~isempty(balErr)
     guardArm.reason = balErr;
     unguardArm.reason = balErr;
@@ -248,11 +331,6 @@ else
     ub = [];
     if isfield(baseOpts, 'upgradeBaseline'), ub = baseOpts.upgradeBaseline; end
     if ~isempty(ub)
-        % An explicit upgrade baseline replaces the reference guard with
-        % guardUpgrade, so a protect=false re-run would NOT be an
-        % unguarded decision. Refuse to invent semantics: both balanced
-        % arms are unavailable for this seed. (The benchmark search path
-        % never sets upgradeBaseline; this branch is defensive.)
         guardArm.reason = 'explicit upgradeBaseline present; guard contrast undefined';
         unguardArm.reason = 'explicit upgradeBaseline present; guard contrast undefined';
     else
@@ -261,10 +339,6 @@ else
             guardArm.reason = 'no recommendation';
             unguardArm.reason = 'no recommendation (shared family has no guarded pick)';
         else
-            % Fidelity re-run: the guarded re-execution must reproduce
-            % the stored production recommendation exactly. Any drift
-            % means the re-execution path is wrong, so fail loudly
-            % instead of reporting drifted decisions.
             optsG = baseOpts; optsG.protectReferenceCleanup = true;
             RG = pipecompare.eval.Rank.run(cands, rBal.ref, optsG, levelsOf(rBal.leaves));
             assert(isscalar(RG.recommended) && RG.recommended == stored, ...
@@ -281,12 +355,10 @@ else
             [mseGC2, mseRaw2, okU] = armMse(cands, unguardedPick, truthVec);
             unguardArm = fillArm(unguardArm, unguardedPick, rBal, mseGC2, mseRaw2, okU, 'no recommendation');
             if isempty(unguardedPick)
-                entry.guardChanged = [];
+                guardChanged = [];
             else
-                entry.guardChanged = (stored ~= unguardedPick);
+                guardChanged = (stored ~= unguardedPick);
             end
-            entry.guardDecision = guardDecision;
-            % Negative control: identical picks must give identical MSEs.
             if ~isempty(unguardedPick) && stored == unguardedPick
                 assert(abs(guardArm.mseGainCorrected - unguardArm.mseGainCorrected) < 1e-12 && ...
                     abs(guardArm.mseRaw - unguardArm.mseRaw) < 1e-12, ...
@@ -295,12 +367,84 @@ else
         end
     end
 end
-arms(end + 1) = guardArm; %#ok<AGROW>
-arms(end + 1) = unguardArm; %#ok<AGROW>
+end
 
-entry.arms = arms;
-fprintf('[shadow] seed %d: standard pick %s, guarded pick %s, unguarded pick %s\n', ...
-    seed, pickText(stdArm.pick), pickText(guardArm.pick), pickText(unguardArm.pick));
+function frag = runArmStandard(seed, maxSeconds, headSha, workflowRunId, eeglabVersion)
+% Round 6 Standard-only job: one search, one arm fragment. The
+% population truth is computed from the Standard contract itself; the
+% merge step checks that its fingerprint matches the Balanced
+% fingerprint, and only then keeps the Standard arm assessable, so the
+% truth vector is identical to the Balanced-contract truth whenever
+% the arm is kept (the fingerprints agree on roi, window, baseline
+% and condition events, which are exactly the inputs to populationP3).
+[EEG, truth] = bench_synth(seed);
+setBase(EEG);
+[rStd, stdErr] = runSearch(EEG, seed, 'standard', 'legacy-total', maxSeconds);
+stdArm = emptyArm('standard');
+fp = struct();
+if ~isempty(stdErr)
+    stdArm.reason = stdErr;
+elseif isempty(rStd)
+    stdArm.reason = 'search unavailable';
+else
+    fp = contractFingerprint(rStd.contract);
+    truthVec = populationP3(truth, rStd.contract, EEG.srate);
+    pick = storedPick(rStd);
+    [mseGC, mseRaw, ok] = armMse(rStd.cands, pick, truthVec);
+    stdArm = fillArm(stdArm, pick, rStd, mseGC, mseRaw, ok, 'no recommendation');
+end
+frag = armFragmentStruct(seed, stdArm, [], '', fp, headSha, workflowRunId, eeglabVersion);
+fprintf('[shadow] seed %d: standard pick %s\n', seed, pickText(stdArm.pick));
+end
+
+function frag = runArmBalanced(seed, maxSeconds, headSha, workflowRunId, eeglabVersion)
+% Round 6 Balanced-only job: one search, both Balanced arms from that
+% one fitted family, plus the contract fingerprint for the merge step.
+[EEG, truth] = bench_synth(seed);
+setBase(EEG);
+[rBal, balErr] = runSearch(EEG, seed, 'balanced', 'pooled', maxSeconds);
+fp = struct();
+if ~isempty(balErr) || isempty(rBal)
+    truthVec = [];
+else
+    fp = contractFingerprint(rBal.contract);
+    truthVec = populationP3(truth, rBal.contract, EEG.srate);
+end
+[guardArm, unguardArm, guardChanged, guardDecision] = balancedArms(rBal, balErr, truthVec, seed);
+arms = [guardArm unguardArm];
+frag = armFragmentStruct(seed, arms, guardChanged, guardDecision, fp, headSha, workflowRunId, eeglabVersion);
+fprintf('[shadow] seed %d: guarded pick %s, unguarded pick %s\n', seed, pickText(guardArm.pick), pickText(unguardArm.pick));
+end
+
+function fp = contractFingerprint(c)
+% The contract fields that populationP3 and contractMatch compare:
+% first component roi and window, baseline, and condition events.
+% Stored in arm fragments so the merge step can check Standard vs
+% Balanced comparability without re-running searches. Uses arrayfun
+% (not cellfun): c.conditions is a struct array, and cellfun on a
+% struct array errors in MATLAB.
+fp = struct('roi', {{}}, 'window', [], 'baseline', [], 'conditionEvents', {{}});
+try
+    s = c.components(1);
+    fp.roi = cellstr(s.roi);
+    fp.window = s.window;
+    fp.baseline = c.baseline;
+    fp.conditionEvents = arrayfun(@(x) x.events, c.conditions, 'UniformOutput', false);
+catch
+    fp = struct();
+end
+end
+
+function frag = armFragmentStruct(seed, arms, guardChanged, guardDecision, fp, headSha, workflowRunId, eeglabVersion)
+% One per-search arm fragment. 'arms' is a single standard arm or the
+% two balanced arms; 'contract' is the search's fingerprint (empty
+% struct when the search itself failed, in which case the arm already
+% carries its failure reason).
+frag = struct('seed', seed, 'arms', arms, 'guardChanged', guardChanged, ...
+    'guardDecision', guardDecision, 'contract', fp, 'labels', variantLabels(), ...
+    'provenance', struct('script', 'benchmarks/pipecompare_shadow_selection.m', 'commit', headSha, ...
+    'workflowRunId', workflowRunId, 'matlabVersion', version(), 'eeglabVersion', eeglabVersion, ...
+    'inputArtifactRunId', [], 'inputArtifactNote', 'fresh synthetic seeds; no frozen input artifact'));
 end
 
 function [r, err] = runSearch(EEG, seed, recipe, varianceMode, maxSeconds)
@@ -448,13 +592,19 @@ function tf = contractMatch(cStd, cBal)
 % The two searches must measure the same thing, or their MSEs are not
 % comparable. Compares the first component (roi, window), baseline and
 % condition events only; other contract fields may legitimately differ.
+% Round 6 fix: the original code used cellfun on c.conditions, but
+% conditions is a struct array, and MATLAB cellfun requires a cell
+% array input, so it errored on every call and the try/catch below
+% returned false every time (the Round 5 Standard arm was therefore
+% unavailable on every seed). arrayfun is the correct iterator for a
+% struct array.
 tf = false;
 try
     sStd = cStd.components(1); sBal = cBal.components(1);
     tf = isequal(cellstr(sStd.roi), cellstr(sBal.roi)) && isequal(sStd.window, sBal.window) && ...
         isequal(cStd.baseline, cBal.baseline) && ...
-        isequal(cellfun(@(x) x.events, cStd.conditions, 'UniformOutput', false), ...
-        cellfun(@(x) x.events, cBal.conditions, 'UniformOutput', false));
+        isequal(arrayfun(@(x) x.events, cStd.conditions, 'UniformOutput', false), ...
+        arrayfun(@(x) x.events, cBal.conditions, 'UniformOutput', false));
 catch
     tf = false;
 end
@@ -518,6 +668,147 @@ function labels = variantLabels()
 labels = struct('fullyHeldOut', true, 'preprocessingRefitted', false, 'adaptiveLeavesIncluded', false);
 end
 
+function [perSeed, presentSeeds] = readFragmentsOrArms(fragmentsDir, seeds, headSha, workflowRunId)
+% Merge dispatcher: complete per-seed fragments use the original
+% readFragments path (which requires every planned seed); per-search
+% arm fragments use combineArmFragments (which allows partial
+% coverage). When any arm fragment is present, only arm fragments
+% are combined (the Round 6 workflow produces only arm fragments, so
+% a mixed run should not occur in production; a complete fragment
+% in a mixed directory is ignored rather than silently merged).
+files = dir(fullfile(fragmentsDir, '**', 'shadow_selection_seed_*.json'));
+hasArm = false;
+for i = 1:numel(files)
+    nm = files(i).name;
+    if endsWith(nm, '_standard.json') || endsWith(nm, '_balanced.json'), hasArm = true; break; end
+end
+if ~hasArm
+    perSeed = readFragments(fragmentsDir, seeds, headSha, workflowRunId);
+    presentSeeds = seeds;
+    return;
+end
+perSeed = combineArmFragments(fragmentsDir, seeds, headSha, workflowRunId);
+presentSeeds = [perSeed.seed];
+end
+
+function perSeed = combineArmFragments(fragmentsDir, seeds, headSha, workflowRunId)
+% Combine Round 6 per-search arm fragments into per-seed entries.
+% A seed with at least one arm fragment appears in the output; a
+% missing arm is unavailable with reason 'arm fragment missing'. If
+% both arm fragments are present but their contract fingerprints
+% differ (or either fingerprint is empty), the Standard arm is
+% unavailable with reason 'contract mismatch with Balanced search'
+% and its pick/MSE are cleared, matching the original contractMatch
+% semantics. Labels, commit and workflow run are asserted on every
+% fragment, exactly as in readFragments.
+files = dir(fullfile(fragmentsDir, '**', 'shadow_selection_seed_*.json'));
+bySeed = struct();
+for i = 1:numel(files)
+    nm = files(i).name;
+    isStd = endsWith(nm, '_standard.json');
+    isBal = endsWith(nm, '_balanced.json');
+    if ~isStd && ~isBal, continue; end
+    f = jsondecode(fileread(fullfile(files(i).folder, nm)));
+    assert(isfield(f, 'seed') && isfield(f, 'arms') && isfield(f, 'labels'), 'PipeCompare:Shadow', 'Fragment %s is missing seed/arms/labels.', nm);
+    assert(isfield(f.labels, 'fullyHeldOut') && isfield(f.labels, 'preprocessingRefitted') && isfield(f.labels, 'adaptiveLeavesIncluded'), ...
+        'PipeCompare:Shadow', 'Fragment %s has incomplete labels.', nm);
+    assert(isequal(f.labels.fullyHeldOut, true) && isequal(f.labels.preprocessingRefitted, false) && isequal(f.labels.adaptiveLeavesIncluded, false), ...
+        'PipeCompare:Shadow', 'Fragment %s does not carry variant A labels.', nm);
+    if isfield(f, 'provenance') && isfield(f.provenance, 'commit') && ~isempty(f.provenance.commit)
+        assert(strcmp(f.provenance.commit, headSha), 'PipeCompare:Shadow', 'Fragment %s is from a different commit.', nm);
+    end
+    if ~isempty(workflowRunId) && isfield(f, 'provenance') && isfield(f.provenance, 'workflowRunId') && ~isempty(f.provenance.workflowRunId)
+        assert(strcmp(f.provenance.workflowRunId, workflowRunId), 'PipeCompare:Shadow', 'Fragment %s is from a different workflow run.', nm);
+    end
+    key = sprintf('s%d', f.seed);
+    if ~isfield(bySeed, key), bySeed.(key) = struct('standard', [], 'balanced', []); end
+    if isStd, bySeed.(key).standard = f; else, bySeed.(key).balanced = f; end
+end
+perSeed = struct('seed', {}, 'arms', {}, 'guardChanged', {}, 'guardDecision', {});
+names = {'standard', 'balancedGuarded', 'balancedUnguarded'};
+for s = seeds
+    key = sprintf('s%d', s);
+    if ~isfield(bySeed, key), continue; end
+    entry = bySeed.(key);
+    arms = struct('name', {}, 'pick', {}, 'selectedKey', {}, 'mseGainCorrected', {}, 'mseRaw', {}, 'assessable', {}, 'reason', {});
+    stdArm = emptyArm('standard');
+    if isempty(entry.standard)
+        stdArm.reason = 'arm fragment missing';
+    else
+        found = armByNameInFragment(entry.standard, 'standard');
+        stdArm = armFromFragment(stdArm, found);
+    end
+    guardArm = emptyArm('balancedGuarded');
+    unguardArm = emptyArm('balancedUnguarded');
+    gc = []; gd = '';
+    if isempty(entry.balanced)
+        guardArm.reason = 'arm fragment missing';
+        unguardArm.reason = 'arm fragment missing';
+    else
+        guardArm = armFromFragment(guardArm, armByNameInFragment(entry.balanced, 'balancedGuarded'));
+        unguardArm = armFromFragment(unguardArm, armByNameInFragment(entry.balanced, 'balancedUnguarded'));
+        if isfield(entry.balanced, 'guardChanged'), gc = entry.balanced.guardChanged; end
+        if isfield(entry.balanced, 'guardDecision'), gd = entry.balanced.guardDecision; end
+    end
+    if ~isempty(entry.standard) && ~isempty(entry.balanced)
+        if ~fingerprintsMatch(entry.standard, entry.balanced)
+            stdArm = emptyArm('standard');
+            stdArm.reason = 'contract mismatch with Balanced search';
+        end
+    end
+    arms(end + 1) = stdArm; %#ok<AGROW>
+    arms(end + 1) = guardArm; %#ok<AGROW>
+    arms(end + 1) = unguardArm; %#ok<AGROW>
+    perSeed(end + 1) = struct('seed', s, 'arms', arms, 'guardChanged', gc, 'guardDecision', gd); %#ok<AGROW>
+end
+end
+
+function arm = armFromFragment(arm, found)
+% Copy one fragment arm into a canonical per-seed arm. An empty
+% 'found' (arm absent from its fragment) leaves the arm unavailable
+% with reason 'arm fragment missing'.
+if isempty(found)
+    arm.reason = 'arm fragment missing';
+    return;
+end
+arm.pick = found.pick;
+if isfield(found, 'selectedKey'), arm.selectedKey = found.selectedKey; end
+arm.mseGainCorrected = numOrNan(found.mseGainCorrected);
+arm.mseRaw = numOrNan(found.mseRaw);
+arm.assessable = logical(found.assessable);
+if isfield(found, 'reason'), arm.reason = found.reason; end
+end
+
+function found = armByNameInFragment(frag, name)
+% Find an arm by name in a fragment, handling the JSON shape where a
+% single arm encodes as a scalar struct rather than a 1-element array.
+found = [];
+arms = frag.arms;
+for j = 1:numel(arms)
+    if strcmp(arms(j).name, name), found = arms(j); return; end
+end
+end
+
+function tf = fingerprintsMatch(stdFrag, balFrag)
+% True only when both fragments carry a non-empty contract
+% fingerprint and the fingerprints are identical on roi, window,
+% baseline and condition events. Any missing or differing field is a
+% mismatch, matching the conservative original semantics.
+tf = false;
+try
+    if ~isfield(stdFrag, 'contract') || ~isfield(balFrag, 'contract'), return; end
+    cs = stdFrag.contract; cb = balFrag.contract;
+    if isempty(cs) || isempty(cb), return; end
+    if ~isfield(cs, 'roi') || ~isfield(cb, 'roi') || ~isfield(cs, 'window') || ~isfield(cb, 'window') ...
+            || ~isfield(cs, 'baseline') || ~isfield(cb, 'baseline') ...
+            || ~isfield(cs, 'conditionEvents') || ~isfield(cb, 'conditionEvents'), return; end
+    tf = isequal(cellstr(cs.roi), cellstr(cb.roi)) && isequal(cs.window, cb.window) && ...
+        isequal(cs.baseline, cb.baseline) && isequal(cs.conditionEvents, cb.conditionEvents);
+catch
+    tf = false;
+end
+end
+
 function perSeed = readFragments(fragmentsDir, seeds, headSha, workflowRunId)
 % Read per-seed fragment JSONs and rebuild per-seed entries in seed
 % order. Fails on any mismatch: wrong count, wrong seed list, labels
@@ -579,12 +870,17 @@ function v = numOrNan(x)
 if isempty(x), v = NaN; else, v = x; end
 end
 
-function runJson = writeRunOutputs(outDir, headSha, headShort, seeds, perSeed, workflowRunId, eeglabVersion)
+function runJson = writeRunOutputs(outDir, headSha, headShort, seeds, perSeed, workflowRunId, eeglabVersion, plannedSeeds)
 % Shared statistics + output path for multi-seed search runs, test mode
 % and merge mode: one implementation, so the contract cannot drift
-% between the MATLAB path and the CI collect path.
+% between the MATLAB path and the CI collect path. 'seeds' is the
+% list actually present in perSeed; 'plannedSeeds' (merge mode only)
+% is the planned list, used for the output filename and for
+% 'nSeedsPlanned' when a partial run is published. When omitted,
+% planned equals present, which is the test-mode and full-run case.
+if nargin < 8 || isempty(plannedSeeds), plannedSeeds = seeds; end
 stats = pairedStats(perSeed);
-firstSeed = seeds(1); nSeeds = numel(seeds);
+firstSeed = plannedSeeds(1); nSeeds = numel(plannedSeeds);
 base = sprintf('shadow_selection_%s_%d_%d', headShort, firstSeed, nSeeds);
 jsonPath = fullfile(outDir, [base '.json']);
 recipes = struct('standard', struct('recipe', 'standard', 'artifactVariance', 'legacy-total', 'protectReferenceCleanup', true), ...
