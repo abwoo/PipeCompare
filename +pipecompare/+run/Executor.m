@@ -113,8 +113,15 @@ classdef Executor
         function result = resume(dirName, runtime)
             % Continue an interrupted search from its checkpoint folder.
             if nargin<2,runtime=struct();end
-            assert(all(ismember(fieldnames(runtime),{'maxSeconds'})),'PipeCompare:Options', ...
-                'Resume overrides may only change maxSeconds.');
+            % Round 8 strict checkpoint: the default resume path is
+            % unchanged (version warning + pooled default). Only when
+            % the caller explicitly passes strictCheckpoint=true does
+            % resume refuse a version mismatch or a missing
+            % artifactVariance, so old checkpoints cannot be silently
+            % mixed under a new variance model.
+            assert(all(ismember(fieldnames(runtime),{'maxSeconds','strictCheckpoint'})),'PipeCompare:Options', ...
+                'Resume overrides may only change maxSeconds and strictCheckpoint.');
+            strictCheckpoint = pipecompare.utils.fieldOr(runtime, 'strictCheckpoint', false);
             M = load(fullfile(dirName, 'manifest.mat'));
             R = load(fullfile(dirName, 'root.mat'));
             assert(isfield(M, 'identity') && isfield(R, 'identity') && strcmp(M.identity, R.identity), ...
@@ -126,7 +133,13 @@ classdef Executor
             assert(strcmp(searchIdentity(result), M.identity), 'PipeCompare:Checkpoint', ...
                 '%s: the stored starting dataset no longer matches the search identity.', dirName);
             v = versions();
-            if ~isequal(v.eeglab, result.versions.eeglab) || ~isequal(v.matlab, result.versions.matlab)
+            if strictCheckpoint
+                assert(isequal(v.eeglab, result.versions.eeglab) && isequal(v.matlab, result.versions.matlab), ...
+                    'PipeCompare:Checkpoint', 'Strict resume refuses a version mismatch (%s / %s now, %s / %s then).', ...
+                    v.matlab, v.eeglab, result.versions.matlab, result.versions.eeglab);
+                assert(isfield(result.options, 'artifactVariance') && ~isempty(result.options.artifactVariance), ...
+                    'PipeCompare:Checkpoint', 'Strict resume refuses a checkpoint without an explicit artifactVariance (it must not silently default to pooled).');
+            elseif ~isequal(v.eeglab, result.versions.eeglab) || ~isequal(v.matlab, result.versions.matlab)
                 pipecompare.utils.log('WARNING: software versions differ from the interrupted run (%s / %s now, %s / %s then).', ...
                     v.matlab, v.eeglab, result.versions.matlab, result.versions.eeglab);
             end
@@ -872,10 +885,14 @@ if isfield(info, 'overLimit') && ~isempty(info.overLimit.counts)
     [labels, ~, j] = unique([acc.overLimit.labels(:); info.overLimit.labels(:)]);
     acc.overLimit = struct('labels', {labels(:)'}, 'counts', accumarray(j(:), [acc.overLimit.counts(:); info.overLimit.counts(:)])');
 end
-acc.steps{end+1} = stepFacts(in, info);
+acc.steps{end+1} = stepFacts(in, info, secs);
 end
 
-function f = stepFacts(in, info)
+function f = stepFacts(in, info, secs)
+% Round 8 timing: per-step wall seconds. Rank, replayDecision and
+% searchIdentity do not read this field, so ranking, replay and
+% checkpoint identity are unchanged by adding it.
+if nargin < 3, secs = NaN; end
 % What a step did, for the results' list of steps: its settings and the
 % decisions it made on these data (channels, components, epochs, epochs
 % kept by interpolating channels in them), and for ICLabel how many
@@ -897,7 +914,7 @@ function f = stepFacts(in, info)
 % error, those left as they are (leftAsIs), and those bad for part of the
 % recording (stretches: channel, samples); for the eye channels regressed
 % out, the channels and coefficients (eog).
-f = struct('type', in.type, 'params', in.params, 'interpolated', {{}}, 'removed', {{}}, ...
+f = struct('type', in.type, 'params', in.params, 'seconds', secs, 'interpolated', {{}}, 'removed', {{}}, ...
     'icsRemoved', NaN, 'icsTotal', NaN, 'rejected', NaN, 'epochsBefore', NaN, 'epochsInterpolated', NaN, ...
     'icsBrain', NaN, 'icsOther', NaN, 'otherMedian', NaN, 'icaPoints', NaN, 'uvChosen', NaN, 'thresholdChosen', NaN, 'icsConsidered', NaN, 'icsProtected', NaN, ...
     'comps', [], 'rejIdx', [], 'cutoffRefined', false, 'weightRatio', NaN, 'trialWeights', [], 'curves', [], 'keptShift', [], 'leftAsIs', {{}}, 'eog', [], 'stretches', [], 'stretchCheck', []);

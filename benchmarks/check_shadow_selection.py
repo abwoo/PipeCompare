@@ -93,10 +93,14 @@ def parse_csv_num(text):
 def main():
     if len(sys.argv) < 5:
         print("usage: check_shadow_selection.py <fragments_dir> <final_json> "
-              "<per_seed_csv> <summary_csv> [expected_head_sha]")
+              "<per_seed_csv> <summary_csv> [expected_head_sha] [planned]")
         return 2
     frag_dir, final_json, per_seed_csv, summary_csv = map(Path, sys.argv[1:5])
     expected_head = sys.argv[5] if len(sys.argv) > 5 else None
+    # Round 8 B1: optional 6th argument is the PLANNED seed count.
+    # Without it, coverage.planned cannot be verified (the old check
+    # compared it to the present count, which is tautological).
+    expected_planned = int(sys.argv[6]) if len(sys.argv) > 6 else None
 
     run = json.loads(final_json.read_text())
     # Round 6 arm fragments: shadow_selection_seed_<seed>_standard.json
@@ -111,6 +115,11 @@ def main():
     for path in sorted(frag_dir.rglob("shadow_selection_seed_*.json")):
         frag = json.loads(path.read_text())
         name = path.name
+        # Round 8 B1: filename seed must agree with content seed.
+        import re as _re
+        _m = _re.match(r"shadow_selection_seed_(\d+)_(standard|balanced|)\.json$", name)
+        if _m and _m.group(1) and int(_m.group(1)) != frag.get("seed"):
+            fail(f"fragment {name} filename seed disagrees with content seed {frag.get('seed')}")
         if name.endswith("_standard.json") or name.endswith("_balanced.json"):
             seed = frag["seed"]
             entry = arm_parts.setdefault(seed, {"arms": {}, "fingerprints": {}})
@@ -119,6 +128,9 @@ def main():
             if isinstance(frag_arms, dict):
                 frag_arms = [frag_arms]
             for arm in frag_arms:
+                # Round 8 B1: duplicate seed-arm fragments must fail.
+                if arm["name"] in entry["arms"]:
+                    fail(f"duplicate fragment arm {arm['name']} for seed {seed}")
                 entry["arms"][arm["name"]] = arm
             if "guardChanged" in frag:
                 entry["guardChanged"] = frag["guardChanged"]
@@ -303,8 +315,13 @@ def main():
         want_n = sum(1 for s in per_seed if per_seed[s][arm]["assessable"])
         if run["coverage"].get(arm) != want_n:
             fail(f"coverage {arm} mismatch: {run['coverage'].get(arm)} vs {want_n}")
-    if run["coverage"].get("planned") != len(per_seed):
-        fail("coverage.planned mismatch")
+    if expected_planned is not None:
+        if run.get("nSeedsPlanned") != expected_planned:
+            fail(f"nSeedsPlanned {run.get('nSeedsPlanned')} != planned {expected_planned}")
+        if run["coverage"].get("planned") != expected_planned:
+            fail(f"coverage.planned {run['coverage'].get('planned')} != planned {expected_planned}")
+    # Without a planned argument, coverage.planned is NOT verified:
+    # comparing it to len(per_seed) would be tautological (Round 8 B1).
 
     # ---- per-seed CSV ----
     with per_seed_csv.open(newline="") as f:
@@ -324,6 +341,17 @@ def main():
             fail(f"per-seed CSV raw mismatch: {seed} {arm}")
         if int(row["assessable"]) != int(bool(got["assessable"])):
             fail(f"per-seed CSV assessable mismatch: {seed} {arm}")
+        # Round 8 B1: the per-seed CSV must carry pick/selectedKey.
+        if "pick" not in row or "selectedKey" not in row:
+            fail("per-seed CSV missing pick/selectedKey columns")
+        else:
+            got_pick = got.get("pick")
+            csv_pick = row["pick"]
+            if (got_pick is None and csv_pick not in ("", "None")) or \
+               (got_pick is not None and csv_pick != str(got_pick)):
+                fail(f"per-seed CSV pick mismatch: {seed} {arm}")
+            if row["selectedKey"] != (got.get("selectedKey") or ""):
+                fail(f"per-seed CSV selectedKey mismatch: {seed} {arm}")
 
     # ---- summary CSV ----
     with summary_csv.open(newline="") as f:

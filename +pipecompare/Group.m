@@ -268,7 +268,7 @@ classdef Group
                 if guardInfo(j).disabled, gs{j} = 'disabled-by-option';
                 elseif ~guardInfo(j).critOK, gs{j} = 'unprotected';
                 elseif nU >= 2, gs{j} = ownStatus{j}; gd{j} = ownDecision{j};
-                else, gs{j} = 'guarded'; end
+                else, gs{j} = 'single-recording-no-own-pick'; end
             end
             G.guardProtection = table(G.recordings(u)', gs, gd, gr, ...
                 'VariableNames', {'recording', 'guardStatus', 'ownDecision', 'reason'});

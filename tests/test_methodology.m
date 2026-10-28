@@ -346,7 +346,12 @@ x=(1:40)'; c=nqc_cand(x,'kind',{'peak'}); o=c.m.objectives;
 o.eyeBias=NaN; o.eyeBiasSq=NaN; o.eyeBiasAssessed=false; o.eyeBiasApplicable=false; c.m.objectives=o;
 opts=pipecompare.eval.Rank.defaults(); opts.nBoot=99; opts.nSplits=0;
 R=pipecompare.eval.Rank.run(c,nqc_ref(40),opts);
-verifyEqual(tc,R.recommended,1); verifyTrue(tc,isnan(R.table.eyeBias_obj1)); verifyTrue(tc,isfinite(R.table.objective(1)));
+% Round 8 fix for the Round 7 matlab-tests failure: the default ref
+% objectives are {'P3.mean'}, so the table column is
+% makeValidName('eyeBias_P3.mean') = eyeBias_P3mean, not eyeBias_obj1.
+% (The ancillary test above uses an explicit {'obj1','obj2'} ref, so
+% eyeBias_obj2 there is correct and is left alone.)
+verifyEqual(tc,R.recommended,1); verifyTrue(tc,isnan(R.table.eyeBias_P3mean)); verifyTrue(tc,isfinite(R.table.objective(1)));
 % Scalar counterpart with the same unassessed bias must still block:
 % eyeBiasApplicable=true is the old behaviour for scalar objectives.
 c2=nqc_cand(x); o2=c2.m.objectives;
@@ -834,4 +839,35 @@ verifyTrue(tc,strcmp(G.guardProtection.guardStatus{1},'guarded'));
 verifyTrue(tc,strcmp(G.guardProtection.guardStatus{3},'guarded'));
 verifyEqual(tc,G.guardGroupStatus,'partially-unguarded');
 verifyTrue(tc,all(~G.groupGuardBlocked));
+end
+
+function testGroupRelativeScoreIsDiagnosticOnly(tc)
+addpath(fullfile(fileparts(mfilename('fullpath')),'..','benchmarks'));
+% Round 8: pure arithmetic, no EEGLAB, no Rank dependency.
+z = group_relative_score([1; 2; 3]);
+verifyTrue(tc, z(1) < z(2) && z(2) < z(3));
+verifyTrue(tc, abs(mean(z)) < 1e-12);
+z2 = group_relative_score([5; 5]);
+verifyTrue(tc, all(z2 == 0));
+end
+
+function testBestSetStrictPrototypeKeepsOnlyBestWhenUndefined(tc)
+addpath(fullfile(fileparts(mfilename('fullpath')),'..','benchmarks'));
+% Round 8: with all bootstrap draws incomplete, the strict prototype
+% keeps only the point-best and flags undefined; production Rank.run
+% in Round 8 does NOT use this (it only flags bestSetUndefined).
+pts = [1; 2; 3];
+Bq = NaN(3, 5);
+[keep, undefined] = bestset_strict_prototype(pts, Bq, 1, 0.02);
+verifyTrue(tc, undefined);
+verifyEqual(tc, keep, [true; false; false]);
+end
+
+function testDiffusionReportReturnsNaNWhenMissing(tc)
+addpath(fullfile(fileparts(mfilename('fullpath')),'..','benchmarks'));
+% Round 8: missing interpolatedFraction is unknown (NaN), not 0.
+cands = struct('key', {'a'});
+rep = diffusion_report(cands, 1);
+verifyTrue(tc, isnan(rep.interpolatedFraction));
+verifyFalse(tc, rep.available);
 end

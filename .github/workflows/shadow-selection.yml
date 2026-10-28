@@ -57,6 +57,9 @@ on:
       n_seeds:
         description: 'Number of held-out seeds (1-30)'
         default: '8'
+      seed_list:
+        description: 'Optional comma-separated seed list for non-contiguous re-runs (e.g. 20031,20034,20036); overrides first_seed/n_seeds when set. Every seed must already be in the pre-registered planned range.'
+        default: ''
 
 permissions:
   contents: read
@@ -77,29 +80,46 @@ jobs:
       n_seeds: ${{ steps.prep.outputs.n_seeds }}
       head_sha: ${{ steps.prep.outputs.head_sha }}
       head_short: ${{ steps.prep.outputs.head_short }}
+      seed_list: ${{ steps.prep.outputs.seed_list }}
     steps:
       - id: prep
         env:
           FIRST_SEED_INPUT: ${{ inputs.first_seed }}
           N_SEEDS_INPUT: ${{ inputs.n_seeds }}
+          SEED_LIST_INPUT: ${{ inputs.seed_list }}
           HEAD_SHA_PR: ${{ github.event.pull_request.head.sha }}
           EVENT_NAME: ${{ github.event_name }}
           REF_SHA: ${{ github.sha }}
         run: |
           python3 - <<'EOF'
           import json, os
-          first = int(os.environ.get("FIRST_SEED_INPUT") or 20031)
-          n = int(os.environ.get("N_SEEDS_INPUT") or 8)
+          # Round 8 B1 + seed_list: a pull_request shadow run is the full
+          # pre-registered run and must start at 20031. A dispatch run
+          # may instead name a non-contiguous subset of the planned
+          # range (the timed-out seeds), which is a subset re-run, not
+          # a new full held-out claim; its run JSON must be labelled
+          # as such by the caller, never as a fresh full run.
+          raw_list = (os.environ.get("SEED_LIST_INPUT") or "").strip()
           head = os.environ["HEAD_SHA_PR"] if os.environ["EVENT_NAME"] == "pull_request" else os.environ["REF_SHA"]
-          assert 1 <= n <= 30, f"n_seeds must be 1-30, got {n}"
-          seeds = list(range(first, first + n))
+          if raw_list:
+              seeds = sorted({int(x) for x in raw_list.split(",") if x.strip()})
+              assert seeds, "seed_list is empty"
+              assert all(20031 <= s <= 20060 for s in seeds), "seed_list seeds must be in the pre-registered planned range 20031-20060"
+              first, n = seeds[0], len(seeds)
+          else:
+              first = int(os.environ.get("FIRST_SEED_INPUT") or 20031)
+              n = int(os.environ.get("N_SEEDS_INPUT") or 8)
+              if os.environ["EVENT_NAME"] == "pull_request":
+                  assert first == 20031, "pull_request shadow runs must start at the pre-registered first seed 20031"
+              assert 1 <= n <= 30, f"n_seeds must be 1-30, got {n}"
+              seeds = list(range(first, first + n))
           assert all(s >= 20031 for s in seeds), "all seeds must be >= 20031 (fresh range)"
           assert not any(40101 <= s <= 40104 for s in seeds), "seeds overlap the design set 40101-40104"
           assert not any(41001 <= s <= 41030 for s in seeds), "seeds overlap the locked confirmation set 41001-41030"
           assert len(head) >= 7, "head SHA too short"
           out = os.environ["GITHUB_OUTPUT"]
           with open(out, "a") as f:
-              f.write(f"seeds={json.dumps(seeds)}\nfirst_seed={first}\nn_seeds={n}\n")
+              f.write(f"seeds={json.dumps(seeds)}\nfirst_seed={first}\nn_seeds={n}\nseed_list={','.join(str(s) for s in seeds)}\n")
               f.write(f"head_sha={head}\nhead_short={head[:7]}\n")
           print(f"seeds={seeds} head={head}")
           EOF
@@ -111,7 +131,7 @@ jobs:
     timeout-minutes: 360
     strategy:
       fail-fast: false
-      max-parallel: 10
+      max-parallel: 16
       matrix:
         seed: ${{ fromJSON(needs.prep.outputs.seeds) }}
         arm: [standard, balanced]
@@ -129,6 +149,17 @@ jobs:
 
       - name: Checkout EEGLAB
         run: git clone --depth 1 --branch 2026.0.0 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
+
+      # Round 8: EEGLAB provenance is a SHA, not just a version label.
+      # The SHA is recorded into the fragment provenance by the shadow
+      # script (EEGLAB_SHA env, set via GITHUB_ENV below); a cache must
+      # never replace this step, because a cached clone could drift
+      # from 2026.0.0 without any version string changing.
+      - name: Record EEGLAB SHA
+        run: |
+          git -C eeglab rev-parse HEAD > eeglab_sha.txt
+          echo "EEGLAB_SHA=$(cat eeglab_sha.txt)" >> "$GITHUB_ENV"
+          cat eeglab_sha.txt
 
       - name: Bound MATLAB dependency downloads
         if: runner.os == 'Linux'
@@ -172,6 +203,7 @@ jobs:
     env:
       SHADOW_FIRST_SEED: ${{ needs.prep.outputs.first_seed }}
       SHADOW_N_SEEDS: ${{ needs.prep.outputs.n_seeds }}
+      SHADOW_SEED_LIST: ${{ needs.prep.outputs.seed_list }}
       SHADOW_HEAD_SHA: ${{ needs.prep.outputs.head_sha }}
       SHADOW_HEAD_SHORT: ${{ needs.prep.outputs.head_short }}
       SHADOW_RUN_ID: ${{ github.run_id }}
@@ -203,7 +235,7 @@ jobs:
         with:
           command: |
             addpath(pwd); addpath(fullfile(pwd, 'benchmarks'));
-            pipecompare_shadow_selection(fullfile(pwd, 'shadow_final'), str2double(getenv('SHADOW_FIRST_SEED')), str2double(getenv('SHADOW_N_SEEDS')), 'mode', 'merge', 'fragmentsDir', fullfile(pwd, 'fragments'), 'headSha', getenv('SHADOW_HEAD_SHA'), 'workflowRunId', getenv('SHADOW_RUN_ID'));
+            pipecompare_shadow_selection(fullfile(pwd, 'shadow_final'), str2double(getenv('SHADOW_FIRST_SEED')), str2double(getenv('SHADOW_N_SEEDS')), 'mode', 'merge', 'fragmentsDir', fullfile(pwd, 'fragments'), 'headSha', getenv('SHADOW_HEAD_SHA'), 'workflowRunId', getenv('SHADOW_RUN_ID'), 'seedList', str2double(strsplit(getenv('SHADOW_SEED_LIST'), ',')));
 
       - name: Independently recompute and verify the run
         run: |
@@ -211,7 +243,7 @@ jobs:
           FINAL_CSV="shadow_final/shadow_selection_${SHADOW_HEAD_SHORT}_${SHADOW_FIRST_SEED}_${SHADOW_N_SEEDS}.csv"
           FINAL_SUMMARY="shadow_final/shadow_selection_${SHADOW_HEAD_SHORT}_${SHADOW_FIRST_SEED}_${SHADOW_N_SEEDS}_summary.csv"
           test -f "$FINAL_JSON" && test -f "$FINAL_CSV" && test -f "$FINAL_SUMMARY"
-          python3 benchmarks/check_shadow_selection.py fragments "$FINAL_JSON" "$FINAL_CSV" "$FINAL_SUMMARY" "$SHADOW_HEAD_SHA"
+          python3 benchmarks/check_shadow_selection.py fragments "$FINAL_JSON" "$FINAL_CSV" "$FINAL_SUMMARY" "$SHADOW_HEAD_SHA" "$SHADOW_N_SEEDS"
 
       # No `if: always()` here: a failed independent check must NOT
       # publish the run-level output as if verified. The per-seed

@@ -84,12 +84,12 @@ if nargin < 2
     opts.progress = [];opts.checkpoint='';opts.maxseconds=Inf;
 else
     opts = struct('measure', '', 'events', {{}}, 'left', {{}}, 'right', {{}}, 'pool', false, 'window', [], 'band', [], ...
-        'channels', {{}}, 'recipe', 'standard', 'steps', {{}}, 'comparecleanup', false, 'artifactvariance','pooled','reference', 'asis', 'segment', 2, 'show', 'on', 'progress', [], 'checkpoint', '', 'maxseconds', Inf);
+        'channels', {{}}, 'recipe', 'standard', 'steps', {{}}, 'comparecleanup', false, 'artifactvariance','pooled','reference', 'asis', 'segment', 2, 'show', 'on', 'progress', [], 'checkpoint', '', 'maxseconds', Inf, 'parallel', false);
     [varargin{:}] = convertStringsToChars(varargin{:});   % "P3" as well as 'P3'
     for k = 1:2:numel(varargin)
         f = lower(char(varargin{k}));
         assert(isfield(opts, f), 'PipeCompare:Simple', ['Unknown option %s (measure, events, left, right, pool, window, ', ...
-            'band, channels, recipe, steps, reference, segment, show, progress).'], f);
+            'band, channels, recipe, steps, reference, segment, show, progress, artifactvariance, comparecleanup, checkpoint, maxseconds, parallel).'], f);
         opts.(f) = varargin{k+1};
     end
     for f = {'events', 'left', 'right'}
@@ -143,6 +143,10 @@ runOpts = pipecompare.simple.Presets.searchOptions();
 runOpts.dataUnit = state.unitGuess;
 runOpts.checkpoint=opts.checkpoint;runOpts.maxSeconds=opts.maxseconds;
 runOpts.artifactVariance=pipecompare.utils.fieldOr(opts,'artifactvariance','pooled');
+% Round 8 A7: script-mode parallel switch, default false (existing
+% behaviour). Turning it on still needs the serial/parallel equivalence
+% check; this line only makes the switch reachable.
+runOpts.parallel=pipecompare.utils.fieldOr(opts,'parallel',false);
 assert(any(strcmp(runOpts.artifactVariance,{'pooled','legacy-total','heteroscedastic'})), ...
     'PipeCompare:Simple','artifactvariance must be pooled, heteroscedastic or legacy-total.');
 if strcmp(state.unitGuess, 'V'), pipecompare.utils.log('The data are in volts (judged from the amplitude scale); they are compared in uV.'); end

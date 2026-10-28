@@ -9,9 +9,20 @@ classdef Calibration
             gv = vars(startsWith(vars, 'gain_')); sv = vars(startsWith(vars, 'shapeSpread_'));
             for j = feasible(:)'
                 o = r.cands(j).m.objectives(1);
+                % Round 8 B4 (guarded): if the ranking optimised a named
+                % objective other than the first, calibrate that objective
+                % instead. Any lookup failure falls back to objectives(1),
+                % so the single-objective P3 case is byte-identical.
+                try
+                    if isfield(r, 'ranking') && isfield(r.ranking, 'objective') && ischar(r.ranking.objective)
+                        objNames = {r.cands(j).m.objectives.name};
+                        at = find(strcmp(objNames, r.ranking.objective), 1);
+                        if ~isempty(at), o = r.cands(j).m.objectives(at); end
+                    end
+                catch, o = r.cands(j).m.objectives(1); end
                 g = 1; if ~isempty(gv), g = T.(gv{1})(j); end
                 sp = 0; if ~isempty(sv), sp = T.(sv{1})(j); end
-                if ~(isfinite(g) && g > 0), continue; end
+                if ~(isfinite(g) && g > 0), pipecompare.utils.log('Calibration: candidate %d skipped, invalid gain %g.', j, g); continue; end
                 [reported, ~, bias, sensitivity] = pipecompare.eval.Rank.conditionErrors(o, g, sp);
                 selected = any(r.ranking.recommended == j);
                 for c = 1:numel(population)
@@ -51,8 +62,10 @@ classdef Calibration
             end
             S = struct('ratio',NaN,'ci',[NaN NaN],'actualRms',NaN,'reportedRms',NaN, ...
                 'nRecords',numel(a),'nRows',height(C),'unassessedRecords',numel(records)-numel(a), ...
+                'plannedRecords',numel(records),'coverage',NaN, ...
                 'exploratory',numel(a)<30,'interpretation','undefined', ...
                 'bootstrapDraws',0,'bootstrapInfiniteShare',NaN,'bootstrapUndefinedShare',NaN);
+            if numel(records) > 0, S.coverage = numel(a)/numel(records); end
             if isempty(a), return; end
             S.actualRms = sqrt(mean(a)); S.reportedRms = sqrt(mean(p));
             if S.reportedRms==0
@@ -80,6 +93,33 @@ classdef Calibration
             lower=sort(lower);upper=sort(upper);
             at=max(1,min(nBoot,ceil((nBoot+1)*[0.025 0.975])));
             S.ci=[lower(at(1)) upper(at(2))];
+        end
+
+        function T = summarizeByStratum(C, strata)
+            % Round 8 gap, report-only: per-stratum calibration, so a
+            % good pooled ratio cannot hide a collapsed high-blink stratum.
+            % strata is a cell array with one label per row of C, or a
+            % column name in C. Coverage (assessable/planned) is reported
+            % alongside ratio and CI for every stratum; this method does
+            % not change summarize() and does not change any pick.
+            if ischar(strata) || isstring(strata)
+                svals = C.(char(strata));
+            else
+                svals = strata(:);
+            end
+            if numel(svals) ~= height(C)
+                error('PipeCompare:Calibration', 'Stratum labels must match calibration rows.');
+            end
+            labels = unique(svals, 'stable');
+            rows = cell(0, 7);
+            for i = 1:numel(labels)
+                lab = labels(i);
+                if iscell(svals), sel = strcmp(svals, lab{1}); else, sel = svals == lab; end
+                sub = C(sel, :);
+                S = pipecompare.eval.Calibration.summarize(sub);
+                rows(end+1, :) = {lab, S.ratio, S.ci(1), S.ci(2), S.nRecords, S.plannedRecords, S.coverage}; %#ok<AGROW>
+            end
+            T = cell2table(rows, 'VariableNames', {'stratum', 'ratio', 'ciLower', 'ciUpper', 'nRecords', 'plannedRecords', 'coverage'});
         end
 
         function t = describe(C, label)

@@ -226,12 +226,24 @@ classdef Rank
                 assert(numel(strata)==1 && strcmp(status{opts.upgradeBaseline},'feasible'), ...
                     'PipeCompare:Baseline','The upgrade baseline must be feasible in the single comparison stratum.');
             end
+            bestSetUndefined = false;
             for s = 1:numel(strata)
                 feas = find(strcmp(status, 'feasible') & strcmp(stratum, strata{s}));
                 boot = pipecompare.eval.Rank.bootstrap(cands(feas), ref, opts, {objName});
                 pts = primary(feas);
                 [~, ib] = min(pts);
                 [keep, l, h, hEq, crit] = bestSet(pts(:), boot{1}, ib, opts.alpha);
+                if isinf(crit)
+                    bestSetUndefined = true;
+                    % Round 8 gap: bestSet is undefined when the critical
+                    % value is infinite (incomplete bootstrap support);
+                    % selection then falls back to point estimates. This
+                    % note only, it does not change keep/pick.
+                    note='bestSet undefined: critical value is infinite (incomplete bootstrap support); selection fell back to point estimates, do not read the kept set as a confidence set';
+                    for q=feas(:)'
+                        pieces={notes{q},note};notes{q}=strjoin(pieces(~cellfun(@isempty,pieces)),'; ');
+                    end
+                end
                 lo(feas) = l; hi(feas) = h; notDist(feas(keep)) = true;
                 % equivalent: the whole interval within the margin of the best
                 hEq(~keep) = NaN; hiKept(feas) = hEq;
@@ -262,6 +274,17 @@ classdef Rank
                 rec=feas(pick);
                 if guardDisabled
                     note='reference cleanup guard disabled (protectReferenceCleanup=false); the recommendation is unguarded';
+                    pieces={notes{rec},note};notes{rec}=strjoin(pieces(~cellfun(@isempty,pieces)),'; ');
+                end
+                % Round 8 A2: guard conclusions that are not 'disabled' or
+                % 'superseded' were previously log-only. Surface the two
+                % misleading cases in the result table; pick is unchanged.
+                if ~isempty(guard) && strcmp(guard.decision,'unassessed')
+                    note='reference cleanup guard unassessed; the proposal was kept by default, not by a guard pass';
+                    pieces={notes{rec},note};notes{rec}=strjoin(pieces(~cellfun(@isempty,pieces)),'; ');
+                end
+                if ~isempty(guard) && strcmp(guard.decision,'retain-baseline')
+                    note='reference cleanup guard retained the baseline instead of the proposal';
                     pieces={notes{rec},note};notes{rec}=strjoin(pieces(~cellfun(@isempty,pieces)),'; ');
                 end
                 if guardSuperseded
@@ -306,7 +329,12 @@ classdef Rank
                 T.(matlab.lang.makeValidName(['eyeBias_' ref.objectives{k}])) = eyeB(:, k);   % in the measure's unit
                 T.(matlab.lang.makeValidName(['shapeSpread_' ref.objectives{k}])) = spreads(:, k);
             end
-            R = struct('table', T, 'whyList', {whyList}, 'order', order, 'best', best, 'recommended', recommended, ...
+            % Round 8 gap: bestSetUndefined is a report flag only. The
+            % keep-all behaviour itself is NOT changed in this bundle
+            % (changing it would change pick; see the strict prototype
+            % in benchmarks/bestset_strict_prototype.m, which is a
+            % separate arm, not wired into Rank.run).
+            R = struct('table', T, 'whyList', {whyList}, 'order', order, 'best', best, 'recommended', recommended, 'bestSetUndefined', bestSetUndefined, ...
                 'byStratum', byStratum, 'objective', objName, 'options', opts, 'units', {ref.units}, ...
                 'validationScope','conditional-on-fitted-candidates','fullyHeldOut',false);
         end
@@ -573,10 +601,19 @@ classdef Rank
                 end
                 vAA(~isfinite(vAA)) = NaN; vBB(~isfinite(vBB)) = NaN;
                 if all(isnan(vAA)) || all(isnan(vBB)), continue; end
-                [~, ia] = min(pipecompare.eval.Rank.shrink(F, vAA(:))); [~, ib] = min(pipecompare.eval.Rank.shrink(F, vBB(:)));
+                % Round 8 A1: min() propagates NaN, so a never-assessed
+                % candidate could be chosen as the half-sample best.
+                % Non-finite shrunk values are Inf for the argmin only;
+                % the scored values below stay the original halves.
+                sA = pipecompare.eval.Rank.shrink(F, vAA(:)); sA(~isfinite(sA)) = Inf;
+                sB = pipecompare.eval.Rank.shrink(F, vBB(:)); sB(~isfinite(sB)) = Inf;
+                if all(isinf(sA)) || all(isinf(sB)), continue; end
+                [~, ia] = min(sA); [~, ib] = min(sB);
                 honest = [honest vAB(ia) vBA(ib)]; inSample = [inSample vAA(ia) vBB(ib)]; %#ok<AGROW>
             end
-            ok = isfinite(honest);
+            % Round 8 A1: an honest value with a NaN in-sample value must
+            % not poison halfInSample through mean(NaN).
+            ok = isfinite(honest) & isfinite(inSample);
             if ~any(ok), return; end
             h = mean(honest(ok));
             cf = struct('apparent', apparent, 'honest', h, 'overstatement', h / apparent - 1, ...

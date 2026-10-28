@@ -1612,3 +1612,65 @@ only and is never counted in the new run's paired evidence set. If
 a single search still exceeds 360 minutes, GitHub-hosted runners
 offer no higher job timeout, so the next step is search slicing or
 checkpointing, not another timeout raise.
+
+## Round 8 complete bundle (append-only note, to be appended to docs/METHODS.md at push time)
+
+Round 8 is a single bundle by user direction (2026-10-28), not split
+into rounds 8/9/10. The user accepted that a bundled failure cannot
+be attributed to one item without segmenting by file/module; that
+acceptance is NOT acceptance of fabricated evidence. New arms never
+replace Standard or balancedGuarded; every new arm needs its own
+paired-MSE, survival, wall-time and pick-stability gates on held-out
+seeds before it can be called better.
+
+Included as implemented code (MATLAB/Python, CI is first MATLAB
+verification; cloud has no MATLAB):
+- Round 7 test fix: eyeBias_P3mean (was eyeBias_obj1).
+- A1-A7, bestSetUndefined flag (report-only), calibration coverage
+  and summarizeByStratum (report-only), strict checkpoint (opt-in
+  only), Executor per-step seconds, shadow tools B1 (planned,
+  filename seed, duplicate, guard-reproduction/negative-control to
+  unavailable, negative gain, CSV pick/selectedKey), workflow
+  max-parallel 10->16, dispatch seed_list, EEGLAB SHA provenance.
+- Diffusion report and calibration-gate report (report-only helpers).
+
+Included as prototype/design ONLY, not production, not wired:
+- Successive halving, surrogate screen (Python prototype),
+  group-relative score (MATLAB pure helper, diagnostic only),
+  bestSet strict keep-only-best (separate arm prototype),
+  variant B (M3-first design record, MATLAB validation required),
+  checkpoint slicing resume (guarded design-only error in shadow
+  script), LLM-assisted log review (local template prototype, no
+  LLM call, no external API). DeepSeek/Kimi weights are NOT embedded
+  and are NOT called; the bundled LLM content is these transferable
+  techniques, with frozen rules and gates, not model weights.
+
+Not implemented in this bundle (explicit gaps):
+- CI cache activation: EEGLAB SHA is now recorded, but cache
+  activation is deferred until setup time is measured; a cache keyed
+  without the SHA could drift from 2026.0.0.
+- matlab-tests suite split: NOT split. Round 7 tests ran ~3 minutes
+  plus setup; splitting would multiply setup cost per suite. Keep
+  one job until setup time is measured and shown to be smaller than
+  the parallel gain.
+- Shadow merge-mode MATLAB tests for filename/duplicate/CSV-pick:
+  the checker enforces them in CI collect; MATLAB merge tests for
+  those paths are a follow-up, not claimed here.
+- Crossfit finite-guard fake-candidate test: guard is implemented,
+  a dedicated fake-candidate test is a follow-up.
+
+One-hour round boundary (user requirement):
+- A matlab-tests-only code-fix round CAN fit in 1 hour: Round 7
+  tests took ~3 minutes plus MATLAB/EEGLAB setup, well under 1 hour.
+- An 8-seed shadow validation round CANNOT fit in 1 hour: a single
+  search took 31-305 minutes, and 4 Balanced seeds timed out at
+  350 minutes. Shadow validation must therefore be split by
+  single-seed smoke, Executor dryRun, or 1-hour checkpoint slices,
+  and the long validation must run via workflow_dispatch in the
+  background, which is NOT cancelled by a later PR push (unlike
+  pull_request shadow runs, which are cancel-in-progress).
+- Trigger rule to write into round design: production files
+  (+pipecompare/, pop_pipecompare.m) do NOT trigger shadow;
+  shadow files (shadow script, checker, shadow tests, shadow
+  workflow) DO trigger shadow. A production-only bundle therefore
+  needs only matlab-tests, not a full shadow re-run.

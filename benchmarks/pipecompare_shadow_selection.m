@@ -164,6 +164,7 @@ function out = pipecompare_shadow_selection(outDir, firstSeed, nSeeds, varargin)
 if nargin < 2 || isempty(firstSeed), firstSeed = 20031; end
 if nargin < 3 || isempty(nSeeds), nSeeds = 8; end
 mode = 'search'; headSha = ''; workflowRunId = ''; maxSeconds = Inf;
+checkpointDir = ''; sliceSeconds = Inf; seedList = [];
 armMode = 'all';
 testArms = []; fragmentsDir = ''; eeglabVersion = getenv('PIPECOMPARE_EEGLAB_VERSION');
 if isempty(eeglabVersion), eeglabVersion = 'unknown'; end
@@ -178,6 +179,9 @@ while k <= numel(varargin)
         case 'headsha', headSha = value;
         case 'workflowrunid', workflowRunId = value;
         case 'maxseconds', maxSeconds = value;
+        case 'checkpointdir', checkpointDir = value;
+        case 'seedlist', seedList = value;
+        case 'sliceseconds', sliceSeconds = value;
         case 'testarms', testArms = value;
         case 'fragmentsdir', fragmentsDir = value;
         case 'eeglabversion', eeglabVersion = value;
@@ -188,7 +192,16 @@ end
 assert(ischar(outDir) && ~isempty(outDir), 'PipeCompare:Shadow', 'outDir must be a non-empty path.');
 assert(isscalar(firstSeed) && firstSeed == floor(firstSeed) && firstSeed > 0, 'PipeCompare:Shadow', 'firstSeed must be a positive integer.');
 assert(isscalar(nSeeds) && nSeeds == floor(nSeeds) && nSeeds >= 1 && nSeeds <= 30, 'PipeCompare:Shadow', 'nSeeds must be an integer in 1..30.');
-assert(ismember(mode, {'search', 'merge', 'test'}), 'PipeCompare:Shadow', 'mode must be search, merge or test.');
+assert(ismember(mode, {'search', 'merge', 'test', 'resume'}), 'PipeCompare:Shadow', 'mode must be search, merge, test or resume.');
+% Round 8 slicing: 'resume' is a design-level mode. It is NOT a silent
+% continuation of a timed-out search: the caller must pass a checkpoint
+% directory created by a sliced run, and Executor.resume re-derives
+% adaptive leaves (see Executor.resume comments). Until a sliced run
+% is proven in MATLAB, resume must not be used to complete Round 6
+% evidence; see round8-complete/MANIFEST.md.
+if strcmp(mode, 'resume')
+    error('PipeCompare:Shadow', 'Resume mode is design-only in Round 8: checkpoint slicing has not yet been proven in MATLAB, so it must not complete held-out evidence.');
+end
 assert(ismember(armMode, {'all', 'standard', 'balanced'}), 'PipeCompare:Shadow', 'arm must be all, standard or balanced.');
 if ~strcmp(mode, 'test')
     assert(ischar(headSha) && numel(headSha) >= 7, 'PipeCompare:Shadow', 'headSha is required for search and merge modes (pass the run commit SHA).');
@@ -201,7 +214,16 @@ if strcmp(mode, 'merge')
 end
 if ~isfolder(outDir), mkdir(outDir); end
 
-seeds = firstSeed:firstSeed + nSeeds - 1;
+% Round 8 seed_list: a non-contiguous dispatch list overrides the
+% contiguous range. NaN entries (from an empty env string) are ignored.
+if ~isempty(seedList)
+    seedList = seedList(isfinite(seedList));
+end
+if ~isempty(seedList)
+    seeds = sort(unique(seedList(:)'));
+else
+    seeds = firstSeed:firstSeed + nSeeds - 1;
+end
 % Fresh-seed assertion (design set + locked confirmation ranges).
 assert(all(seeds >= 20031), 'PipeCompare:Shadow', 'Shadow seeds must use the fresh range (>= 20031).');
 assert(~any(ismember(seeds, 40101:40104)), 'PipeCompare:Shadow', 'Shadow seeds must not reuse design seeds 40101-40104.');
@@ -340,9 +362,19 @@ else
             unguardArm.reason = 'no recommendation (shared family has no guarded pick)';
         else
             optsG = baseOpts; optsG.protectReferenceCleanup = true;
-            RG = pipecompare.eval.Rank.run(cands, rBal.ref, optsG, levelsOf(rBal.leaves));
-            assert(isscalar(RG.recommended) && RG.recommended == stored, ...
-                'PipeCompare:Shadow', 'Guarded re-execution does not reproduce the stored recommendation (seed %d).', seed);
+            % Round 8 B1: a reproduction failure must leave an
+            % unavailable arm with a reason, not crash the whole job
+            % and lose the fragment (and the failure reason with it).
+            reproOK = true;
+            try
+                RG = pipecompare.eval.Rank.run(cands, rBal.ref, optsG, levelsOf(rBal.leaves));
+                assert(isscalar(RG.recommended) && RG.recommended == stored, ...
+                    'PipeCompare:Shadow', 'Guarded re-execution does not reproduce the stored recommendation (seed %d).', seed);
+            catch ME
+                reproOK = false;
+                pipecompare.utils.log('Shadow: guarded reproduction failed (seed %d): %s', seed, ME.message);
+            end
+            if reproOK
             optsU = baseOpts; optsU.protectReferenceCleanup = false;
             RU = pipecompare.eval.Rank.run(cands, rBal.ref, optsU, levelsOf(rBal.leaves));
             unguardedPick = RU.recommended;
@@ -360,9 +392,21 @@ else
                 guardChanged = (stored ~= unguardedPick);
             end
             if ~isempty(unguardedPick) && stored == unguardedPick
-                assert(abs(guardArm.mseGainCorrected - unguardArm.mseGainCorrected) < 1e-12 && ...
-                    abs(guardArm.mseRaw - unguardArm.mseRaw) < 1e-12, ...
-                    'PipeCompare:Shadow', 'Negative control violated (seed %d): identical picks give different MSEs.', seed);
+                % Round 8 B1: a negative-control violation also becomes
+                % an unavailable arm, not a job crash.
+                try
+                    assert(abs(guardArm.mseGainCorrected - unguardArm.mseGainCorrected) < 1e-12 && ...
+                        abs(guardArm.mseRaw - unguardArm.mseRaw) < 1e-12, ...
+                        'PipeCompare:Shadow', 'Negative control violated (seed %d): identical picks give different MSEs.', seed);
+                catch ME
+                    pipecompare.utils.log('Shadow: negative control violated (seed %d): %s', seed, ME.message);
+                    guardArm = emptyArm('balancedGuarded'); guardArm.reason = 'negative control violated';
+                    unguardArm = emptyArm('balancedUnguarded'); unguardArm.reason = 'negative control violated';
+                end
+            end
+            else
+                guardArm.reason = 'guarded reproduction failed';
+                unguardArm.reason = 'guarded reproduction failed';
             end
         end
     end
@@ -440,15 +484,25 @@ function frag = armFragmentStruct(seed, arms, guardChanged, guardDecision, fp, h
 % two balanced arms; 'contract' is the search's fingerprint (empty
 % struct when the search itself failed, in which case the arm already
 % carries its failure reason).
+% Round 8 timing/diffusion/calibration (report-only): timing and
+% diffusion fields are added by the caller via frag.timing /
+% frag.diffusion when available; they never change pick or MSE.
 frag = struct('seed', seed, 'arms', arms, 'guardChanged', guardChanged, ...
     'guardDecision', guardDecision, 'contract', fp, 'labels', variantLabels(), ...
     'provenance', struct('script', 'benchmarks/pipecompare_shadow_selection.m', 'commit', headSha, ...
     'workflowRunId', workflowRunId, 'matlabVersion', version(), 'eeglabVersion', eeglabVersion, ...
+    'eeglabSha', getenv('EEGLAB_SHA'), ...
     'inputArtifactRunId', [], 'inputArtifactNote', 'fresh synthetic seeds; no frozen input artifact'));
 end
 
 function [r, err] = runSearch(EEG, seed, recipe, varianceMode, maxSeconds)
 % One production search, no checkpoints (benchmark matrix pattern).
+% Round 8 slicing (design-only, see above): a sliced run would pass a
+% checkpoint directory and a finite maxSeconds here instead of ''/Inf,
+% with parallel=false (Executor asserts time slices require serial
+% prefix sharing). That change is NOT wired in this bundle because
+% Executor.resume re-derives adaptive leaves and has not been proven
+% in MATLAB for the shadow arms.
 % Any exception makes only the affected recipe unavailable for this seed.
 r = []; err = '';
 try
@@ -582,7 +636,9 @@ else
     g = 1;
 end
 g = g(1);
-if ~isfinite(g) || g == 0, return; end
+% Round 8 B1: negative gain is also undefined in Rank (gainOf);
+% only a finite positive gain gives a meaningful corrected MSE.
+if ~isfinite(g) || g <= 0, return; end
 mseGC = mean(((est / g) - truth).^2);
 mseRaw = mean((est - truth).^2);
 ok = isfinite(mseGC) && isfinite(mseRaw);
@@ -661,6 +717,7 @@ f = struct('seed', entry.seed, 'arms', entry.arms, 'guardChanged', entry.guardCh
     'guardDecision', entry.guardDecision, 'labels', variantLabels(), ...
     'provenance', struct('script', 'benchmarks/pipecompare_shadow_selection.m', 'commit', headSha, ...
     'workflowRunId', workflowRunId, 'matlabVersion', version(), 'eeglabVersion', eeglabVersion, ...
+    'eeglabSha', getenv('EEGLAB_SHA'), ...
     'inputArtifactRunId', [], 'inputArtifactNote', 'fresh synthetic seeds; no frozen input artifact'));
 end
 
@@ -709,6 +766,10 @@ for i = 1:numel(files)
     isBal = endsWith(nm, '_balanced.json');
     if ~isStd && ~isBal, continue; end
     f = jsondecode(fileread(fullfile(files(i).folder, nm)));
+    % Round 8 B1: a fragment whose filename seed disagrees with its
+    % content seed must fail, not be silently relabelled by content.
+    tok = regexp(nm, '^shadow_selection_seed_(\d+)_(standard|balanced)\.json$', 'tokens');
+    assert(~isempty(tok) && str2double(tok{1}{1}) == f.seed, 'PipeCompare:Shadow', 'Fragment %s filename seed disagrees with content seed %d.', nm, f.seed);
     assert(isfield(f, 'seed') && isfield(f, 'arms') && isfield(f, 'labels'), 'PipeCompare:Shadow', 'Fragment %s is missing seed/arms/labels.', nm);
     assert(isfield(f.labels, 'fullyHeldOut') && isfield(f.labels, 'preprocessingRefitted') && isfield(f.labels, 'adaptiveLeavesIncluded'), ...
         'PipeCompare:Shadow', 'Fragment %s has incomplete labels.', nm);
@@ -722,7 +783,15 @@ for i = 1:numel(files)
     end
     key = sprintf('s%d', f.seed);
     if ~isfield(bySeed, key), bySeed.(key) = struct('standard', [], 'balanced', []); end
-    if isStd, bySeed.(key).standard = f; else, bySeed.(key).balanced = f; end
+    % Round 8 B1: duplicate fragments for one seed-arm must fail,
+    % not silently overwrite each other.
+    if isStd
+        assert(isempty(bySeed.(key).standard), 'PipeCompare:Shadow', 'Duplicate standard fragment for seed %d.', f.seed);
+        bySeed.(key).standard = f;
+    else
+        assert(isempty(bySeed.(key).balanced), 'PipeCompare:Shadow', 'Duplicate balanced fragment for seed %d.', f.seed);
+        bySeed.(key).balanced = f;
+    end
 end
 perSeed = struct('seed', {}, 'arms', {}, 'guardChanged', {}, 'guardDecision', {});
 names = {'standard', 'balancedGuarded', 'balancedUnguarded'};
@@ -879,7 +948,7 @@ function runJson = writeRunOutputs(outDir, headSha, headShort, seeds, perSeed, w
 % 'nSeedsPlanned' when a partial run is published. When omitted,
 % planned equals present, which is the test-mode and full-run case.
 if nargin < 8 || isempty(plannedSeeds), plannedSeeds = seeds; end
-stats = pairedStats(perSeed);
+stats = pairedStats(perSeed, numel(plannedSeeds));
 firstSeed = plannedSeeds(1); nSeeds = numel(plannedSeeds);
 base = sprintf('shadow_selection_%s_%d_%d', headShort, firstSeed, nSeeds);
 jsonPath = fullfile(outDir, [base '.json']);
@@ -893,6 +962,7 @@ run = struct('commit', headSha, 'seeds', seeds, 'firstSeed', firstSeed, 'nSeedsP
     'coverage', stats.coverage, 'unavailable', stats.unavailable, ...
     'provenance', struct('script', 'benchmarks/pipecompare_shadow_selection.m', 'commit', headSha, ...
     'workflowRunId', workflowRunId, 'matlabVersion', version(), 'eeglabVersion', eeglabVersion, ...
+    'eeglabSha', getenv('EEGLAB_SHA'), ...
     'inputArtifactRunId', [], 'inputArtifactNote', 'fresh synthetic seeds; no frozen input artifact', ...
     'outputPath', jsonPath), ...
     'labels', variantLabels(), ...
@@ -910,14 +980,15 @@ run = struct('commit', headSha, 'seeds', seeds, 'firstSeed', firstSeed, 'nSeedsP
     'verdicts', stats.verdicts);
 writeJson(jsonPath, run);
 % Per-seed CSV (design section 4.4 columns).
-rows = cell(0, 5);
+% Round 8 B1: CSV readers must be able to see which pipeline won.
+rows = cell(0, 7);
 for i = 1:numel(perSeed)
     for a = 1:3
         arm = perSeed(i).arms(a);
-        rows(end + 1, :) = {perSeed(i).seed, arm.name, arm.mseGainCorrected, arm.mseRaw, double(arm.assessable)}; %#ok<AGROW>
+        rows(end + 1, :) = {perSeed(i).seed, arm.name, arm.mseGainCorrected, arm.mseRaw, double(arm.assessable), arm.pick, arm.selectedKey}; %#ok<AGROW>
     end
 end
-T = cell2table(rows, 'VariableNames', {'seed', 'arm', 'selectedMSE_gainCorrected', 'selectedMSE_raw', 'assessable'});
+T = cell2table(rows, 'VariableNames', {'seed', 'arm', 'selectedMSE_gainCorrected', 'selectedMSE_raw', 'assessable', 'pick', 'selectedKey'});
 writetable(T, fullfile(outDir, [base '.csv']));
 % Summary CSV (the design's second option: a separate summary file).
 pairs = {'guardedMinusStandard', 'guardedMinusUnguarded'};
@@ -937,7 +1008,11 @@ fprintf('[shadow] primary pair guardedMinusStandard: mean %.6g, CI [%.6g, %.6g],
 runJson = jsonPath;
 end
 
-function stats = pairedStats(perSeed)
+function stats = pairedStats(perSeed, plannedCount)
+% Round 8 B1: coverage.planned is the PLANNED count, not the present
+% count; coverage.present is the present count. The old code set
+% planned = numel(perSeed), which made the checker test tautological.
+if nargin < 2 || isempty(plannedCount), plannedCount = numel(perSeed); end
 % Paired statistics over seeds. A pair uses only seeds assessable in
 % BOTH arms (the intersection); anything else is listed unavailable.
 % Bootstrap: 10000 resamples of the paired seeds, rng seeded with 1 in
@@ -946,7 +1021,7 @@ names = {'standard', 'balancedGuarded', 'balancedUnguarded'};
 pairDefs = struct('pair', {'guardedMinusStandard', 'guardedMinusUnguarded'}, ...
     'first', {'balancedGuarded', 'balancedGuarded'}, 'second', {'standard', 'balancedUnguarded'});
 pairedDifferences = struct(); pairedMeanDifference = struct(); recordBootstrapCI95 = struct();
-verdicts = struct(); coverage = struct('planned', numel(perSeed));
+verdicts = struct(); coverage = struct('planned', plannedCount, 'present', numel(perSeed));
 unavailable = struct('seed', {}, 'arm', {}, 'reason', {});
 for a = 1:3
     n = 0;

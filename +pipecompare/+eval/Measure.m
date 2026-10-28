@@ -283,7 +283,12 @@ classdef Measure
                 [tf, loc] = ismember(T.id(rows), ref.ids{c});
                 m.extraTrials = m.extraTrials + sum(~tf);
                 rows = rows(tf); loc = loc(tf);
+                nBeforeDup = numel(loc);
                 [loc, first] = unique(loc, 'stable'); rows = rows(first);
+                if numel(loc) < nBeforeDup
+                    % Round 8 A6: report-only. First-wins logic unchanged.
+                    pipecompare.utils.log('Measure: condition %d dropped %d duplicate trial id(s); first occurrence kept.', c, nBeforeDup - numel(loc));
+                end
                 rowOf{c} = struct('rows', rows, 'loc', loc);
                 m.kept(c) = numel(loc);
                 m.retention(c) = m.kept(c) / ref.n(c);
@@ -462,7 +467,11 @@ classdef Measure
                         idx = randi(s, n, n, opts.nBootPeak);
                         W = full(sparse(idx, repmat(1:opts.nBootPeak, n, 1), 1, n, opts.nBootPeak));
                         avgs = (W' * (w .* Y)) ./ (W' * w);
-                        sme = std(peakOf(avgs, o));
+                        % Round 8 B3: a draw whose total weight is 0 gives
+                        % NaN averages; excluding those draws (not the
+                        % whole candidate) is the weighted-peak semantics.
+                        pv = peakOf(avgs, o); pv = pv(isfinite(pv));
+                        if isempty(pv), sme = NaN; else, sme = std(pv); end
                 end
                 return;
             end
@@ -536,6 +545,9 @@ classdef Measure
                     q0 = (wt .^ 2)' * Wc{c}; q1 = (wt .^ 2 .* X0)' * Wc{c}; q2 = (wt .^ 2 .* X0 .^ 2)' * Wc{c};
                     mu = s1 ./ s0;
                     sm2 = max(q2 - 2 * mu .* q1 + mu .^ 2 .* q0, 0) .* Nb ./ (Nb - 1) ./ s0 .^ 2;
+                    % Round 8 B3: a draw whose total weight is 0 has no
+                    % defined weighted mean; mark it Inf like Nb<2 below.
+                    sm2(s0 == 0) = Inf;
                 elseif strcmp(o.kind, 'scalar')
                     s1 = X0' * Wc{c}; s2 = (X0 .^ 2)' * Wc{c};
                     sm2 = max((s2 - s1 .^ 2 ./ Nb) ./ (Nb - 1), 0) ./ Nb;
@@ -556,7 +568,10 @@ classdef Measure
                         else
                             avgs = (Win' * X(kk, :)) / n;
                         end
-                        sm2(b) = var(peakOf(avgs, o));
+                        % Round 8 B3: exclude zero-weight / NaN inner draws
+                        % instead of letting one NaN poison the variance.
+                        pvInner = peakOf(avgs, o); pvInner = pvInner(isfinite(pvInner));
+                        if isempty(pvInner), sm2(b) = Inf; else, sm2(b) = var(pvInner); end
                     end
                 end
                 sm2(:, Nb < 2) = Inf;
