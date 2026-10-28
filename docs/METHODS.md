@@ -1674,3 +1674,45 @@ One-hour round boundary (user requirement):
   shadow files (shadow script, checker, shadow tests, shadow
   workflow) DO trigger shadow. A production-only bundle therefore
   needs only matlab-tests, not a full shadow re-run.
+## Round 9 (append-only note, to be appended to docs/METHODS.md at push time)
+
+Round 9 is a test-and-timing round only: no production ranking, pick,
+MSE, or search-family change. It is pushed only after the Round 8
+runs (compatibility and shadow-selection) have all completed, because
+pushing earlier would cancel the in-progress Round 8 shadow run.
+- Column-name fix: the Round 8 test asserted R.table.eyeBias_P3mean,
+  but CI proved that column does not exist. Rank.m builds the column
+  with matlab.lang.makeValidName(['eyeBias_' ref.objectives{k}]) and
+  the default ReplacementStyle is 'underscore', so 'eyeBias_P3.mean'
+  becomes eyeBias_P3_mean. The Round 9 test derives the column with
+  makeValidName in the test itself (no third guess) and keeps one
+  hard-coded eyeBias_P3_mean assertion as the dot-to-underscore
+  control.
+- Shadow fragment timing wiring (report-only): runSearch returns
+  timing.wallSeconds (tic/toc, never a sum over candidates) plus a
+  per-step-type median/max summary; failed searches report wall time
+  with stepSecondsAvailable=false. Old fragments without timing are
+  still accepted. The per-seed runSeed path is NOT wired (two
+  searches per seed, one wallSeconds would be ambiguous).
+- Shadow merge MATLAB tests x3 (filename-seed mismatch, duplicate
+  seed-arm, merge-mode CSV pick/selectedKey agreement) and one
+  crossfit finite-guard test (Round 8 A1).
+- B3 zero-weight fake-candidate test: weighted scalar smeBoot
+  s0==0 -> Inf with s0>0 draw kept at its formula value (5 in the
+  constructed case); weighted peak estimate and nested peak smeBoot
+  exclude zero-weight draws instead of poisoning the candidate;
+  all-positive-weight controls stay finite / at the weighted mean.
+  This test is local and unvalidated until CI runs it in MATLAB.
+
+Still NOT done (explicit gaps, do not claim otherwise):
+- Checkpoint slicing resume (design-only, Executor.resume re-derives
+  adaptive leaves, not MATLAB-proven for shadow arms); CI cache
+  activation (evaluated as not worth it at Round 8 setup times:
+  shadow median setup ~89 s vs searches of 31-305 min); matlab-tests
+  suite split (evaluated as not worth it: setup ~77 s per job);
+- Successive halving / surrogate / variant B shadow-arm wiring
+  (prototype/design only); diffusion-report and calibration-gate
+  report wiring into shadow JSON (helpers exist, wiring is a
+  follow-up); A2/A3/A5/A6 assertion tests (guard note, single-
+  recording label, gain log, duplicate-trial warning) were suggested
+  in the A-group review but were not written in Round 8 or Round 9.

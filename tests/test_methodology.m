@@ -120,6 +120,64 @@ for scale=[1 100]
 end
 end
 
+function testZeroWeightBootstrapBranchesDoNotPoisonPositiveDraws(tc)
+% Round 9 B3 test: the three Round 8 B3 branches in Measure.m, plus
+% the control that positive-weight draws are unchanged. All three
+% branches share one idea: a draw whose total weight is 0 has no
+% defined weighted mean, so it must be excluded / marked Inf, never
+% allowed to poison the whole candidate; a draw with total weight > 0
+% must keep its pre-B3 value.
+% (1) Weighted scalar smeBoot: s0 == 0 -> Inf, s0 > 0 -> formula value.
+% Four trials, weights [0;0;1;1], X = [10;20;30;40]. Draw 1 counts
+% [1;1;0;0]: Nb = 2 but s0 = 0, so sm2 must be Inf (this isolates the
+% B3 branch from the Nb<2 -> Inf rule, which does not fire here).
+% Draw 2 counts [0;0;1;1]: Nb = 2, s0 = 2, s1 = 70, mu = 35,
+% q0 = 2, q1 = 70, q2 = 2500, so sm2 = max(2500-2*35*70+35^2*2,0)
+% * 2/(2-1)/2^2 = 25, and v = sqrt(25) = 5. If B3 leaked Inf into
+% positive draws, draw 2 would fail here.
+x = [10;20;30;40]; wt = [0;0;1;1];
+o = struct('kind','scalar','X',{{x}},'w',{{wt}});
+opts = pipecompare.eval.Rank.defaults();
+Wc = [1 0; 1 0; 0 1; 0 1];
+v = pipecompare.eval.Measure.smeBoot(o,{Wc},opts,0,1);
+verifyTrue(tc,isinf(v(1)));
+verifyEqual(tc,v(2),5,'AbsTol',1e-12);
+% (2) Weighted peak estimate: zero-weight draws are excluded, not the
+% whole candidate. One positive-weight trial out of four, 1000 draws
+% (Measure.defaults nBootPeak): a draw that picks only zero-weight
+% trials has probability (3/4)^4 = 0.316 per draw, so over 1000 draws
+% such draws are effectively certain to occur; the old code let one
+% NaN average poison std(pv) to NaN, the B3 code filters finite pv
+% and returns a finite sme. The point estimate itself is the weighted
+% mean over the single positive trial.
+op = struct('kind','peak','polarity','positive','X',{{x}});
+mopts = pipecompare.eval.Measure.defaults();
+[estp, smep] = pipecompare.eval.Measure.estimate(op,x,mopts,0,[0;0;0;1]);
+verifyEqual(tc,estp,40,'AbsTol',1e-12);
+verifyTrue(tc,isfinite(smep));
+% Positive-weight control for the peak estimate: all weights > 0, so
+% no draw is excluded and the estimate is the weighted mean.
+[estpos, smepos] = pipecompare.eval.Measure.estimate(op,x,mopts,0,[0.5;1;1.5;2]);
+verifyEqual(tc,estpos,30,'AbsTol',1e-12);
+verifyTrue(tc,isfinite(smepos));
+% (3) Weighted peak nested smeBoot: zero-weight inner draws are
+% excluded. One outer draw, counts [1;1;1;1], weights [0;0;0;1]:
+% each of the 100 inner draws picks 4 trials uniformly from the 4
+% count-positive trials, so a zero-weight inner draw has probability
+% (3/4)^4 = 0.316 per draw and is effectively certain over 100 draws;
+% the old code let one NaN inner average poison var(pvInner) to NaN,
+% the B3 code filters finite pvInner and returns a finite v.
+% Positive-weight control: weights all 1, same outer draw, v finite
+% under both old and new code, so it only guards against B3 breaking
+% the positive path.
+op2 = struct('kind','peak','polarity','positive','X',{{x}},'w',{{[0;0;0;1]}});
+vpeak = pipecompare.eval.Measure.smeBoot(op2,{ones(4,1)},opts,0,1);
+verifyTrue(tc,isfinite(vpeak));
+op3 = struct('kind','peak','polarity','positive','X',{{x}},'w',{{ones(4,1)}});
+vpeakPos = pipecompare.eval.Measure.smeBoot(op3,{ones(4,1)},opts,0,1);
+verifyTrue(tc,isfinite(vpeakPos));
+end
+
 function testGroupRankPassesPairedCovarianceToOwnChoices(tc)
 rs=RandStream('mt19937ar','Seed',3007); x=randn(rs,60,1);
 Y=[1 1.05; 1.08 1; 1.01 1.02]; opts=pipecompare.eval.Rank.defaults();
@@ -346,12 +404,22 @@ x=(1:40)'; c=nqc_cand(x,'kind',{'peak'}); o=c.m.objectives;
 o.eyeBias=NaN; o.eyeBiasSq=NaN; o.eyeBiasAssessed=false; o.eyeBiasApplicable=false; c.m.objectives=o;
 opts=pipecompare.eval.Rank.defaults(); opts.nBoot=99; opts.nSplits=0;
 R=pipecompare.eval.Rank.run(c,nqc_ref(40),opts);
-% Round 8 fix for the Round 7 matlab-tests failure: the default ref
-% objectives are {'P3.mean'}, so the table column is
-% makeValidName('eyeBias_P3.mean') = eyeBias_P3mean, not eyeBias_obj1.
+% Round 9 fix for the Round 8 matlab-tests failure: the Round 8
+% comment guessed eyeBias_P3mean, but CI proved that column does not
+% exist. Rank.m builds the column with
+% matlab.lang.makeValidName(['eyeBias_' ref.objectives{k}]) and the
+% default ReplacementStyle is 'underscore', so '.' becomes '_':
+% 'eyeBias_P3.mean' -> 'eyeBias_P3_mean'. Do NOT hard-code a guessed
+% column name again: derive it with makeValidName in the test itself,
+% and keep one hard-coded eyeBias_P3_mean assertion as the
+% dot-to-underscore control. That control is intentionally brittle:
+% if a future MATLAB changed the default ReplacementStyle, it fails
+% and flags the change, instead of silently passing on a wrong column.
+col = matlab.lang.makeValidName('eyeBias_P3.mean');
 % (The ancillary test above uses an explicit {'obj1','obj2'} ref, so
 % eyeBias_obj2 there is correct and is left alone.)
-verifyEqual(tc,R.recommended,1); verifyTrue(tc,isnan(R.table.eyeBias_P3mean)); verifyTrue(tc,isfinite(R.table.objective(1)));
+verifyEqual(tc,R.recommended,1); verifyTrue(tc,isnan(R.table.(col))); verifyTrue(tc,isfinite(R.table.objective(1)));
+verifyTrue(tc,isnan(R.table.eyeBias_P3_mean));
 % Scalar counterpart with the same unassessed bias must still block:
 % eyeBiasApplicable=true is the old behaviour for scalar objectives.
 c2=nqc_cand(x); o2=c2.m.objectives;
@@ -418,6 +486,37 @@ verifyEqual(tc,cf.scope,'conditional-selection'); verifyFalse(tc,cf.fullyHeldOut
 verifyTrue(tc,any(strcmp(cf.fixedDecisions,'factorial shrinkage')));
 opts.nBoot=99; R=pipecompare.eval.Rank.run(c,nqc_ref(40),opts);
 verifyEqual(tc,R.validationScope,'conditional-on-fitted-candidates'); verifyFalse(tc,R.fullyHeldOut);
+end
+
+function testCrossfitIgnoresUnassessedCandidatesWhenPickingHalfSampleBest(tc)
+% Round 9 dedicated test for the Round 8 A1 guard (Rank.crossfit):
+% before A1, a never-assessed candidate's non-finite shrunk value was
+% passed to min() without finite filtering, so it could be chosen as
+% the half-sample best (MATLAB min propagates NaN: [~, ia] = min([NaN,
+% finite]) returns the NaN position). After A1, non-finite shrunk
+% values are Inf for the argmin only, and a split with no finite
+% shrunk value on either half is skipped.
+% Fake candidates: one all-NaN candidate (Measure.estimate returns
+% NaN with <2 retained trials, so its per-objective half-sample score
+% is NaN) and one finite candidate. The guard is proven only if the
+% crossfit result is finite: a finite honest/halfInSample pair can
+% only come from the finite candidate being picked on both halves,
+% because the unassessed candidate's honest/inSample values are NaN
+% and are filtered out at the end of crossfit.
+bad = nqc_cand(NaN(40, 1));
+good = nqc_cand((1:40)');
+opts = pipecompare.eval.Rank.defaults(); opts.nSplits = 2;
+cf = pipecompare.eval.Rank.crossfit([bad good], nqc_ref(40), opts, 'composite', good.m.composite);
+verifyFalse(tc, isempty(cf));
+verifyTrue(tc, isfinite(cf.honest));
+verifyTrue(tc, isfinite(cf.halfInSample));
+verifyEqual(tc, cf.scope, 'conditional-selection'); verifyFalse(tc, cf.fullyHeldOut);
+% Control: the bad candidate alone must produce no finite split at
+% all (cf empty). Without this control the main assertion would be
+% vacuous: it proves the bad candidate really is unassessed here,
+% rather than accidentally finite.
+cfBad = pipecompare.eval.Rank.crossfit(bad, nqc_ref(40), opts, 'composite', NaN);
+verifyTrue(tc, isempty(cfBad));
 end
 
 function testBadStretchesReportUnsupportedRank(tc)

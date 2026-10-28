@@ -423,7 +423,7 @@ function frag = runArmStandard(seed, maxSeconds, headSha, workflowRunId, eeglabV
 % and condition events, which are exactly the inputs to populationP3).
 [EEG, truth] = bench_synth(seed);
 setBase(EEG);
-[rStd, stdErr] = runSearch(EEG, seed, 'standard', 'legacy-total', maxSeconds);
+[rStd, stdErr, stdTiming] = runSearch(EEG, seed, 'standard', 'legacy-total', maxSeconds);
 stdArm = emptyArm('standard');
 fp = struct();
 if ~isempty(stdErr)
@@ -437,7 +437,7 @@ else
     [mseGC, mseRaw, ok] = armMse(rStd.cands, pick, truthVec);
     stdArm = fillArm(stdArm, pick, rStd, mseGC, mseRaw, ok, 'no recommendation');
 end
-frag = armFragmentStruct(seed, stdArm, [], '', fp, headSha, workflowRunId, eeglabVersion);
+frag = armFragmentStruct(seed, stdArm, [], '', fp, headSha, workflowRunId, eeglabVersion, stdTiming);
 fprintf('[shadow] seed %d: standard pick %s\n', seed, pickText(stdArm.pick));
 end
 
@@ -446,7 +446,7 @@ function frag = runArmBalanced(seed, maxSeconds, headSha, workflowRunId, eeglabV
 % one fitted family, plus the contract fingerprint for the merge step.
 [EEG, truth] = bench_synth(seed);
 setBase(EEG);
-[rBal, balErr] = runSearch(EEG, seed, 'balanced', 'pooled', maxSeconds);
+[rBal, balErr, balTiming] = runSearch(EEG, seed, 'balanced', 'pooled', maxSeconds);
 fp = struct();
 if ~isempty(balErr) || isempty(rBal)
     truthVec = [];
@@ -456,7 +456,7 @@ else
 end
 [guardArm, unguardArm, guardChanged, guardDecision] = balancedArms(rBal, balErr, truthVec, seed);
 arms = [guardArm unguardArm];
-frag = armFragmentStruct(seed, arms, guardChanged, guardDecision, fp, headSha, workflowRunId, eeglabVersion);
+frag = armFragmentStruct(seed, arms, guardChanged, guardDecision, fp, headSha, workflowRunId, eeglabVersion, balTiming);
 fprintf('[shadow] seed %d: guarded pick %s, unguarded pick %s\n', seed, pickText(guardArm.pick), pickText(unguardArm.pick));
 end
 
@@ -479,24 +479,34 @@ catch
 end
 end
 
-function frag = armFragmentStruct(seed, arms, guardChanged, guardDecision, fp, headSha, workflowRunId, eeglabVersion)
+function frag = armFragmentStruct(seed, arms, guardChanged, guardDecision, fp, headSha, workflowRunId, eeglabVersion, timing)
 % One per-search arm fragment. 'arms' is a single standard arm or the
 % two balanced arms; 'contract' is the search's fingerprint (empty
 % struct when the search itself failed, in which case the arm already
 % carries its failure reason).
-% Round 8 timing/diffusion/calibration (report-only): timing and
-% diffusion fields are added by the caller via frag.timing /
-% frag.diffusion when available; they never change pick or MSE.
+% Round 9 timing (report-only): frag.timing is the search timing from
+% searchTiming (wallSeconds + per-step-type summary). It never changes
+% pick or MSE, and old fragments without a timing field are still
+% accepted by the merge step and the Python checker (both ignore it).
+% The per-seed runSeed path is NOT wired here: it runs two searches
+% for one seed, so a single wallSeconds would be ambiguous; only the
+% per-search arm fragments (the CI matrix path) carry timing.
+if nargin < 9 || isempty(timing), timing = timingEmpty(NaN); end
 frag = struct('seed', seed, 'arms', arms, 'guardChanged', guardChanged, ...
-    'guardDecision', guardDecision, 'contract', fp, 'labels', variantLabels(), ...
+    'guardDecision', guardDecision, 'contract', fp, 'timing', timing, 'labels', variantLabels(), ...
     'provenance', struct('script', 'benchmarks/pipecompare_shadow_selection.m', 'commit', headSha, ...
     'workflowRunId', workflowRunId, 'matlabVersion', version(), 'eeglabVersion', eeglabVersion, ...
     'eeglabSha', getenv('EEGLAB_SHA'), ...
     'inputArtifactRunId', [], 'inputArtifactNote', 'fresh synthetic seeds; no frozen input artifact'));
 end
 
-function [r, err] = runSearch(EEG, seed, recipe, varianceMode, maxSeconds)
+function [r, err, timing] = runSearch(EEG, seed, recipe, varianceMode, maxSeconds)
 % One production search, no checkpoints (benchmark matrix pattern).
+% Round 9 timing: timing.wallSeconds is the tic/toc wall time of this
+% one search only. It is NOT a sum over candidates: candidates share
+% tree prefixes, so summing candidate seconds would double-count the
+% shared work. The per-type summary is likewise a median/max across
+% candidates, never a sum, and never a wall time.
 % Round 8 slicing (design-only, see above): a sliced run would pass a
 % checkpoint directory and a finite maxSeconds here instead of ''/Inf,
 % with parallel=false (Executor asserts time slices require serial
@@ -504,7 +514,8 @@ function [r, err] = runSearch(EEG, seed, recipe, varianceMode, maxSeconds)
 % Executor.resume re-derives adaptive leaves and has not been proven
 % in MATLAB for the shadow arms.
 % Any exception makes only the affected recipe unavailable for this seed.
-r = []; err = '';
+r = []; err = ''; timing = timingEmpty(NaN);
+t0 = tic;
 try
     [~, ~, r] = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'11', '31'}, ...
         'recipe', recipe, 'artifactvariance', varianceMode, 'reference', 'average', ...
@@ -520,6 +531,61 @@ catch ME
     err = ['search failed: ' ME.message];
     r = [];
 end
+wall = toc(t0);
+if isempty(err)
+    timing = searchTiming(r, wall);
+else
+    % A failed/partial search still reports how long it ran, but no
+    % per-type summary: there is no complete candidate family to
+    % summarise, and inventing one from a partial family would mislead.
+    timing = timingEmpty(wall);
+end
+end
+
+function t = timingEmpty(wall)
+% Timing placeholder: wallSeconds may be NaN (caller unknown) or a
+% measured value (failed search); byType is empty and the flag is
+% false, so no reader can mistake the absence of timing for zero time.
+t = struct('wallSeconds', wall, 'stepSecondsAvailable', false, ...
+    'byType', struct('type', {}, 'medianSeconds', {}, 'maxSeconds', {}, 'count', {}));
+end
+
+function t = searchTiming(r, wall)
+% Per-step-type summary over ALL candidates of one completed search:
+% for each step type, the median and maximum of the finite per-step
+% seconds recorded by Executor.stepFacts (Round 8), plus how many
+% candidate-steps contributed. Median/max are robust to the long tail
+% of a few slow candidates; a sum is deliberately NOT reported, because
+% shared tree prefixes would be counted once per descendant candidate.
+% stepSecondsAvailable is false when no candidate carries a finite
+% step seconds field (old fragments / old Executor), never silently 0.
+t = timingEmpty(wall);
+if isempty(r) || ~isfield(r, 'cands') || isempty(r.cands), return; end
+types = {}; values = {};
+for ci = 1:numel(r.cands)
+    cand = r.cands(ci);
+    if ~isfield(cand, 'steps') || isempty(cand.steps), continue; end
+    steps = cand.steps;
+    if iscell(steps), list = steps; else, list = num2cell(steps); end
+    for si = 1:numel(list)
+        st = list{si};
+        if ~isstruct(st) || ~isfield(st, 'type') || ~isfield(st, 'seconds'), continue; end
+        sec = st.seconds;
+        if ~isscalar(sec) || ~isfinite(sec), continue; end
+        k = find(strcmp(types, st.type), 1);
+        if isempty(k), types{end + 1} = st.type; values{end + 1} = sec; %#ok<AGROW>
+        else, values{k}(end + 1) = sec; %#ok<AGROW>
+        end
+    end
+end
+if isempty(types), return; end
+byType = struct('type', {}, 'medianSeconds', {}, 'maxSeconds', {}, 'count', {});
+for k = 1:numel(types)
+    v = values{k};
+    byType(k) = struct('type', types{k}, 'medianSeconds', median(v), 'maxSeconds', max(v), 'count', numel(v)); %#ok<AGROW>
+end
+t.stepSecondsAvailable = true;
+t.byType = byType;
 end
 
 function pick = storedPick(r)

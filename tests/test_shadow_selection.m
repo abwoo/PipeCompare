@@ -232,6 +232,72 @@ verifyEqual(tc, data.coverage.paired_guardedMinusStandard, 0);
 verifyEqual(tc, data.pairedMeanDifference.guardedMinusUnguarded, 0, 'AbsTol', 1e-12);
 end
 
+function testMergeArmFragmentsFilenameSeedMismatch(tc)
+% Round 9: a fragment whose filename seed disagrees with its content
+% seed must fail the merge, not be silently relabelled by content.
+% (Production merge already asserts this since Round 8 B1; this test
+% is the MATLAB cover that was missing.)
+fragDir = mkOutDir(tc, 'merge_filename_mismatch');
+stdFrag = mkArmFrag(20031, mkArm('standard', 1, 1.0), [], '', mkFingerprint([0.3 0.6]));
+balFrag = mkArmFrag(20031, [mkArm('balancedGuarded', 1, 0.5) mkArm('balancedUnguarded', 1, 0.5)], false, 'maintain', mkFingerprint([0.3 0.6]));
+writeFrag(fragDir, 'shadow_selection_seed_20032_standard.json', stdFrag);
+writeFrag(fragDir, 'shadow_selection_seed_20031_balanced.json', balFrag);
+outDir = mkOutDir(tc, 'merge_filename_mismatch_out');
+verifyError(tc, @() pipecompare_shadow_selection(outDir, 20031, 1, 'mode', 'merge', 'fragmentsDir', fragDir, ...
+    'headSha', 'testhead1234567890', 'workflowRunId', 'test'), 'PipeCompare:Shadow');
+end
+
+function testMergeArmFragmentsDuplicateSeedArm(tc)
+% Round 9: two fragments for the same seed-arm (here in two
+% subdirectories, as the collect job downloads per-job artifacts)
+% must fail the merge, not silently overwrite each other.
+% (Production merge already asserts this since Round 8 B1; this test
+% is the MATLAB cover that was missing.)
+fragDir = mkOutDir(tc, 'merge_duplicate');
+subDir = fullfile(fragDir, 'job2');
+mkdir(subDir);
+stdFrag = mkArmFrag(20031, mkArm('standard', 1, 1.0), [], '', mkFingerprint([0.3 0.6]));
+balFrag = mkArmFrag(20031, [mkArm('balancedGuarded', 1, 0.5) mkArm('balancedUnguarded', 1, 0.5)], false, 'maintain', mkFingerprint([0.3 0.6]));
+writeFrag(fragDir, 'shadow_selection_seed_20031_standard.json', stdFrag);
+writeFrag(subDir, 'shadow_selection_seed_20031_standard.json', stdFrag);
+writeFrag(fragDir, 'shadow_selection_seed_20031_balanced.json', balFrag);
+outDir = mkOutDir(tc, 'merge_duplicate_out');
+verifyError(tc, @() pipecompare_shadow_selection(outDir, 20031, 1, 'mode', 'merge', 'fragmentsDir', fragDir, ...
+    'headSha', 'testhead1234567890', 'workflowRunId', 'test'), 'PipeCompare:Shadow');
+end
+
+function testMergeCsvPickAndSelectedKeyMatchFragments(tc)
+% Round 9: in MERGE mode (not just test mode), the per-seed CSV must
+% carry the same pick and selectedKey as the merged fragments, with
+% distinct keys per arm. The Python checker requires these columns;
+% before this test no MATLAB test covered them on the merge path.
+fragDir = mkOutDir(tc, 'merge_csv_pick');
+stdArm = mkArm('standard', 1, 1.0); stdArm.selectedKey = 'std-key';
+guardArm = mkArm('balancedGuarded', 2, 0.5); guardArm.selectedKey = 'guard-key';
+unguardArm = mkArm('balancedUnguarded', 2, 0.5); unguardArm.selectedKey = 'guard-key';
+stdFrag = mkArmFrag(20031, stdArm, [], '', mkFingerprint([0.3 0.6]));
+balFrag = mkArmFrag(20031, [guardArm unguardArm], false, 'maintain', mkFingerprint([0.3 0.6]));
+writeFrag(fragDir, 'shadow_selection_seed_20031_standard.json', stdFrag);
+writeFrag(fragDir, 'shadow_selection_seed_20031_balanced.json', balFrag);
+outDir = mkOutDir(tc, 'merge_csv_pick_out');
+out = pipecompare_shadow_selection(outDir, 20031, 1, 'mode', 'merge', 'fragmentsDir', fragDir, ...
+    'headSha', 'testhead1234567890', 'workflowRunId', 'test');
+verifyFalse(tc, isempty(out.runJson));
+data = jsondecode(fileread(out.runJson));
+ps = data.perSeed(1);
+base = 'shadow_selection_testhea_20031_1';
+T = readtable(fullfile(outDir, [base '.csv']));
+verifyEqual(tc, height(T), 3);
+verifyEqual(tc, string(T.arm), ["standard"; "balancedGuarded"; "balancedUnguarded"]);
+verifyEqual(tc, T.pick, [1; 2; 2]);
+verifyEqual(tc, string(T.selectedKey), ["std-key"; "guard-key"; "guard-key"]);
+% CSV must agree with the merged JSON, arm by arm, not just exist.
+for a = 1:3
+    verifyEqual(tc, T.pick(a), ps.arms(a).pick);
+    verifyTrue(tc, strcmp(char(T.selectedKey(a)), ps.arms(a).selectedKey));
+end
+end
+
 function a = mkArm(name, pick, mse)
 a = struct('name', name, 'pick', pick, 'selectedKey', 'k', 'mseGainCorrected', mse, 'mseRaw', mse, 'assessable', true, 'reason', '');
 end
