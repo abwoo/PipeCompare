@@ -336,6 +336,25 @@ R=pipecompare.eval.Rank.run(c,ref,opts);
 verifyEqual(tc,R.recommended,1); verifyTrue(tc,isnan(R.table.eyeBias_obj2));
 end
 
+function testNonScalarEyeBiasIsNotZeroAndDoesNotBlock(tc)
+% Non-scalar (peak) eye bias is not computed: it must be NaN in the
+% table, not 0, and must not block the candidate, because it is
+% explicitly not applicable (eyeBiasApplicable=false). The ranking
+% bias is then shape-only, by exemption, not by treating an unknown
+% bias as zero.
+x=(1:40)'; c=nqc_cand(x,'kind',{'peak'}); o=c.m.objectives;
+o.eyeBias=NaN; o.eyeBiasSq=NaN; o.eyeBiasAssessed=false; o.eyeBiasApplicable=false; c.m.objectives=o;
+opts=pipecompare.eval.Rank.defaults(); opts.nBoot=99; opts.nSplits=0;
+R=pipecompare.eval.Rank.run(c,nqc_ref(40),opts);
+verifyEqual(tc,R.recommended,1); verifyTrue(tc,isnan(R.table.eyeBias_obj1)); verifyTrue(tc,isfinite(R.table.objective(1)));
+% Scalar counterpart with the same unassessed bias must still block:
+% eyeBiasApplicable=true is the old behaviour for scalar objectives.
+c2=nqc_cand(x); o2=c2.m.objectives;
+o2.eyeBias=NaN; o2.eyeBiasSq=NaN; o2.eyeBiasAssessed=false; o2.eyeBiasApplicable=true; c2.m.objectives=o2;
+R2=pipecompare.eval.Rank.run(c2,nqc_ref(40),opts);
+verifyEmpty(tc,R2.recommended); verifyTrue(tc,contains(R2.table.reason{1},'artifact bias unassessed'));
+end
+
 function testCalibrationRecordsAreTheSamplingUnits(tc)
 C=table([1;2],[1;3],ones(2,1),'VariableNames',{'recording','actualError','reportedError'});
 S=pipecompare.eval.Calibration.summarize(C,199,4);

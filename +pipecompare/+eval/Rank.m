@@ -169,7 +169,7 @@ classdef Rank
                     [~,~,~,sensitivity]=pipecompare.eval.Rank.conditionErrors(m.objectives(k),g(k),sp(k));
                     associationRisk(i,k)=sqrt(mean(sensitivity.associationError.^2));
                     artifactSE(i,k)=max(sensitivity.artifactBiasSE);
-                    eb = pipecompare.utils.fieldOr(m.objectives(k), 'eyeBias', 0);
+                    eb = pipecompare.utils.fieldOr(m.objectives(k), 'eyeBias', NaN);
                     if all(isfinite(eb))
                         [~, at] = max(abs(eb)); eyeB(i, k) = eb(at);   % the condition where blinks add most
                     end
@@ -185,8 +185,16 @@ classdef Rank
                 assessedUse = 1:nO;
                 if ~strcmp(objName,'composite'), assessedUse = find(strcmp(ref.objectives,objName)); end
                 for k = assessedUse
+                    % Eye bias is only applicable to scalar objectives
+                    % (Measure sets eyeBiasApplicable false for peak and
+                    % other non-scalar kinds, where it is NaN, not 0).
+                    % A non-applicable objective must not be rejected for
+                    % an unassessed bias, and must not pass as if assessed:
+                    % its table eyeBias is NaN and its ranking bias is
+                    % shape-only (see biasOf).
+                    applicable = pipecompare.utils.fieldOr(m.objectives(k),'eyeBiasApplicable',true);
                     assessed = pipecompare.utils.fieldOr(m.objectives(k),'eyeBiasAssessed',true);
-                    if any(~assessed)
+                    if applicable && any(~assessed)
                         why{end+1} = 'artifact bias unassessed: no artifact-free comparison trials'; %#ok<AGROW>
                         break;
                     end
@@ -851,7 +859,13 @@ function b = biasOf(o, g, spread, eyeSq)
 % replaces it, e.g. a bootstrap resample's) plus what the filters would
 % change if the signal had another shape (|mean| x spread,
 % Injection.shapeSpreads), both divided by the gain g.
-if nargin < 4, eyeSq = pipecompare.utils.fieldOr(o, 'eyeBiasSq', zeros(size(o.estimate))); end
+if nargin < 4
+    eyeSq = pipecompare.utils.fieldOr(o, 'eyeBiasSq', zeros(size(o.estimate)));
+    % For a non-applicable objective the blink bias is unknown, not 0:
+    % the ranking bias is shape-only, by explicit exemption, not by
+    % silently treating an unknown bias as zero.
+    if ~pipecompare.utils.fieldOr(o, 'eyeBiasApplicable', true), eyeSq(~isfinite(eyeSq)) = 0; end
+end
 est = o.estimate; est(~isfinite(est)) = 0;
 b = (sqrt(eyeSq) + abs(est) * spread) / g;
 end

@@ -290,7 +290,7 @@ classdef Measure
             end
             objs = repmat(struct('name', '', 'unit', '', 'kind', '', 'polarity', '', 'times', [], ...
                 'X', {{}}, 'w', {{}}, 'estimate', [], 'sme', [], 'agg', NaN, 'eyeBias', [], 'eyeBiasSq', [], ...
-                'eyeBiasAssessed', [], 'eyeBiasSE', [], 'eyeBiasSEMode',opts.artifactVariance,'segmented', false), 1, nO);
+                'eyeBiasAssessed', [], 'eyeBiasApplicable', [], 'eyeBiasSE', [], 'eyeBiasSEMode',opts.artifactVariance,'segmented', false), 1, nO);
             blink = pipecompare.utils.fieldOr(ref, 'blink', {});
             % the epochs' weights (weight_trials), by the trial's urevent
             wRow = [];
@@ -307,9 +307,18 @@ classdef Measure
                 o.segmented = pipecompare.utils.fieldOr(ref, 'segmented', false);
                 o.times = T.times{k};
                 o.X = cell(1, nC); o.estimate = nan(1, nC); o.sme = nan(1, nC);
-                % what blinks add to each condition's mean (Measure.eyeBias;
-                % 0 without eye channels, for peak measures and band power)
+                % what blinks add to each condition's mean (Measure.eyeBias).
+                % Only scalar objectives have an eyeBias: for peak, latency
+                % and other non-scalar kinds it is not computed, so it is
+                % NaN (not 0) and eyeBiasApplicable is false. A 0 must mean
+                % "assessed and no bias", never "not assessed".
                 o.eyeBias = zeros(1, nC); o.eyeBiasSq = zeros(1, nC); o.eyeBiasSE=nan(1,nC);
+                if strcmp(o.kind, 'scalar')
+                    o.eyeBiasApplicable = true;
+                else
+                    o.eyeBiasApplicable = false;
+                    o.eyeBias = nan(1, nC); o.eyeBiasSq = nan(1, nC); o.eyeBiasAssessed = false(1, nC);
+                end
                 if strcmp(o.kind, 'scalar') && numel(blink) >= k && ~isempty(blink{k})
                     o.eyeBiasAssessed = false(1, nC);
                 end
