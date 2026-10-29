@@ -298,6 +298,140 @@ for a = 1:3
 end
 end
 
+
+function cfg = mkFastCfg()
+% Frozen Round 10 micro recipe, design-seed diagnostic only.
+cfg = struct('seed', 40101, 'nSeeds', 1, 'nStrata', 1, 'armMode', 'balanced', ...
+    'checkpointDir', fullfile(tempdir, 'micro_ckpt'), 'maxSeconds', 2400, ...
+    'sliceSeconds', 2400, 'icaSeeds', 1, 'refineCutoffs', false, 'eogCheck', false, ...
+    'reducedFamily', 'production family minus the slowest adaptive branch (rule text only; execution not wired, see MANIFEST)', ...
+    'reducedTrials', 'first half of trials by index (rule text only; execution not wired, see MANIFEST)');
+end
+
+function testFastConfigPassesButReducedExecutionIsNotReady(tc)
+% Round 10: a frozen recipe validates, but validation is NOT an
+% execution claim. executionReady must stay false until Presets
+% threading lands; sliceDiagnosticReady is the only ready flag.
+addpath(fullfile(fileparts(mfilename('fullpath')), '..', 'benchmarks'));
+cfg = validate_fast_config(mkFastCfg());
+verifyEqual(tc, cfg.mode, 'micro');
+verifyTrue(tc, cfg.designSeedDiagnostic);
+verifyFalse(tc, cfg.executionReady);
+verifyTrue(tc, cfg.sliceDiagnosticReady);
+verifyTrue(tc, any(strcmp(cfg.unwired, 'presetsSearchOptionsOverride')));
+verifyTrue(tc, any(strcmp(cfg.unwired, 'trialSubsetOverride')));
+end
+
+function testFastConfigRejectsHeldOutSeedAndFullRecipe(tc)
+% A held-out seed is never a micro seed, and an empty checkpoint
+% with Inf time is forbidden. Both must fail in seconds, before
+% any search could start.
+addpath(fullfile(fileparts(mfilename('fullpath')), '..', 'benchmarks'));
+cfg = mkFastCfg(); cfg.seed = 20031;
+verifyError(tc, @() validate_fast_config(cfg), 'PipeCompare:FastMode');
+cfg = mkFastCfg(); cfg.checkpointDir = ''; cfg.maxSeconds = Inf;
+verifyError(tc, @() validate_fast_config(cfg), 'PipeCompare:FastMode');
+cfg = mkFastCfg(); cfg.sliceSeconds = 350 * 60;
+verifyError(tc, @() validate_fast_config(cfg), 'PipeCompare:FastMode');
+cfg = mkFastCfg(); cfg.icaSeeds = 2;
+verifyError(tc, @() validate_fast_config(cfg), 'PipeCompare:FastMode');
+end
+
+function testMicroModeRejectsReducedExecutionBeforeAnySearch(tc)
+% Round 10: micro mode without slicediagnostic=true must fail
+% BEFORE a search, with the unwired-reduction reason. No search
+% runs in this test, so it is seconds-fast in CI.
+outDir = mkOutDir(tc, 'micro_reject');
+verifyError(tc, @() pipecompare_shadow_selection(outDir, 40101, 1, 'mode', 'micro', ...
+    'arm', 'balanced', 'headSha', 'testhead1234567890', 'workflowRunId', 'test', ...
+    'checkpointdir', fullfile(tempdir, 'micro_ckpt'), 'maxseconds', 2400, 'sliceseconds', 2400, ...
+    'nstrata', 1, 'icaseeds', 1, 'refinecutoffs', false, 'eogcheck', false, ...
+    'reducedfamily', 'rule', 'reducedtrials', 'rule'), 'PipeCompare:Shadow');
+end
+
+function testMicroModeRejectsHeldOutSeedBeforeAnySearch(tc)
+% Even with slicediagnostic=true, a held-out seed is not a micro
+% seed. This must fail before any search.
+outDir = mkOutDir(tc, 'micro_heldout_reject');
+verifyError(tc, @() pipecompare_shadow_selection(outDir, 20031, 1, 'mode', 'micro', ...
+    'arm', 'balanced', 'headSha', 'testhead1234567890', 'workflowRunId', 'test', ...
+    'checkpointdir', fullfile(tempdir, 'micro_ckpt'), 'maxseconds', 2400, 'sliceseconds', 2400, ...
+    'nstrata', 1, 'icaseeds', 1, 'refinecutoffs', false, 'eogcheck', false, ...
+    'reducedfamily', 'rule', 'reducedtrials', 'rule', 'slicediagnostic', true), 'PipeCompare:Shadow');
+end
+
+function testMergeRejectsMicroFragment(tc)
+% Round 10: a slice-diagnostic arm fragment must fail the merge,
+% not be folded into a held-out run. The seed here is 20031 so
+% the fresh-seed assertion passes and the fastMode guard, not a
+% seed-range error, is the failure under test; the fragment's
+% fastMode field (not its seed) is the guard trigger. The
+% fragment is built with the same helpers as the Round 9 merge
+% tests, plus fastMode.
+fragDir = mkOutDir(tc, 'merge_micro_reject');
+stdFrag = mkArmFrag(20031, mkArm('standard', 1, 1.0), [], '', mkFingerprint([0.3 0.6]));
+stdFrag.fastMode = struct('mode', 'slice-diagnostic', 'partialSearch', true, ...
+    'slicedValidation', false, 'designSeedDiagnostic', true);
+stdFrag.labels.fullyHeldOut = false;
+balFrag = mkArmFrag(20031, [mkArm('balancedGuarded', 1, 0.5) mkArm('balancedUnguarded', 1, 0.5)], false, 'maintain', mkFingerprint([0.3 0.6]));
+balFrag.fastMode = struct('mode', 'slice-diagnostic', 'partialSearch', true, ...
+    'slicedValidation', false, 'designSeedDiagnostic', true);
+balFrag.labels.fullyHeldOut = false;
+writeFrag(fragDir, 'shadow_selection_seed_20031_standard.json', stdFrag);
+writeFrag(fragDir, 'shadow_selection_seed_20031_balanced.json', balFrag);
+outDir = mkOutDir(tc, 'merge_micro_reject_out');
+verifyError(tc, @() pipecompare_shadow_selection(outDir, 20031, 1, 'mode', 'merge', 'fragmentsDir', fragDir, ...
+    'headSha', 'testhead1234567890', 'workflowRunId', 'test'), 'PipeCompare:Shadow');
+end
+
+function testResumeGuardRejectsVersionAndVarianceMismatch(tc)
+% Round 10: the strict resume guard errors where Executor.resume
+% would only warn (versions) or silently default (variance).
+addpath(fullfile(fileparts(mfilename('fullpath')), '..', 'benchmarks'));
+ckpt = fullfile(tempdir, 'resume_ckpt_test');
+if ~isfolder(ckpt), mkdir(ckpt); end
+man = struct('checkpointDir', ckpt, 'artifactVariance', 'pooled', ...
+    'matlabVersion', 'test-matlab', 'eeglabVersion', '2026.0.0');
+verifyError(tc, @() validate_resume_checkpoint(man, 'other-matlab', '2026.0.0', 'pooled'), 'PipeCompare:Slice');
+verifyError(tc, @() validate_resume_checkpoint(man, 'test-matlab', '2026.0.0', 'legacy-total'), 'PipeCompare:Slice');
+out = validate_resume_checkpoint(man, 'test-matlab', '2026.0.0', 'pooled');
+verifyTrue(tc, out.ok);
+verifyFalse(tc, out.exactResume);
+verifyTrue(tc, out.adaptiveLeavesRederived);
+end
+
+function testSliceManifestRecordsVarianceAndNoExactResume(tc)
+% Round 10: a slice manifest must record variance explicitly and
+% must never claim an exact resume.
+addpath(fullfile(fileparts(mfilename('fullpath')), '..', 'benchmarks'));
+outDir = mkOutDir(tc, 'slice_manifest');
+m = write_slice_manifest(outDir, 40101, 1, fullfile(tempdir, 'micro_ckpt'), 'pooled', 'test-matlab', '2026.0.0', 'testsha');
+verifyEqual(tc, m.artifactVariance, 'pooled');
+verifyFalse(tc, m.exactResume);
+verifyTrue(tc, m.adaptiveLeavesRederived);
+verifyTrue(tc, isfile(fullfile(outDir, 'slice_manifest.json')));
+verifyError(tc, @() write_slice_manifest(outDir, 40101, 1, fullfile(tempdir, 'micro_ckpt'), '', 'test-matlab', '2026.0.0', 'testsha'), 'PipeCompare:Slice');
+end
+
+function testVariantBGateIsClosedByDefaultAndRejectsFalsePaths(tc)
+% Round 10: variant B has no arm until a recorded 1-seed guard
+% on/off validation exists. Three runs and variant A replays are
+% explicitly rejected, not just missing.
+addpath(fullfile(fileparts(mfilename('fullpath')), '..', 'benchmarks'));
+[allowed, ~] = variant_b_gate([]);
+verifyFalse(tc, allowed);
+[allowed, ~] = variant_b_gate(struct('seed', 40101, 'guardOnPick', 1, 'guardOffPick', 2, ...
+    'method', 'three-runs', 'planReuseVerified', true, 'explanation', 'x'));
+verifyFalse(tc, allowed);
+[allowed, ~] = variant_b_gate(struct('seed', 40101, 'guardOnPick', 1, 'guardOffPick', 2, ...
+    'method', 'variant-A-replay', 'planReuseVerified', true, 'explanation', 'x'));
+verifyFalse(tc, allowed);
+[allowed, reason] = variant_b_gate(struct('seed', 40101, 'guardOnPick', 1, 'guardOffPick', 2, ...
+    'method', 'bypass-pop_pipecompare-optimize', 'planReuseVerified', true, 'explanation', 'different picks'));
+verifyTrue(tc, allowed);
+verifyTrue(tc, contains(reason, 'NAMED'));
+end
+
 function a = mkArm(name, pick, mse)
 a = struct('name', name, 'pick', pick, 'selectedKey', 'k', 'mseGainCorrected', mse, 'mseRaw', mse, 'assessable', true, 'reason', '');
 end

@@ -970,3 +970,48 @@ rep = diffusion_report(cands, 1);
 verifyTrue(tc, isnan(rep.interpolatedFraction));
 verifyFalse(tc, rep.available);
 end
+
+function testCalibrationRatioIsNeverReportedWithoutCoverage(tc)
+% Round 10, report-only: Calibration.summarize already returns
+% ratio + coverage + plannedRecords (Round 8). This test locks
+% that a ratio from a partially assessable set is incomplete:
+% one of two records is dropped (NaN actual error), so coverage
+% is 0.5 and the pooled ratio must not be read as a full result.
+% Calibration never changes a pick; this is visibility only.
+vars = {'recording','steps','condition','actualError','reportedError', ...
+    'sme','eyeBias','gain','selected','conditionalError','shapeSpread','totalBias', ...
+    'rawError','rawConditionalError','rawEstimate','correctedEstimate','populationTruth','realizedTruth','associationSensitivityError','artifactBiasSE'};
+C = table([1; 2], {'a'; 'a'}, [1; 1], [1.0; NaN], [0.5; 0.5], ...
+    [0.1; 0.1], [0; 0], [1; 1], [true; true], [1.0; 1.0], [0; 0], [0; 0], ...
+    [1.0; 1.0], [1.0; 1.0], [1.0; 1.0], [1.0; 1.0], [0; 0], [0; 0], [0; 0], [0; 0], ...
+    'VariableNames', vars);
+S = pipecompare.eval.Calibration.summarize(C, 20, 7407);
+verifyEqual(tc, S.plannedRecords, 2);
+verifyEqual(tc, S.nRecords, 1);
+verifyEqual(tc, S.coverage, 0.5);
+verifyTrue(tc, isfinite(S.ratio));
+verifyTrue(tc, S.coverage < 1);
+end
+
+function testCalibrationStratumCollapseCannotHideInPooledRatio(tc)
+% Round 10, report-only: summarizeByStratum must show a collapsed
+% stratum (coverage 0, ratio NaN) next to a good stratum, so a
+% good pooled ratio cannot hide a collapsed high-blink stratum.
+vars = {'recording','steps','condition','actualError','reportedError', ...
+    'sme','eyeBias','gain','selected','conditionalError','shapeSpread','totalBias', ...
+    'rawError','rawConditionalError','rawEstimate','correctedEstimate','populationTruth','realizedTruth','associationSensitivityError','artifactBiasSE'};
+C = table([1; 2; 3], {'a'; 'a'; 'a'}, [1; 1; 1], [1.0; 2.0; NaN], [0.5; 1.0; 0.5], ...
+    [0.1; 0.1; 0.1], [0; 0; 0], [1; 1; 1], [true; true; true], [1.0; 1.0; 1.0], [0; 0; 0], [0; 0; 0], ...
+    [1.0; 1.0; 1.0], [1.0; 1.0; 1.0], [1.0; 1.0; 1.0], [1.0; 1.0; 1.0], [0; 0; 0], [0; 0; 0], [0; 0; 0], [0; 0; 0], ...
+    'VariableNames', vars);
+T = pipecompare.eval.Calibration.summarizeByStratum(C, {'low'; 'low'; 'high'});
+verifyEqual(tc, height(T), 2);
+% unique(...,'stable') preserves input order: row 1 is 'low', row 2
+% is 'high'. (The stratum column itself is not asserted here: its
+% cell nesting is an existing summarizeByStratum detail, not this
+% test's claim; coverage and ratio are the claims.)
+verifyEqual(tc, T.coverage(1), 1);
+verifyTrue(tc, isfinite(T.ratio(1)));
+verifyEqual(tc, T.coverage(2), 0);
+verifyTrue(tc, isnan(T.ratio(2)));
+end

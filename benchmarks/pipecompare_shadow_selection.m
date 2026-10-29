@@ -98,6 +98,23 @@ function out = pipecompare_shadow_selection(outDir, firstSeed, nSeeds, varargin)
 % the next step is search slicing or checkpointing, not another
 % timeout raise.
 %
+% Round 10 fast mode (diagnostic only, never held-out evidence).
+% Modes 'micro' and 'resume-fast' are fast-loop modes, not full
+% shadow modes. 'micro' runs ONE design seed (40101-40104) and ONE
+% arm, with a non-empty checkpoint directory, finite maxSeconds
+% <= 2400 and sliceSeconds == 2400; its fragment is labelled
+% slice-diagnostic (production family in this package: the reduced
+% family / trial subset / icaSeeds / refineCutoffs / eogCheck
+% overrides are NOT threaded through pop_pipecompare at this head,
+% see benchmarks/fast_mode_spec.md, and validate_fast_config
+% returns executionReady=false for that reduced recipe).
+% 'resume-fast' only validates a slice manifest with the strict
+% resume guard; it does NOT call Executor.resume and does NOT
+% write a held-out fragment. Full mode 'resume' remains an error,
+% unchanged. Micro/sliced fragments are rejected by merge (below)
+% and by benchmarks/check_shadow_selection.py: they must never
+% enter a paired mean, a coverage count, or a verdict.
+%
 % Unavailable semantics (same mode as benchmarks/diagnose_paired_regression.py):
 % a seed arm with no recommendation, no finite estimate, or an ambiguous
 % target is assessable = false and is excluded from every pair that needs
@@ -165,6 +182,8 @@ if nargin < 2 || isempty(firstSeed), firstSeed = 20031; end
 if nargin < 3 || isempty(nSeeds), nSeeds = 8; end
 mode = 'search'; headSha = ''; workflowRunId = ''; maxSeconds = Inf;
 checkpointDir = ''; sliceSeconds = Inf; seedList = [];
+nStrata = []; icaSeeds = []; refineCutoffs = []; eogCheck = [];
+reducedFamily = ''; reducedTrials = ''; sliceDiagnostic = false; artifactVariance = '';
 armMode = 'all';
 testArms = []; fragmentsDir = ''; eeglabVersion = getenv('PIPECOMPARE_EEGLAB_VERSION');
 if isempty(eeglabVersion), eeglabVersion = 'unknown'; end
@@ -182,6 +201,14 @@ while k <= numel(varargin)
         case 'checkpointdir', checkpointDir = value;
         case 'seedlist', seedList = value;
         case 'sliceseconds', sliceSeconds = value;
+        case 'nstrata', nStrata = value;
+        case 'icaseeds', icaSeeds = value;
+        case 'refinecutoffs', refineCutoffs = value;
+        case 'eogcheck', eogCheck = value;
+        case 'reducedfamily', reducedFamily = value;
+        case 'reducedtrials', reducedTrials = value;
+        case 'slicediagnostic', sliceDiagnostic = value;
+        case 'artifactvariance', artifactVariance = value;
         case 'testarms', testArms = value;
         case 'fragmentsdir', fragmentsDir = value;
         case 'eeglabversion', eeglabVersion = value;
@@ -192,7 +219,7 @@ end
 assert(ischar(outDir) && ~isempty(outDir), 'PipeCompare:Shadow', 'outDir must be a non-empty path.');
 assert(isscalar(firstSeed) && firstSeed == floor(firstSeed) && firstSeed > 0, 'PipeCompare:Shadow', 'firstSeed must be a positive integer.');
 assert(isscalar(nSeeds) && nSeeds == floor(nSeeds) && nSeeds >= 1 && nSeeds <= 30, 'PipeCompare:Shadow', 'nSeeds must be an integer in 1..30.');
-assert(ismember(mode, {'search', 'merge', 'test', 'resume'}), 'PipeCompare:Shadow', 'mode must be search, merge, test or resume.');
+assert(ismember(mode, {'search', 'merge', 'test', 'resume', 'micro', 'resume-fast'}), 'PipeCompare:Shadow', 'mode must be search, merge, test, resume, micro or resume-fast.');
 % Round 8 slicing: 'resume' is a design-level mode. It is NOT a silent
 % continuation of a timed-out search: the caller must pass a checkpoint
 % directory created by a sliced run, and Executor.resume re-derives
@@ -201,6 +228,46 @@ assert(ismember(mode, {'search', 'merge', 'test', 'resume'}), 'PipeCompare:Shado
 % evidence; see round8-complete/MANIFEST.md.
 if strcmp(mode, 'resume')
     error('PipeCompare:Shadow', 'Resume mode is design-only in Round 8: checkpoint slicing has not yet been proven in MATLAB, so it must not complete held-out evidence.');
+end
+% Round 10 fast modes. Both validate BEFORE any search, so a bad
+% fast recipe fails in seconds, never after hours of searching.
+if strcmp(mode, 'micro')
+    % A full shadow search must never carry a checkpoint directory:
+    % checkpointed full runs would silently become sliced runs.
+    % Micro is the only mode that may use one, and only for a
+    % single design seed and a single arm.
+    assert(nSeeds == 1, 'PipeCompare:Shadow', 'micro mode requires exactly 1 seed.');
+    assert(ismember(armMode, {'standard', 'balanced'}), 'PipeCompare:Shadow', 'micro mode requires one arm (standard or balanced), not ''all''.');
+    assert(isscalar(firstSeed) && ismember(firstSeed, 40101:40104), 'PipeCompare:Shadow', 'micro mode accepts design seeds 40101-40104 only; a design seed is diagnostic, never held-out evidence.');
+    assert(isempty(seedList), 'PipeCompare:Shadow', 'micro mode does not accept a seedList; it runs exactly one design seed.');
+    assert(~isempty(checkpointDir), 'PipeCompare:Shadow', 'micro mode requires a non-empty checkpointDir; empty checkpoint plus Inf time is forbidden.');
+    assert(isfinite(maxSeconds) && maxSeconds > 0 && maxSeconds <= 2400, 'PipeCompare:Shadow', 'micro mode requires finite maxSeconds in (0, 2400].');
+    assert(sliceSeconds == 2400, 'PipeCompare:Shadow', 'micro mode requires sliceSeconds == 2400 (40 minutes); changing it is a new recipe, not micro.');
+    assert(isequal(nStrata, 1), 'PipeCompare:Shadow', 'micro mode requires nStrata == 1 (one bench_synth record).');
+    assert(isequal(icaSeeds, 1) && isequal(refineCutoffs, false) && isequal(eogCheck, false), 'PipeCompare:Shadow', 'micro recipe requires icaSeeds==1, refineCutoffs==false, eogCheck==false (diagnostic only).');
+    assert(ischar(reducedFamily) && ~isempty(reducedFamily) && ischar(reducedTrials) && ~isempty(reducedTrials), 'PipeCompare:Shadow', 'micro recipe requires non-empty reducedFamily and reducedTrials rule text.');
+    if ~isequal(sliceDiagnostic, true)
+        error('PipeCompare:Shadow', 'Reduced-family micro execution is not wired in Round 10 (pop_pipecompare has no icaSeeds/refineCutoffs/eogCheck options and Presets.searchOptions() hardcodes them); pass slicediagnostic=true to run the slice-diagnostic run on the production family instead, labelled slice-diagnostic, never as a reduced-family result.');
+    end
+end
+if strcmp(mode, 'resume-fast')
+    % Guard-only: validate the slice manifest, write a marker, and
+    % stop. This mode never calls Executor.resume and never writes
+    % a held-out fragment; actual resume execution is a later step
+    % after this guard is proven in CI.
+    assert(~isempty(checkpointDir), 'PipeCompare:Shadow', 'resume-fast mode requires a non-empty checkpointDir.');
+    assert(ischar(artifactVariance) && ~isempty(artifactVariance), 'PipeCompare:Shadow', 'resume-fast mode requires an explicit artifactvariance.');
+    manifestFile = fullfile(checkpointDir, 'slice_manifest.json');
+    assert(isfile(manifestFile), 'PipeCompare:Shadow', 'resume-fast mode requires slice_manifest.json in the checkpoint directory.');
+    manifest = jsondecode(fileread(manifestFile));
+    guard = validate_resume_checkpoint(manifest, version(), eeglabVersion, artifactVariance);
+    marker = struct('mode', 'resume-fast', 'validated', guard.ok, 'exactResume', guard.exactResume, ...
+        'adaptiveLeavesRederived', guard.adaptiveLeavesRederived, 'note', guard.note, ...
+        'manifest', manifest);
+    if ~isfolder(outDir), mkdir(outDir); end
+    writeJson(fullfile(outDir, 'slice_validation_marker.json'), marker);
+    out = struct('mode', mode, 'seeds', firstSeed, 'perSeed', struct('seed', {}, 'arms', {}, 'guardChanged', {}, 'guardDecision', {}), 'runJson', '');
+    return;
 end
 assert(ismember(armMode, {'all', 'standard', 'balanced'}), 'PipeCompare:Shadow', 'arm must be all, standard or balanced.');
 if ~strcmp(mode, 'test')
@@ -211,6 +278,9 @@ if strcmp(mode, 'test')
 end
 if strcmp(mode, 'merge')
     assert(ischar(fragmentsDir) && isfolder(fragmentsDir), 'PipeCompare:Shadow', 'merge mode requires an existing fragmentsDir.');
+end
+if strcmp(mode, 'search') && ~isempty(checkpointDir)
+    error('PipeCompare:Shadow', 'Full shadow searches must not use a checkpoint directory; use micro slice-diagnostic mode for checkpointed runs.');
 end
 if ~isfolder(outDir), mkdir(outDir); end
 
@@ -225,9 +295,13 @@ else
     seeds = firstSeed:firstSeed + nSeeds - 1;
 end
 % Fresh-seed assertion (design set + locked confirmation ranges).
-assert(all(seeds >= 20031), 'PipeCompare:Shadow', 'Shadow seeds must use the fresh range (>= 20031).');
-assert(~any(ismember(seeds, 40101:40104)), 'PipeCompare:Shadow', 'Shadow seeds must not reuse design seeds 40101-40104.');
-assert(~any(ismember(seeds, 41001:41030)), 'PipeCompare:Shadow', 'Shadow seeds must not touch locked confirmation seeds 41001-41030.');
+% Micro mode is exempt by design: it runs design seeds only, and its
+% fragments are labelled design-diagnostic and rejected by merge.
+if ~strcmp(mode, 'micro')
+    assert(all(seeds >= 20031), 'PipeCompare:Shadow', 'Shadow seeds must use the fresh range (>= 20031).');
+    assert(~any(ismember(seeds, 40101:40104)), 'PipeCompare:Shadow', 'Shadow seeds must not reuse design seeds 40101-40104.');
+    assert(~any(ismember(seeds, 41001:41030)), 'PipeCompare:Shadow', 'Shadow seeds must not touch locked confirmation seeds 41001-41030.');
+end
 
 headShort = headSha(1:min(7, numel(headSha)));
 if strcmp(mode, 'merge')
@@ -247,7 +321,17 @@ elseif strcmp(armMode, 'standard') || strcmp(armMode, 'balanced')
     % fragment. A matrix job always runs exactly one seed.
     assert(nSeeds == 1, 'PipeCompare:Shadow', 'arm mode requires exactly one seed per job.');
     s = seeds(1);
-    if strcmp(armMode, 'standard')
+    if strcmp(mode, 'micro')
+        fastMode = struct('mode', 'slice-diagnostic', 'partialSearch', false, 'slicedValidation', false, 'designSeedDiagnostic', true, 'reducedFamily', reducedFamily, 'reducedTrials', reducedTrials);
+        if strcmp(armMode, 'standard')
+            armFrag = runArmStandard(s, maxSeconds, headSha, workflowRunId, eeglabVersion, checkpointDir, fastMode);
+        else
+            armFrag = runArmBalanced(s, maxSeconds, headSha, workflowRunId, eeglabVersion, checkpointDir, fastMode);
+        end
+        % A slice-diagnostic fragment is never a held-out fragment:
+        % its labels must not claim fullyHeldOut.
+        armFrag.labels.fullyHeldOut = false;
+    elseif strcmp(armMode, 'standard')
         armFrag = runArmStandard(s, maxSeconds, headSha, workflowRunId, eeglabVersion);
     else
         armFrag = runArmBalanced(s, maxSeconds, headSha, workflowRunId, eeglabVersion);
@@ -413,7 +497,9 @@ else
 end
 end
 
-function frag = runArmStandard(seed, maxSeconds, headSha, workflowRunId, eeglabVersion)
+function frag = runArmStandard(seed, maxSeconds, headSha, workflowRunId, eeglabVersion, checkpointDir, fastMode)
+if nargin < 6 || isempty(checkpointDir), checkpointDir = ''; end
+if nargin < 7 || isempty(fastMode), fastMode = struct('mode', 'full', 'partialSearch', false, 'slicedValidation', false, 'designSeedDiagnostic', false); end
 % Round 6 Standard-only job: one search, one arm fragment. The
 % population truth is computed from the Standard contract itself; the
 % merge step checks that its fingerprint matches the Balanced
@@ -423,7 +509,7 @@ function frag = runArmStandard(seed, maxSeconds, headSha, workflowRunId, eeglabV
 % and condition events, which are exactly the inputs to populationP3).
 [EEG, truth] = bench_synth(seed);
 setBase(EEG);
-[rStd, stdErr, stdTiming] = runSearch(EEG, seed, 'standard', 'legacy-total', maxSeconds);
+[rStd, stdErr, stdTiming] = runSearch(EEG, seed, 'standard', 'legacy-total', maxSeconds, checkpointDir);
 stdArm = emptyArm('standard');
 fp = struct();
 if ~isempty(stdErr)
@@ -437,16 +523,19 @@ else
     [mseGC, mseRaw, ok] = armMse(rStd.cands, pick, truthVec);
     stdArm = fillArm(stdArm, pick, rStd, mseGC, mseRaw, ok, 'no recommendation');
 end
-frag = armFragmentStruct(seed, stdArm, [], '', fp, headSha, workflowRunId, eeglabVersion, stdTiming);
+if ~isempty(stdErr) && contains(stdErr, 'slice interrupted'), fastMode.partialSearch = true; end
+frag = armFragmentStruct(seed, stdArm, [], '', fp, headSha, workflowRunId, eeglabVersion, stdTiming, fastMode);
 fprintf('[shadow] seed %d: standard pick %s\n', seed, pickText(stdArm.pick));
 end
 
-function frag = runArmBalanced(seed, maxSeconds, headSha, workflowRunId, eeglabVersion)
+function frag = runArmBalanced(seed, maxSeconds, headSha, workflowRunId, eeglabVersion, checkpointDir, fastMode)
+if nargin < 6 || isempty(checkpointDir), checkpointDir = ''; end
+if nargin < 7 || isempty(fastMode), fastMode = struct('mode', 'full', 'partialSearch', false, 'slicedValidation', false, 'designSeedDiagnostic', false); end
 % Round 6 Balanced-only job: one search, both Balanced arms from that
 % one fitted family, plus the contract fingerprint for the merge step.
 [EEG, truth] = bench_synth(seed);
 setBase(EEG);
-[rBal, balErr, balTiming] = runSearch(EEG, seed, 'balanced', 'pooled', maxSeconds);
+[rBal, balErr, balTiming] = runSearch(EEG, seed, 'balanced', 'pooled', maxSeconds, checkpointDir);
 fp = struct();
 if ~isempty(balErr) || isempty(rBal)
     truthVec = [];
@@ -456,7 +545,8 @@ else
 end
 [guardArm, unguardArm, guardChanged, guardDecision] = balancedArms(rBal, balErr, truthVec, seed);
 arms = [guardArm unguardArm];
-frag = armFragmentStruct(seed, arms, guardChanged, guardDecision, fp, headSha, workflowRunId, eeglabVersion, balTiming);
+if ~isempty(balErr) && contains(balErr, 'slice interrupted'), fastMode.partialSearch = true; end
+frag = armFragmentStruct(seed, arms, guardChanged, guardDecision, fp, headSha, workflowRunId, eeglabVersion, balTiming, fastMode);
 fprintf('[shadow] seed %d: guarded pick %s, unguarded pick %s\n', seed, pickText(guardArm.pick), pickText(unguardArm.pick));
 end
 
@@ -479,7 +569,7 @@ catch
 end
 end
 
-function frag = armFragmentStruct(seed, arms, guardChanged, guardDecision, fp, headSha, workflowRunId, eeglabVersion, timing)
+function frag = armFragmentStruct(seed, arms, guardChanged, guardDecision, fp, headSha, workflowRunId, eeglabVersion, timing, fastMode)
 % One per-search arm fragment. 'arms' is a single standard arm or the
 % two balanced arms; 'contract' is the search's fingerprint (empty
 % struct when the search itself failed, in which case the arm already
@@ -492,15 +582,17 @@ function frag = armFragmentStruct(seed, arms, guardChanged, guardDecision, fp, h
 % for one seed, so a single wallSeconds would be ambiguous; only the
 % per-search arm fragments (the CI matrix path) carry timing.
 if nargin < 9 || isempty(timing), timing = timingEmpty(NaN); end
+if nargin < 10 || isempty(fastMode), fastMode = struct('mode', 'full', 'partialSearch', false, 'slicedValidation', false, 'designSeedDiagnostic', false); end
 frag = struct('seed', seed, 'arms', arms, 'guardChanged', guardChanged, ...
-    'guardDecision', guardDecision, 'contract', fp, 'timing', timing, 'labels', variantLabels(), ...
+    'guardDecision', guardDecision, 'contract', fp, 'timing', timing, 'fastMode', fastMode, 'labels', variantLabels(), ...
     'provenance', struct('script', 'benchmarks/pipecompare_shadow_selection.m', 'commit', headSha, ...
     'workflowRunId', workflowRunId, 'matlabVersion', version(), 'eeglabVersion', eeglabVersion, ...
     'eeglabSha', getenv('EEGLAB_SHA'), ...
     'inputArtifactRunId', [], 'inputArtifactNote', 'fresh synthetic seeds; no frozen input artifact'));
 end
 
-function [r, err, timing] = runSearch(EEG, seed, recipe, varianceMode, maxSeconds)
+function [r, err, timing] = runSearch(EEG, seed, recipe, varianceMode, maxSeconds, checkpointDir)
+if nargin < 6 || isempty(checkpointDir), checkpointDir = ''; end
 % One production search, no checkpoints (benchmark matrix pattern).
 % Round 9 timing: timing.wallSeconds is the tic/toc wall time of this
 % one search only. It is NOT a sum over candidates: candidates share
@@ -519,7 +611,7 @@ t0 = tic;
 try
     [~, ~, r] = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'11', '31'}, ...
         'recipe', recipe, 'artifactvariance', varianceMode, 'reference', 'average', ...
-        'show', 'off', 'checkpoint', '', 'maxseconds', maxSeconds);
+        'show', 'off', 'checkpoint', checkpointDir, 'maxseconds', maxSeconds);
     if ~isfield(r, 'notRun') || r.notRun > 0
         err = 'partial search';
         r = [];
@@ -528,7 +620,11 @@ try
         r = [];
     end
 catch ME
-    err = ['search failed: ' ME.message];
+    if strcmp(ME.identifier, 'PipeCompare:Interrupted')
+        err = 'slice interrupted (partialSearch)';
+    else
+        err = ['search failed: ' ME.message];
+    end
     r = [];
 end
 wall = toc(t0);
@@ -814,6 +910,19 @@ perSeed = combineArmFragments(fragmentsDir, seeds, headSha, workflowRunId);
 presentSeeds = [perSeed.seed];
 end
 
+function assertNotFastFragment(f, nm)
+% A micro/sliced/design fragment must never enter a held-out merge.
+% This is defense in depth: the labels check below would also reject
+% a design fragment (fullyHeldOut false), but an explicit fastMode
+% check gives the exact reason instead of a generic label failure.
+if isfield(f, 'fastMode') && isfield(f.fastMode, 'mode') && ~strcmp(f.fastMode.mode, 'full')
+    error('PipeCompare:Shadow', 'Fragment %s is a fast-mode fragment (mode %s) and cannot be merged into a held-out run.', nm, f.fastMode.mode);
+end
+if isfield(f, 'fastMode') && isfield(f.fastMode, 'designSeedDiagnostic') && isequal(f.fastMode.designSeedDiagnostic, true)
+    error('PipeCompare:Shadow', 'Fragment %s is a design-seed diagnostic and cannot be merged into a held-out run.', nm);
+end
+end
+
 function perSeed = combineArmFragments(fragmentsDir, seeds, headSha, workflowRunId)
 % Combine Round 6 per-search arm fragments into per-seed entries.
 % A seed with at least one arm fragment appears in the output; a
@@ -832,6 +941,7 @@ for i = 1:numel(files)
     isBal = endsWith(nm, '_balanced.json');
     if ~isStd && ~isBal, continue; end
     f = jsondecode(fileread(fullfile(files(i).folder, nm)));
+    assertNotFastFragment(f, nm);
     % Round 8 B1: a fragment whose filename seed disagrees with its
     % content seed must fail, not be silently relabelled by content.
     tok = regexp(nm, '^shadow_selection_seed_(\d+)_(standard|balanced)\.json$', 'tokens');
@@ -956,6 +1066,7 @@ assert(numel(files) == numel(seeds), 'PipeCompare:Shadow', 'Fragment count %d do
 bySeed = struct();
 for i = 1:numel(files)
     f = jsondecode(fileread(fullfile(files(i).folder, files(i).name)));
+    assertNotFastFragment(f, files(i).name);
     assert(isfield(f, 'seed') && isfield(f, 'arms') && isfield(f, 'labels'), 'PipeCompare:Shadow', 'Fragment %s is missing seed/arms/labels.', files(i).name);
     assert(isfield(f.labels, 'fullyHeldOut') && isfield(f.labels, 'preprocessingRefitted') && isfield(f.labels, 'adaptiveLeavesIncluded'), ...
         'PipeCompare:Shadow', 'Fragment %s has incomplete labels.', files(i).name);

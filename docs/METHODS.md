@@ -1716,3 +1716,52 @@ Still NOT done (explicit gaps, do not claim otherwise):
   follow-up); A2/A3/A5/A6 assertion tests (guard note, single-
   recording label, gain log, duplicate-trial warning) were suggested
   in the A-group review but were not written in Round 8 or Round 9.
+
+
+## Round 10 fast mode (diagnostic only, never held-out evidence)
+
+Fast mode is a loop, not a verdict. A fast run fits in 1 hour:
+seconds-level fake-candidate tests, minutes-level offline replay,
+and a 1-hour slice-diagnostic micro search. After a fast run
+finishes (complete or sliced), it is screened immediately and
+the next fix is prepared at once; the loop does not wait for
+morning or for a user message.
+
+Fast tests and micro searches use the existing 4000-series
+sample data (design seeds 40101-40104) to FIND problems. A
+design seed is never held-out evidence: a result on a design
+seed must never be reported as a held-out verdict, never
+merged into a paired mean, and never used to self-certify a
+fix. The final conclusion still requires held-out evidence
+under the frozen criteria.
+
+The micro job in this round is a slice-diagnostic run: one
+design seed, one arm, production family, non-empty checkpoint,
+40-minute slice, fragment marked partialSearch when sliced.
+It is NOT a reduced-family micro result. The reduced family,
+reduced trial subset, icaSeeds=1, refineCutoffs off and
+eogCheck off are frozen as a recipe and validated as a config,
+but their execution is not wired through pop_pipecompare at
+this head (its option list does not include them, and
+Presets.searchOptions() hardcodes the production values), so
+validate_fast_config returns executionReady=false for that
+recipe. Threading those overrides is a later, pre-registered
+step, not a silent part of this round.
+
+Slicing means a timeout no longer loses evidence: every slice
+uploads its checkpoint artifacts and writes a readable
+fragment, even a partial one. A resume is guarded strictly
+(versions pinned, artifactVariance asserted, never defaulted),
+and even a passing guard is not an exact resume, because
+Executor.resume re-derives adaptive leaves beyond the
+manifest. Sliced results are labelled sliced validation runs
+and are never merged into a previous paired mean.
+
+Variant B has no arm in this round. Its gate is closed by
+default and only opens on a recorded 1-seed guard on/off
+validation (bypass-pop_pipecompare-optimize or production
+pass-through, plan reuse verified). Three runs of
+pop_pipecompare and a variant A replay relabelled as
+variant B are explicitly rejected: they give identical arms
+and a zero difference, which is false evidence. Production
+Standard/Balanced definitions are unchanged.

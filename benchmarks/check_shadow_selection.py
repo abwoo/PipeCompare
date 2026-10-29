@@ -35,6 +35,42 @@ def fail(msg):
     FAILURES.append(msg)
 
 
+def fast_mode_of(frag):
+    """Round 10 fast-mode field of a fragment ({} when absent)."""
+    fm = frag.get("fastMode") or {}
+    return fm if isinstance(fm, dict) else {}
+
+
+def is_fast_fragment(frag):
+    """True for micro / slice-diagnostic / sliced-validation / design fragments."""
+    fm = fast_mode_of(frag)
+    mode = fm.get("mode") or "full"
+    return mode != "full" or bool(fm.get("designSeedDiagnostic")) or bool(fm.get("partialSearch")) or bool(fm.get("slicedValidation"))
+
+
+def validate_micro_fragment(frag):
+    """Validate a fast fragment ON ITS OWN terms (never held-out).
+
+    Returns a list of failures (empty = valid fast fragment). This
+    does NOT certify the fragment as evidence: a valid fast fragment
+    is still diagnostic only, and is_fast_fragment() must keep it
+    out of every held-out paired computation.
+    """
+    failures = []
+    fm = fast_mode_of(frag)
+    mode = fm.get("mode")
+    if mode not in ("micro", "slice-diagnostic", "resume-fast"):
+        failures.append(f"fast fragment mode {mode!r} is not a known fast mode")
+    if frag.get("seed") not in (40101, 40102, 40103, 40104) and mode != "resume-fast":
+        failures.append(f"fast fragment seed {frag.get('seed')} is not a design seed 40101-40104")
+    if not fm.get("designSeedDiagnostic") and mode != "resume-fast":
+        failures.append("fast fragment must carry designSeedDiagnostic=true")
+    labels = frag.get("labels") or {}
+    if labels.get("fullyHeldOut") is True:
+        failures.append("fast fragment must not claim fullyHeldOut=true")
+    return failures
+
+
 def is_nan(x):
     return x is None or (isinstance(x, float) and math.isnan(x))
 
@@ -140,6 +176,11 @@ def main():
             entry["fingerprints"][kind] = frag.get("contract")
             entry["labels"] = frag.get("labels")
             entry["provenance"] = frag.get("provenance")
+            # Round 10: carry the fastMode field so the held-out
+            # guard below can see it; without this, a micro arm
+            # fragment would lose its label when combined.
+            if frag.get("fastMode") is not None:
+                entry["fastMode"] = frag.get("fastMode")
         else:
             frags[frag["seed"]] = frag
     for seed, entry in arm_parts.items():
@@ -158,6 +199,8 @@ def main():
                     "arms": arms,
                     "labels": entry.get("labels"),
                     "provenance": entry.get("provenance")}
+        if entry.get("fastMode") is not None:
+            combined["fastMode"] = entry.get("fastMode")
         if "guardChanged" in entry:
             combined["guardChanged"] = entry["guardChanged"]
         if "guardDecision" in entry:
@@ -173,6 +216,21 @@ def main():
                     fail(f"seed {seed} contract fingerprints differ but "
                          "Standard arm is assessable in the run")
         frags[seed] = combined
+
+    # ---- Round 10 fast guard: a micro / sliced / design fragment
+    # is diagnostic only and must never enter a held-out paired
+    # computation. Fail loudly here, in the checker, even if a
+    # caller accidentally passes fast fragments to this script.
+    for _seed, _frag in frags.items():
+        if is_fast_fragment(_frag):
+            fail(f"fragment seed {_seed} is a fast-mode fragment "
+                 f"(fastMode={fast_mode_of(_frag)}); it is diagnostic "
+                 "only and must never be checked as held-out evidence")
+    if FAILURES:
+        print("FAIL:")
+        for f in FAILURES:
+            print("  " + f)
+        return 1
 
     # ---- required top-level fields ----
     required = ["commit", "seeds", "recipes", "perSeed", "pairedDifferences",
