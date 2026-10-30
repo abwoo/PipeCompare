@@ -1,0 +1,33 @@
+name: Set up native EEG validation on the pinned 2026 pair
+description: EEGLAB 2026.0.0, MATLAB R2026a and bounded Linux dependencies
+runs:
+  using: composite
+  steps:
+    - name: Checkout EEGLAB 2026.0.0
+      shell: bash
+      run: git clone --depth 1 --branch 2026.0.0 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
+    - name: Install ABI-compatible CPU compiler
+      shell: bash
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y g++-12
+    - name: Bound MATLAB dependency downloads
+      shell: bash
+      run: bash PipeCompare/.github/scripts/prepare-matlab.sh
+    - name: Start a virtual display
+      shell: bash
+      run: bash PipeCompare/.github/scripts/start-display.sh
+    - uses: matlab-actions/setup-matlab@v2
+      with:
+        release: R2026a
+        products: Signal_Processing_Toolbox
+    - name: Prepare pinned ICLabel CPU compatibility
+      shell: bash
+      run: python PipeCompare/.github/scripts/prepare-iclabel-cpu.py eeglab/plugins/ICLabel/matconvnet
+    - name: Build and verify CPU inference against the MATLAB reference
+      uses: matlab-actions/run-command@v2
+      with:
+        command: |
+          addpath(fullfile(pwd,'eeglab'));eeglab nogui;
+          addpath(fullfile(pwd,'PipeCompare'));addpath(fullfile(pwd,'PipeCompare','benchmarks'));
+          pipecompare_native_backend_probe(fullfile(pwd,'validation_backend'));

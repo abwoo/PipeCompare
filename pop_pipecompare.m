@@ -24,9 +24,13 @@ function [EEG, com, result] = pop_pipecompare(EEG, varargin)
 %              as in ERP CORE: the event types with the target on the left
 %              / of left-hand responses, and of the right (instead of
 %              'events'; one side may be left out)
-%   'recipe'   'standard' (default) | 'filters': which steps are compared
+%   'recipe'   'standard' (default) | 'filters' | 'balanced': steps compared
+%              balanced also compares skipping automatic cleanup
 %              (standard: badchannels, ica, highpass, lowpass, reject,
 %              weight; filters: the two filters)
+%   'artifactvariance' 'pooled' (default) | 'heteroscedastic' (unequal group noise)
+%                      | 'legacy-total' (old-model control)
+%   'comparecleanup' false (default) | true: also compare skipping cleanup
 %   'steps'    instead of 'recipe', any of 'badchannels', 'ica',
 %              'icsme' (with 'ica': the components to remove also chosen
 %              by their effect on the noise, compared with ICLabel's
@@ -51,6 +55,8 @@ function [EEG, com, result] = pop_pipecompare(EEG, varargin)
 %   'show'     'on' (default) shows a progress window with a Stop button
 %              (stopping keeps the pipelines already run) and opens the
 %              results window; 'off' does neither
+%   'checkpoint' folder for resumable candidate and ICA checkpoints
+%   'maxseconds' cooperative time slice (requires checkpoint; default Inf)
 %   'progress' a container (a page of the PipeCompare window, pipecompare)
 %              in which the progress and Stop are shown instead of a
 %              window of their own; the results window is then not opened
@@ -75,15 +81,15 @@ assert(~isempty(EEG.data), 'PipeCompare:NoDataset', 'pop_pipecompare needs a dat
 if nargin < 2
     opts = pipecompare.gui.SimpleDialog.ask(EEG);
     if isempty(opts), return; end                       % cancelled, or continued in the panel
-    opts.progress = [];
+    opts.progress = [];opts.checkpoint='';opts.maxseconds=Inf;
 else
     opts = struct('measure', '', 'events', {{}}, 'left', {{}}, 'right', {{}}, 'pool', false, 'window', [], 'band', [], ...
-        'channels', {{}}, 'recipe', 'standard', 'steps', {{}}, 'reference', 'asis', 'segment', 2, 'show', 'on', 'progress', []);
+        'channels', {{}}, 'recipe', 'standard', 'steps', {{}}, 'comparecleanup', false, 'artifactvariance','pooled','reference', 'asis', 'segment', 2, 'show', 'on', 'progress', [], 'checkpoint', '', 'maxseconds', Inf, 'parallel', false);
     [varargin{:}] = convertStringsToChars(varargin{:});   % "P3" as well as 'P3'
     for k = 1:2:numel(varargin)
         f = lower(char(varargin{k}));
         assert(isfield(opts, f), 'PipeCompare:Simple', ['Unknown option %s (measure, events, left, right, pool, window, ', ...
-            'band, channels, recipe, steps, reference, segment, show, progress).'], f);
+            'band, channels, recipe, steps, reference, segment, show, progress, artifactvariance, comparecleanup, checkpoint, maxseconds, parallel).'], f);
         opts.(f) = varargin{k+1};
     end
     for f = {'events', 'left', 'right'}
@@ -118,9 +124,15 @@ if ~isempty(opts.steps) || isempty(opts.recipe)
 else
     steps = pipecompare.simple.Presets.recipeSteps(opts.recipe);
 end
+assert((islogical(opts.comparecleanup)||isnumeric(opts.comparecleanup))&&isscalar(opts.comparecleanup)&& ...
+    ismember(double(opts.comparecleanup),[0 1]),'PipeCompare:Simple','comparecleanup must be true or false.');
 recipe = pipecompare.simple.Presets.recipeOf(steps);
-[plan, notes] = pipecompare.simple.Presets.recipe(steps, state, c, opts.reference, ...
-    pipecompare.simple.Presets.nonEegChannels(EEG));
+planSteps=steps;
+if isempty(opts.steps) && ischar(opts.recipe) && strcmp(opts.recipe,'balanced')
+    planSteps='balanced';recipe='balanced';
+end
+[plan, notes] = pipecompare.simple.Presets.recipe(planSteps, state, c, opts.reference, ...
+    pipecompare.simple.Presets.nonEegChannels(EEG), opts.comparecleanup);
 for k = 1:numel(notes), pipecompare.utils.log('Left out: %s.', notes{k}); end
 nTotal = numel(plan.enumerate(state, c, struct('maxLeaves', Inf)));
 assert(nTotal > 1, 'PipeCompare:Simple', 'On these data the steps chosen (%s) give %d pipeline, so there is nothing to compare%s.', ...
@@ -129,6 +141,14 @@ assert(nTotal > 1, 'PipeCompare:Simple', 'On these data the steps chosen (%s) gi
 % thresholds in uV would remove nothing from data stored in V
 runOpts = pipecompare.simple.Presets.searchOptions();
 runOpts.dataUnit = state.unitGuess;
+runOpts.checkpoint=opts.checkpoint;runOpts.maxSeconds=opts.maxseconds;
+runOpts.artifactVariance=pipecompare.utils.fieldOr(opts,'artifactvariance','pooled');
+% Round 8 A7: script-mode parallel switch, default false (existing
+% behaviour). Turning it on still needs the serial/parallel equivalence
+% check; this line only makes the switch reachable.
+runOpts.parallel=pipecompare.utils.fieldOr(opts,'parallel',false);
+assert(any(strcmp(runOpts.artifactVariance,{'pooled','legacy-total','heteroscedastic'})), ...
+    'PipeCompare:Simple','artifactvariance must be pooled, heteroscedastic or legacy-total.');
 if strcmp(state.unitGuess, 'V'), pipecompare.utils.log('The data are in volts (judged from the amplitude scale); they are compared in uV.'); end
 prog = pipecompare.gui.Progress.empty;
 if ~strcmp(opts.show, 'off')
@@ -199,6 +219,8 @@ elseif ~pipecompare.simple.Presets.isBand(opts.measure)
     if opts.pool, args = [args {'pool', true}]; end
 elseif opts.segment ~= 2, args = [args {'segment', opts.segment}]; end
 if isempty(recipe), args = [args {'steps', steps}]; else, args = [args {'recipe', recipe}]; end
+if opts.comparecleanup,args=[args {'comparecleanup',true}];end
+if ~strcmp(runOpts.artifactVariance,'pooled'),args=[args {'artifactvariance',runOpts.artifactVariance}];end
 if strcmp(opts.reference, 'average'), args = [args {'reference', 'average'}]; end
 if strcmp(opts.show, 'off'), args = [args {'show', 'off'}]; end
 com = sprintf('EEG = pop_pipecompare(EEG, %s);', vararg2str(args));
@@ -228,3 +250,4 @@ try
 catch err
 end
 end
+

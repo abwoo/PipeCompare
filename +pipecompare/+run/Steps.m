@@ -364,7 +364,7 @@ classdef Steps
                 % same copy among the channels not found bad as a whole, and
                 % interpolated in those stretches only
                 good = setdiff(elec, find(ismember({EEG.chanlocs.labels}, labels)), 'stable');
-                [st, info.stretchCheck] = pipecompare.run.Steps.badStretches(src.data(good, :), EEG.srate);
+                [st, info.stretchCheck] = pipecompare.run.Steps.badStretches(src.data(good, :), EEG.srate, pipecompare.utils.fieldOr(p,'stretchMode','long'));
                 if ~info.stretchCheck.assessed
                     pipecompare.utils.log('Bad-channel stretches unassessed: %s.',info.stretchCheck.reason);
                 end
@@ -382,7 +382,7 @@ classdef Steps
             end
         end
 
-        function [st, check] = badStretches(X, srate)
+        function [st, check] = badStretches(X, srate, mode)
             % Channels (rows of X, continuous, srate Hz) bad for only part of
             % the recording. Each channel's noise the others do not explain
             % (its residual from their least-squares prediction, as in
@@ -400,9 +400,14 @@ classdef Steps
             % still measured against its good part. st: row (of X) and
             % samples ([first last]) of each stretch; none with fewer than 8
             % channels, 30 windows, or linearly dependent channels.
+            if nargin<3,mode='long';end
+            assert(any(strcmp(mode,{'long','multiscale'})),'PipeCompare:Stretches','Unknown stretch mode.');
+            validateattributes(srate,{'numeric'},{'scalar','real','finite','positive'});
             st = struct('row', {}, 'samples', {});
-            [nc, n] = size(X); w = round(srate); nw = floor(n / w);
-            check = struct('assessed',false,'reason','','windows',nw,'channels',nc);
+            [nc, n] = size(X); w = max(1,round(srate)); nw = floor(n / w);
+            check = struct('assessed',false,'reason','','windows',nw,'channels',nc, ...
+                'mode',mode,'strongShortEvents',0,'shortWindowSeconds',0.5,'shortZ',8,'shortScaleRatio',4);
+            if any(~isfinite(X(:))), check.reason='nonfinite input samples'; return; end
             if nc < 8, check.reason='fewer than 8 eligible channels'; return; end
             if nw < 30, check.reason='fewer than 30 one-second windows'; return; end
             Xs = double(X(:, 1:max(1, ceil(n / 2e5)):end)); Xs = Xs - median(Xs, 2);
@@ -444,6 +449,11 @@ classdef Steps
                     end
                 end
             end
+            if strcmp(mode,'multiscale')
+                short=strongShortStretches(X,Wr,srate,check.shortZ,check.shortScaleRatio);
+                check.strongShortEvents=numel(short);
+                st=mergeStretchIntervals([st short]);
+            end
         end
 
         function EEG = interpStretches(EEG, st)
@@ -455,6 +465,9 @@ classdef Steps
             if isempty(st), return; end
             [~, ch] = ismember(lower({st.channel}), lower({EEG.chanlocs.labels}));
             S = reshape([st.samples], 2, [])';
+            assert(all(ch>0) && all(isfinite(S(:))) && all(S(:)==round(S(:))) && ...
+                all(S(:,1)>=1 & S(:,2)<=EEG.pnts & S(:,1)<=S(:,2)), ...
+                'PipeCompare:Interpolate', 'Stretch labels and integer sample ranges must belong to this recording.');
             edges = unique([S(:, 1); S(:, 2) + 1; 1; EEG.pnts + 1])';
             done = containers.Map('KeyType', 'char', 'ValueType', 'any');
             for k = 1:numel(edges) - 1
@@ -1466,3 +1479,46 @@ for j = 1:numel(contract.components)
 end
 end
 
+
+function st=strongShortStretches(X,Wr,fs,zLimit,ratioLimit)
+% A high-amplitude path for events too short for the persistent HMM.
+% Both robust evidence and a fourfold residual-SD increase are required.
+w=max(1,round(0.5*fs));n=size(X,2);nw=floor(n/w);nc=size(X,1);
+starts=1:w:n-w+1;
+% Keep the original complete windows and baseline. Inspect a terminal
+% remainder in one additional full-length window ending at the last sample:
+% no zero padding or unstable variance estimate from a one-sample tail.
+if starts(end)+w-1<n,starts(end+1)=n-w+1;end
+L=zeros(nc,numel(starts));
+for k=1:numel(starts)
+    L(:,k)=log(std(Wr*double(X(:,starts(k)+(0:w-1))),0,2)+eps);
+end
+L=L-median(L,1);baseline=L(:,1:nw);center=median(baseline,2);
+scale=max(0.05,median(1.4826*median(abs(baseline-center),2)));
+st=struct('row',{},'samples',{});
+for c=1:nc
+    relative=L(c,:)-center(c);
+    on=relative/scale>=zLimit & relative>=log(ratioLimit);
+    edges=diff([false on false]);a=find(edges==1);b=find(edges==-1)-1;
+    for k=1:numel(a)
+        st(end+1)=struct('row',c,'samples',[starts(a(k)) starts(b(k))+w-1]); %#ok<AGROW>
+    end
+end
+end
+
+function out=mergeStretchIntervals(st)
+% Union overlapping same-channel intervals before interpolation/accounting.
+out=struct('row',{},'samples',{});if isempty(st),return;end
+for row=unique([st.row])
+    subset=st([st.row]==row);ranges=sortrows(reshape([subset.samples],2,[])');
+    first=ranges(1,1);last=ranges(1,2);
+    for k=2:size(ranges,1)
+        if ranges(k,1)<=last+1,last=max(last,ranges(k,2));
+        else
+            out(end+1)=struct('row',row,'samples',[first last]); %#ok<AGROW>
+            first=ranges(k,1);last=ranges(k,2);
+        end
+    end
+    out(end+1)=struct('row',row,'samples',[first last]); %#ok<AGROW>
+end
+end

@@ -1154,3 +1154,13 @@ function stop = countTo(m, n, limit)
 m('n') = m('n') + n;
 stop = m('n') >= limit;
 end
+
+function testBalancedPresetKeepsCleanupComparisonInOptions(tc)
+EEG=nqc_synth(struct('seconds',120,'nPerCond',30));
+d=pipecompare.gui.SimpleDialog(EEG);finish=onCleanup(@()delete(d)); %#ok<NASGU>
+d.MeasureDrop.Value='P3';d.EventList.Value={'11','31'};d.measureChanged();
+d.usePreset('balanced');o=d.options();verifyTrue(tc,o.comparecleanup);
+verifyGreaterThan(tc,d.update(),24);
+d.usePreset('standard');o=d.options();verifyFalse(tc,o.comparecleanup);
+verifyEqual(tc,d.update(),24);
+end

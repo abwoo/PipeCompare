@@ -161,11 +161,17 @@ statistic is the maximum over all ordered pairs of the centred differences:
   *M*ᵇ = max over *i*, *j* of [ (θ*ᵢᵇ − θ*ⱼᵇ) − (θ̂ᵢ − θ̂ⱼ) ].
 
 Let *c* be the (1 − α) quantile of *M*. Candidate *i* is declared worse than *j* only when
-θ̂ᵢ − θ̂ⱼ > *c*. Because *c* bounds all pairs at once, the probability that any candidate is wrongly
-declared worse is at most about α, however many candidates there are and whichever one looks best.
+θ̂ᵢ − θ̂ⱼ > *c*. The maximum accounts for comparison across the fitted candidate pairs, subject to
+the conditional bootstrap approximation and its sampling assumptions.
 This is the bootstrap reality check of White (2000) and the max-statistic step of Romano and Wolf
 (2005). The set kept, every candidate not shown worse than another, is a model confidence set in
 the sense of Hansen, Lunde and Nason (2011).
+
+These are conditional intervals: preprocessing, artifact detection, candidate eligibility,
+signal templates and model hyperparameters were fitted using the observed data. Resampling
+stored trial scores does not repeat those fits. `R.validationScope` states this and
+`R.fullyHeldOut` is false. The procedure has no general finite-sample family-wise error
+guarantee for arbitrary adaptive candidate families, correlated ERP trials or population shifts.
 
 Raw differences are used instead of studentized ones. With few trials the per-pair bootstrap SD is
 itself noisy, and a maximum over many pairs is then driven by underestimated SDs. In simulation
@@ -769,7 +775,8 @@ like a rejection, stored by the `urevent` of each epoch's time-locking event
 
   SME = √( *n*/(*n* − 1) · Σ *w*ᵢ² (*s*ᵢ − *ŝ*)² ) / Σ *w*ᵢ,
 
-which is SD/√*n* for equal weights and does not assume the weights are right. In each bootstrap
+which is SD/√*n* for equal weights and conditions on the fitted weights. It is not a guarantee
+for weights learned from the same scores or for dependent trials. In each bootstrap
 draw a trial drawn *k* times counts *k* times with its weight (the weights are not estimated
 again); peak measures average the waveforms with the weights (inner bootstrap included). In
 simulation (`test_statistics`: 20 trials of noise SD 1 and 10 of SD 4) the error of the mean was
@@ -907,6 +914,11 @@ when it passes a test of its own (below); everything else stays quiet. [`Hmm.seg
 Emission log densities are normalized before exponentiation, avoiding underflow from isolated
 extreme samples. A nonfinite fit returns an inactive mask with `model.valid = false` and a
 reason, rather than decoding invalid parameters. Existing fixed detection rules remain in use.
+At least ten finite features are required. Missing emissions have likelihood one in both states,
+are excluded from emission-parameter updates and cannot be reported as detected events. Moving
+eye-channel features omit missing samples and expose `inputMissingSamples`; this prevents one
+missing value from disabling detection throughout an otherwise usable recording. This treatment
+does not validate events inside gaps or assume that informative missingness is harmless.
 
 **Blinks and eye movements** [`Hmm.events`; used by `Steps.withoutBlinks`, `Steps.eogRegress`,
 `Measure.sampleHits`, each united with its fixed rule]. *y*: for each eye channel (or left minus
@@ -996,9 +1008,10 @@ which scores the whole recording, does not catch. When no pipeline passed, the s
 settings), its decisions made on its own data. For the pipelines *k* run on every recording, with
 *J*_{s,k} the gain-corrected objective of *k* on *s*: *k* passes when it passes on every recording
 (recordings on which nothing passes are left out); the group objective is
-*J*_k = √(mean_s *J*_{s,k}²). This is the quantity a group analysis pays for: if participant *s*'s
-score is its true value plus a measurement error of SD *J*_{s,k}, the variance of the group mean
-gains mean_s *J*_{s,k}² / *S* from measurement error. The paired bootstrap replicates of each
+*J*_k = √(mean_s *J*_{s,k}²). This is an RMS of individual measurement errors in the observed
+group, not the MSE of the group mean or a group contrast. Independent zero-mean noise contributes
+Σ SME_s² / *S*² to a group mean's variance; systematic same-direction biases instead contribute
+(mean_s bias_s)² and need not average away. The paired bootstrap replicates of each
 recording (section 3, its own trials) are combined the same way, *J*_k^(b) = √(mean_s
 (*J*_{s,k}^(b))²), with independent draws per recording; the confidence and equivalence sets and
 the choice among those not distinguished from the best (highest minimum retention over the
@@ -1014,17 +1027,39 @@ duplicate names are disambiguated by occurrence.
 its bootstrap replicates. On the log scale, *y*_{s,k} = log *Y*_{s,k} = *a*_s + *c*_k + *u*_{s,k} +
 ε_{s,k}: a recording effect (how noisy it is), a pipeline effect (how good it is on average), what
 is particular to this pair, *u* ~ (0, τ²), and estimation noise of variance *v*_{s,k} =
-*V*_{s,k}/*Y*_{s,k}² (delta method). *a* and *c* are fitted by alternating means over the observed
-cells; with residuals *r* and *df* = cells − (*S* + *K* − 1),
+*V*_{s,k}/*Y*_{s,k}² (delta method). The observation covariance Σ_s also includes off-diagonal
+terms from the same paired bootstrap: Cov(J_s,k,J_s,l)/(Y_s,k Y_s,l). Shared estimation noise
+can cancel in pipeline contrasts; treating its diagonal as independent noise can erase real
+recording-specific differences.
 
-  τ̂² = max(0, Σ *r*² / *df* − mean *v*),   *w*_{s,k} = τ̂² / (τ̂² + *v*_{s,k}),
-  θ̂_{s,k} = exp(*â*_s + *ĉ*_k + *w*_{s,k} *r*_{s,k}).
+Let *D* be the recording/pipeline design on the observed cells, *H* its least-squares projection,
+*R* = *I* − *H*, and Σ the block-diagonal matrix of Σ_s (recordings assumed independent).
+With *r* = *R y*, *df* = rank(*R*), estimate
+
+  τ̂² = max(0, (rᵀr − tr(RΣ)) / df).
+
+The design drops one gauge per connected component of the observed recording/pipeline graph:
+*df* = cells − (active recordings + active pipelines − components). A disconnected missingness
+pattern cannot be treated as one connected design. If *df* = 0, the interaction variance is
+unassessed; the observed estimates are retained and the diagnostic says so.
+
+Given τ̂², additive effects are fitted by generalized least squares under C_s = τ̂² I + Σ_s.
+The conditional empirical-Bayes estimate is
+
+  θ̂_s = exp(D_s β̂ + τ̂² C_s⁻¹ (y_s − D_s β̂)).
+
+This reduces to scalar residual shrinkage for diagonal Σ_s. Singular covariance blocks use a
+small numerical diagonal regularizer. Covariance inputs are checked for symmetry, matching
+diagonals and positive semidefiniteness. The trace correction and block gains avoid counting
+shared recording noise as evidence against pipeline-specific differences.
 
 Recording *s* gets argmin_k θ̂_{s,k} over the pipelines passing on it (`G.own`, `G.ownShrunk`);
-`G.share` = mean *w*. With τ̂² = 0 every recording gets the pipeline with the best ĉ (one for
-all); with τ̂² large, its own lowest *Y*. Simulated (20 recordings × 12 pipelines, excess error
-over the true best per recording): own choice 0.4–2.4 %, one for all 0.8–9.5 %, two-level
-0.4–1.6 %, best or tied in all settings (`sims-2026-10-16c/group_eb.py`).
+`G.share` is the mean diagonal of the posterior gain matrices. `G.twoLevelModel` reports
+covariance use, residual degrees of freedom, disconnected components and validation scope.
+Effects, covariance and τ̂² are estimated on these recordings: this is an empirical-Bayes
+plug-in estimate, not a calibrated probability or proof of benefit on new participants.
+The independent-noise simulation remains a regression; paired-noise and missing-design
+regressions cover the failures above. Broader independent validation is still required.
 
 ## 15. Total error: noise and bias together
 
@@ -1068,7 +1103,7 @@ weight and *m*_B, *m*_N the weighted mean scores of the blink and other trials,
 
 what the blink trials add to the mean (a pipeline that removed the eye activity, by ICA or by
 rejecting those trials, has *e* ≈ 0). *e* is itself an estimate, with standard error
-*se* = *p* *s* √(1/*n*_B + 1/*n*_N) (*s* the scores' SD); with most trials blinking it is often larger than
+*se* = *p* *s* √(1/*n*_B + 1/*n*_N) with equal weights (*s* the pooled scores' SD); with most trials blinking it is often larger than
 the SME itself. Only the part beyond what chance makes counts: (|*e*| − 2 *se*)₊², soft thresholding
 (`test_statistics/testWhatBlinksAddToTheMean`). Taking only the variance off, *e*² − *se*², floored at
 0, counts a bias where there is none, since its positive part has a positive mean: in simulation
@@ -1076,7 +1111,15 @@ with 35 trials, no real effect and 70 % blink trials it added a third to the tot
 average (twice as much in one run in ten) and pulled the rejection limit towards rejecting blink
 trials; soft thresholding adds about 1 %. A real bias is underestimated by up to 2 *se*, the price
 of not acting on noise. In the
-bootstrap (section 3) *e* is recomputed in every resample. A difference of the blink trials'
+bootstrap (section 3) *e* is recomputed in every resample.
+Weights are normalized only through ratios. With physical multiplicities c_i and combined
+weights K_i = c_i w_i, q_i = K_i²/c_i; the weighted pooled variance divides the second central
+moment by 1−Σq_i/(ΣK_i)², and the standard error uses q_B/(Σ_B K_i)² + q_N/(Σ_N K_i)².
+Resampling counts are supplied separately from trial weights. Multiplying all weights by a
+constant leaves the bias, its standard error and the ranking unchanged, while drawing a trial
+twice still counts two physical observations.
+
+A difference of the blink trials'
 mean that is real brain activity (a larger P3 in the trials with a blink) is counted as bias too;
 using the blink's size only to select the trials, not as a regressor, keeps frontal brain activity
 that correlates with the measured electrodes from being read as eye activity.
@@ -1208,3 +1251,247 @@ covers widths, not every shape.
 - Zhang, G., Garrett, D. R., & Luck, S. J. (2024). Optimal filters for ERP research I: A general
   approach for selecting filter settings. *Psychophysiology, 61*(6), e14531.
 
+
+## Missing paired bootstrap replicates
+
+A simultaneous maximum uses the original number of resampling draws. If a candidate comparison
+is unavailable in a draw, that family's maximum for the draw is positive infinity. Sequential
+equivalence tests use the same rule for their pair. The upper quantile includes those infinities:
+missing tail mass cannot narrow a bound or establish equivalence. With insufficient supported
+tail probability, the bound is unbounded. The identity comparison with the candidate itself is zero.
+
+The factorial empirical-Bayes covariance fit requires complete paired support for its modeled
+candidates; otherwise it returns the unshrunk point scores. Selection frequencies use all draws
+as their denominator and separately retain the share with no assessed recommendation. These
+rules concern conditional comparisons of the fitted candidate family and do not establish
+independent calibration of measurement error.
+
+### Artifact-association variance correction (PR #50 optimization)
+
+Let W be total trial weight, p the weighted artifact share, d the difference
+between marked and other-trial means, and Q_i the squared reliability weight
+per physical observation (bootstrap multiplicities are divided out). The
+association estimate is p*d. Its updated delta-method variance separates
+pooled within-group variation from uncertainty in p:
+
+    Var(p*d) approximately p^2 * s_within^2 * (Q_B/W_B^2 + Q_N/W_N^2)
+                          + d^2 * Var(p)
+    Var(p) = [Q_B*(1-p)^2 + Q_N*p^2] / [W^2 - Q_B - Q_N]
+
+Weighted within-group residuals and degrees of freedom supply s_within.
+The old total-variance expression mixed mean separation into contrast noise
+and scaled prevalence uncertainty incorrectly. Removing every between-group
+contribution would also be wrong: p is estimated, not fixed. This remains a
+delta approximation under common within-group variance and fixed fitted
+labels/weights, not a guarantee under heteroscedasticity or learned
+preprocessing. Analytic flat-group and independent-record Monte Carlo tests
+cover several artifact prevalences and association strengths.
+
+The explicit legacy-total mode reproduces the previous convention for frozen
+before/after controls. New objectives store their variance convention;
+historical score checkpoints without it retain legacy bootstrap behavior.
+Automatic rejection/component-choice bootstrap now passes physical counts
+to the bias estimator; the legacy control preserves its previous convention.
+Both corrections can change adaptive choices and require whole-procedure
+outcome validation, not only rescoring selected outputs.
+
+
+### Unequal artifact-group noise and guarded upgrades
+
+The optional `artifactvariance='heteroscedastic'` mode replaces the shared
+within-group variance in the expression above by separate weighted variances:
+
+    Var(p*d) approximately p^2 * (s_B^2 * Q_B/W_B^2 + s_N^2 * Q_N/W_N^2)
+                          + d^2 * Var(p)
+
+Each variance uses its own residual degrees of freedom, W_g-Q_g/W_g.
+A group without residual degrees of freedom is unassessed, including a lone
+clean comparison trial. Reliability-weight scaling and physical bootstrap
+multiplicities retain their separate meanings. This is a Welch-type delta
+approximation conditional on fitted labels and weights. It corrects the
+common-variance assumption; it does not identify a causal artifact effect,
+validate the soft-thresholded bias proxy, or establish better EEG recovery.
+The pooled default and explicit legacy-total control remain reproducible.
+A change to the default requires paired whole-procedure validation.
+
+The current `upgradeBaseline` and reference-cleanup guards use the same
+conditional comparison: keep the proposed recommendation unless the baseline
+has a strictly negative reverse simultaneous bound,
+`score_baseline - score_proposed + critical < 0`. Indistinguishable evidence
+keeps the proposal (`maintain`); missing evidence also keeps it, but is labelled
+`unassessed`. A baseline must be feasible. This is the behavior introduced at
+`d908041ff5aa5f8c62cf111e5b75eae397d2f950`, and remains unchanged in the
+consolidation. It differs from the earlier conservative guard audited at
+`b27b4351846a8f53b7472e80529b2f86cf8a60cd`. That earlier replay cannot certify
+the current rule. Cross-fit diagnostics remain conditional on the fitted
+preprocessing and do not establish independent whole-procedure validity.
+
+Synthetic benchmarks now preserve compact per-trial score archives outside
+disposable EEG/ICA checkpoints. These contain candidate statistics, factor
+levels, reference trial identities and truth/provenance metadata, so future
+ranking audits can reuse fits. A replay is a conditional development
+diagnostic, not a new independent validation or a rerun of adaptive
+preprocessing choices.
+
+The completed four-seed development comparison on revision
+4116ea11f3d5d39e4d3d282894dcf487172bd50d remains failed at its original
+admission threshold: balanced selected MSE increased 53.84%. Seed 40103
+contributes 1.04705 of the 1.04901 summed paired MSE increase. Saved-score
+diagnostics reject a blanket switch from the two-SE soft threshold to
+positive-part bias-squared minus variance: its raw-score-minimum MSE is
+1.05960, versus 0.74934 for the saved balanced recommendations. This comparison
+is descriptive (the recommendation rule also uses shrinkage and equivalence),
+and supplies no justification for changing the default or opening confirmation.
+
+
+### Reference-cleanup comparison: current rule and historical evidence
+
+The default guard compares a proposal that skips feasible channel interpolation
+before average reference with an eligible repaired candidate. It selects that
+comparator from repaired candidates within the simultaneous critical distance
+of the best repaired score, preferring the existing low-bias class and then
+the smallest shrunk score. The current guard replaces the proposal only when
+that comparator is significantly better under the reverse bound above.
+An already repaired proposal is unchanged and an ineligible repair is never
+adopted. The same rule is used in bootstrap selection frequencies.
+`protectReferenceCleanup=false` disables the diagnostic comparison;
+an explicit `upgradeBaseline` takes precedence. Native/custom reference
+commands are not inferred.
+
+The following figures are **historical fixed-family diagnostics of the earlier
+guard**, from algorithm revision `b27b4351846a8f53b7472e80529b2f86cf8a60cd`.
+They are retained to explain the investigation. They are not current-version
+recommendations or evidence that the current rule improves MSE.
+
+Targeted verification: [run 40458110149](https://github.com/abwoo/PipeCompare/actions/runs/40458110149)
+passed six MATLAB decision/stability tests and 27 Python reuse/protocol tests.
+It reused the bootstrap bounds and factorial scores from
+[run 40430435867](https://github.com/abwoo/PipeCompare/actions/runs/40430435867),
+whose 103 affected-statistics/archive tests passed.
+
+On the saved public candidate families, all four recommendations were
+unchanged. On cached simulation main trees (later adaptive leaves absent),
+the three fixed-candidate replays are:
+
+   - 40101: selected MSE 0.780581 to 0.780581 (unchanged);
+   - 40102: selected MSE 0.000992 to 0.121838 (worsens);
+   - 40103: selected MSE 1.352610 to 0.218319 (improves).
+
+The second recording worsens; the rule is not a guarantee of improvement
+for every recording. The fourth record is not a replay at all: for the
+frozen final family of 40104, the original recommendation already
+includes interpolation before average reference, so the decision guard is
+the identity there; its old MSE of 0.863168 is carried forward, not newly
+measured. Combining that unchanged value with the three cache replays
+gives a descriptive mixed estimator of 0.495976 — descriptive mixed
+estimator: three frozen-family recomputed values plus the 40104
+carried-forward value; not paired, not a whole procedure, not admissible
+to the gate, and confirmation remains unopened. Its 1.83% gap to the old
+Standard's mean of 0.487085 is an arithmetic note on that blend, not a
+benchmark comparison: do not compare the blended MSE with the Standard
+mean as a percentage. This is not a new completed four-record
+whole-procedure comparison and must not be used to mark the development
+admission gate as passed. New adaptive cutoffs, component choices and
+independent generalization remain outside this fixed-candidate replay.
+Confirmation remains unopened.
+
+
+### Historical source-resolved diagnosis (fixed fitted operators)
+
+Audit algorithm: `87f8e2680f1af817cfecad1456c4c6881c9540dc`; recorded evidence:
+`7d487769b206436393a8bf06fb019bb73cb700ac`. These source budgets describe
+those cached operators, independently of any later ranking-rule changes.
+
+[Run 40460170075](https://github.com/abwoo/PipeCompare/actions/runs/40460170075)
+adds optional source tracing to the simulator and replays the stored
+decisions of seven candidate cases on the existing 40102/40103 recordings.
+Three tests passed, including comparison with the frozen 719f293 simulator:
+recording bytes, event identities, truth and RNG state were unchanged.
+No ICA was fitted. Cached observed estimates were reproduced and additive
+source-score closure was within 1.51e-6 microvolts.
+
+This audit refines the interpretation of the reference guard. For 40103,
+the original selected MSE was 1.352610, a counterpart changing only the
+bad-channel step gave 1.276643, and the repaired branch with component
+removal and its resulting rejection/weighting decisions gave 0.218319.
+Repair alone accounts for only a small part of the observed improvement.
+The large remaining improvement is associated with suppressing residual
+blink and movement contamination in the component-removal branch.
+
+In the target condition, the original corrected error was -1.434438 uV.
+The fixed-operator contributions included -0.863877 from generated blinks,
+-0.258517 from movement, and -0.207697 from background; pure-P3 transform
+error after gain correction was only -0.005114. The guarded branch reduced
+the blink contribution to -0.032602 and movement to zero while preserving
+its pure-P3 gain. These two examples do not identify signal attenuation as
+the principal failure.
+
+The original fitted association was -1.347869 uV with SE 1.015999 uV.
+The current soft-threshold proxy, max(abs(association)-2*SE,0)^2, was zero.
+Zero in that proxy is absence of evidence under its shrinkage rule, not
+evidence that residual contamination or true bias is zero. The same proxy
+is used in rejection/component choices and final ranking; conditional
+bootstrap or empirical-Bayes shrinkage does not establish that the
+underlying bias model is calibrated.
+
+For 40102, the original target-condition error +0.040231 included +0.309684
+background, -0.160546 blink and -0.119825 movement contributions. Its small
+observed error partly reflects cancellation. The guarded branch retained
+a -0.707520 blink contribution. This explains why a structural protection
+can help one record while hurting another; the total score alone conceals
+the distinction.
+
+The signed source identity is:
+
+    observed/g - population =
+        (realized - population)
+      + (retained-weighted-clean - realized)
+      + (processed-clean/g - retained-weighted-clean)
+      + sum(processed-nuisance-sources/g)
+
+The nuisance sources are background, blink, movement, muscle, bad-channel
+noise and floating-point rounding. Squared error contains cross terms:
+the sum of squared component errors is not total MSE. The exported signed
+allocation mean(component_error * total_error) includes those cross terms
+and may be negative. It is a conditional accounting identity, not a
+population causal-effect estimate.
+
+The four-record original paired MSE difference was 0.262252 with conditional
+record-bootstrap 95% interval [-0.027165, 0.780829]. Thus the observed +53.84%
+does not itself establish a population-wide regression. Source tracing
+changes neither the operational selector nor the locked confirmation
+cohort. It makes future objective-model changes testable against signal
+loss, selection effects and residual nuisance separately.
+
+
+### Fitted-family shadow selection and checkpointed execution
+
+An unsliced shadow comparison fits one Balanced candidate family per fresh
+recording and applies guarded/unguarded decisions to that same family.
+Its Standard control uses the explicitly frozen legacy-total variance mode.
+This is a fitted-family comparison: preprocessing and downstream adaptive
+candidates are not independently refitted for each decision arm. The
+`fullyHeldOut` field in old fragments denotes fresh record identities only;
+it does not mean the procedure is out-of-fold. Repeated inspection of the
+same fresh seeds makes them development evidence for subsequent changes.
+
+Heavy searches are started explicitly. Ordinary pull-request updates do not
+start the sixteen-search shadow matrix. Saved fragments may be re-aggregated
+without fitting EEG. The independent Python checker accepts MATLAB's empty,
+singleton and vector JSON encodings only for fields declared as arrays.
+It preserves numerical values, missingness, source commits and planned counts.
+
+`pipecompare_checkpoint_search` and the shadow `slice`/`resume` modes save
+completed candidate files and ICA caches, bind them to seed, arm, code revision,
+variance and MATLAB/EEGLAB identity, and use strict Executor resume.
+A progress JSON is written before computation and after cooperative interruption.
+Completed results are cached for retries. Individual long operations may exceed
+the cooperative slice budget; a runner hard kill still preserves files written
+before it, and artifact upload must be allowed time afterward.
+
+A checkpointed execution is labelled separately. Its partial or completed
+fragments are excluded from the original unsliced paired mean. Adaptive leaves
+beyond the original manifest may be re-derived; exact whole-procedure replay
+and independent confirmation are not claimed. Missing old checkpoints cannot
+be reconstructed from final arm JSON alone. The operational procedure is in
+[PR50 status and evidence](PR50_STATUS.md).

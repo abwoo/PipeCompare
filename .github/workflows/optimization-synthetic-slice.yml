@@ -1,0 +1,89 @@
+name: resumable simulation slice
+on:
+  workflow_call:
+    inputs:
+      stage:
+        type: string
+        required: true
+      seed:
+        type: number
+        required: true
+      recipe:
+        type: string
+        required: true
+      slice:
+        type: number
+        required: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  fit:
+    name: ${{ inputs.recipe }} seed ${{ inputs.seed }} slice ${{ inputs.slice }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    env:
+      PIPECOMPARE_VALIDATION_REVISION: ${{ github.sha }}
+      PIPECOMPARE_NATIVE_BACKEND_REPORT: ${{ github.workspace }}/validation_backend/backend.json
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+      - id: previous
+        env:
+          SLICE: ${{ inputs.slice }}
+        run: echo "number=$((SLICE - 1))" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        if: inputs.slice > 1
+        with:
+          name: ${{ inputs.stage }}-synthetic-${{ inputs.seed }}-${{ inputs.recipe }}-slice-${{ steps.previous.outputs.number }}
+          path: state
+      - name: Verify frozen source run before importing completed development arms
+        if: inputs.slice == 1 && inputs.stage == 'development'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const r=await github.rest.actions.getWorkflowRun({...context.repo,run_id:40159157180});
+            if(r.data.head_sha!=='5e22e7534be739dea0d7a41ef4b95c92038f51fc'||r.data.status!=='completed')
+              throw new Error('Frozen CPU-MEX source run changed');
+      - uses: actions/download-artifact@v4
+        if: inputs.slice == 1 && inputs.stage == 'development'
+        with:
+          name: optimization-synthetic-${{ inputs.seed }}
+          path: frozen_source
+          run-id: 40159157180
+          github-token: ${{ github.token }}
+      - id: state
+        name: Validate identity and reuse only complete matching arms
+        run: >-
+          python PipeCompare/benchmarks/prepare_synthetic_slice.py
+          --state state --source frozen_source --seed ${{ inputs.seed }} --recipe ${{ inputs.recipe }}
+          --stage ${{ inputs.stage }} --revision "$PIPECOMPARE_VALIDATION_REVISION"
+          --protocol PipeCompare/benchmarks/optimization_protocol.json
+      - uses: ./PipeCompare/.github/actions/setup-2026
+        if: steps.state.outputs.complete != 'true'
+      - name: Resume the full search and all ICA seed checks for a bounded slice
+        if: steps.state.outputs.complete != 'true'
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab'));eeglab nogui;
+            addpath(fullfile(pwd,'PipeCompare'));addpath(fullfile(pwd,'PipeCompare','benchmarks'));
+            pipecompare_optimization_synthetic(fullfile(pwd,'state'),${{ inputs.seed }},'${{ inputs.stage }}','','${{ inputs.recipe }}',7200);
+      - id: finish
+        name: Check completion without treating a checkpoint as a validation result
+        run: >-
+          python PipeCompare/benchmarks/prepare_synthetic_slice.py
+          --state state --seed ${{ inputs.seed }} --recipe ${{ inputs.recipe }}
+          --stage ${{ inputs.stage }} --revision "$PIPECOMPARE_VALIDATION_REVISION"
+          --protocol PipeCompare/benchmarks/optimization_protocol.json --compact-completed
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ inputs.stage }}-synthetic-${{ inputs.seed }}-${{ inputs.recipe }}-slice-${{ inputs.slice }}
+          path: state
+          retention-days: 14
+          if-no-files-found: error
+      - name: Explain a pending continuation
+        if: steps.finish.outputs.complete == 'false'
+        run: echo 'This slice saved partial progress. Scientific completion requires the final all-record summary.'

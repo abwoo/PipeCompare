@@ -1,0 +1,108 @@
+{
+  "baselineAlgorithmCommit": "6b26931619b8b11f630326638cdf2a4cb478e0fa",
+  "currentGuardIntroducedAt": "d908041ff5aa5f8c62cf111e5b75eae397d2f950",
+  "recommendationAlgorithmChanged": false,
+  "productionBlobComparison": {
+    "productionFiles": 42,
+    "changed": [],
+    "proofs": [
+      {
+        "path": "benchmarks/pipecompare_checkpoint_search.m",
+        "match": true,
+        "sha": "6ac03694f06f2f817380b039f141b542e1c25980"
+      },
+      {
+        "path": "tests/test_checkpoint_delivery.m",
+        "match": true,
+        "sha": "d8174d8a51da79ccd70ca88ea90dc9807559368d"
+      }
+    ]
+  },
+  "prototypeArchive": {
+    "branch": "archive/pr50-prototypes-20261030",
+    "commit": "6b26931619b8b11f630326638cdf2a4cb478e0fa",
+    "helpersRemoved": [
+      "bestset_strict_prototype.m",
+      "calibration_gate_report.m",
+      "diffusion_report.m",
+      "group_relative_score.m",
+      "llm_assisted_review.py",
+      "successive_halving.m",
+      "surrogate_screen.py",
+      "variant_b_prototype.m"
+    ],
+    "completedAuditWorkflowsRemoved": [
+      "pr50-algorithm-fixes.yml",
+      "pr50-component-audit.yml",
+      "pr50-regression-diagnosis.yml",
+      "pr50-review-fixes.yml"
+    ]
+  },
+  "checks": {
+    "affectedCases": {
+      "runId": 41052090671,
+      "commit": "bd95d718133b657f27c31a6e08382e80ca23f323",
+      "passed": 101,
+      "overallRun": "failure",
+      "note": "101 cases passed. The new native-delivery fixture failed before native execution; that case was corrected and superseded by the later proof below. Passing cases were not repeated."
+    },
+    "nativeResumeProof": {
+      "runId": 41053098369,
+      "jobId": 124053760559,
+      "commit": "298744ab272fb038e96a981383b9428f3806544c",
+      "step": "Remaining native checkpoint proof and original-fragment merge",
+      "stepConclusion": "success",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "overallRun": "failure",
+      "note": "The native proof and MATLAB merge completed. The overall run later failed on the old Python empty-pick comparison, superseded below.",
+      "assertions": [
+        "recommendation equals uninterrupted search",
+        "ranking objectives agree to 1e-10",
+        "saved candidate bytes unchanged",
+        "saved ICA bytes unchanged",
+        "resume reuses the ICA checkpoint",
+        "completed retry executes no new search",
+        "changed code/seed/variance and unbound checkpoints are rejected"
+      ]
+    },
+    "savedOutputVerification": {
+      "runId": 41053921374,
+      "jobId": 124056548999,
+      "commit": "ab3355c777f50345e72fc089fcfd5c2b0f314bef",
+      "conclusion": "success",
+      "pythonTestsPassed": 13,
+      "originalSourceRunId": 40805638604,
+      "originalSourceAlgorithmCommit": "6b26931619b8b11f630326638cdf2a4cb478e0fa",
+      "mergeRunId": 41053098369,
+      "mergeProcessingCommit": "298744ab272fb038e96a981383b9428f3806544c",
+      "plannedSeeds": 8,
+      "presentSeeds": 8,
+      "assessableStandard": 8,
+      "assessableBalanced": 1,
+      "assessableArmRows": 10,
+      "completePairs": 1,
+      "newMatlabOrIcaRuns": 0,
+      "checks": [
+        "zero/single/multiple paired JSON encodings",
+        "null/empty unavailable recommendations",
+        "tampered means are rejected",
+        "diagnostic fragments cannot enter held-out summaries",
+        "all original paired values/CIs/verdicts/CSVs match"
+      ]
+    }
+  },
+  "limits": [
+    "One complete pair cannot establish population performance or stable calibration.",
+    "Checkpointed workers are separately labelled and excluded from the original unsliced paired mean.",
+    "Old failed jobs without checkpoint files cannot be resumed from final JSON.",
+    "Cross-worker full-family completion and adaptive-branch parity remain to be demonstrated in a separately labelled execution.",
+    "No new confirmation cohort, full compatibility rerun, merge or release."
+  ],
+  "integration": {
+    "singleCommitOnPr": true,
+    "skipFullCi": true,
+    "fullLatestHeadCompatibilityClaimed": false
+  }
+}

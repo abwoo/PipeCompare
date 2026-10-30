@@ -1,0 +1,358 @@
+name: paired optimization validation
+on:
+  pull_request:
+  workflow_call:
+    inputs:
+      stage:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      stage:
+        type: choice
+        options: [development, confirmation]
+        default: development
+permissions:
+  contents: read
+  actions: read
+env:
+  PIPECOMPARE_NATIVE_BACKEND_REPORT: ${{ github.workspace }}/validation_backend/backend.json
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      requested: ${{ steps.plan.outputs.requested }}
+      stage: ${{ steps.plan.outputs.stage }}
+      people: ${{ steps.plan.outputs.people }}
+      seeds: ${{ steps.plan.outputs.seeds }}
+      legacy_run: ${{ steps.plan.outputs.legacy_run }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify frozen development and confirmation splits
+        run: python -m unittest discover -s tests -p test_optimization_protocol.py
+      - id: plan
+        uses: actions/github-script@v7
+        env:
+          REQUESTED_STAGE: ${{ inputs.stage }}
+        with:
+          script: |
+            const fs=require('fs');
+            const protocol=JSON.parse(fs.readFileSync('benchmarks/optimization_protocol.json','utf8'));
+            core.setOutput('requested','false');
+            let stage=process.env.REQUESTED_STAGE||context.payload.inputs?.stage;
+            if(context.eventName==='pull_request') {
+              const sha=context.payload.pull_request.head.sha;
+              const commit=await github.rest.repos.getCommit({...context.repo,ref:sha});
+              if(commit.data.commit.message.includes('[optimization-development]')) stage='development';
+              if(commit.data.commit.message.includes('[optimization-confirmation]')) stage='confirmation';
+              if(!stage)return;
+              let passed=false;
+              for(let n=0;n<90;n++) {
+                try {
+                  const rs=await github.rest.actions.listWorkflowRuns({...context.repo,workflow_id:'matlab-tests.yml',head_sha:sha,event:'pull_request'});
+                  const r=rs.data.workflow_runs.find(r=>r.head_sha===sha);
+                  if(r?.status==='completed') {
+                    if(r.conclusion!=='success')throw new Error('Numerical/checkpoint tests failed');
+                    passed=true;break;
+                  }
+                } catch(e) {if(![429,500,502,503,504].includes(e.status))throw e;}
+                await new Promise(resolve=>setTimeout(resolve,15000));
+              }
+              if(!passed)throw new Error('Numerical gate did not finish');
+            }
+            if(!['development','confirmation'].includes(stage))throw new Error('Invalid validation stage');
+            core.setOutput('legacy_run',String(protocol.reuse_legacy_controls===false?'':(protocol.legacy_development_source_run||'')));
+            core.setOutput('stage',stage);core.setOutput('people',JSON.stringify(protocol[stage+'_subjects']));
+            core.setOutput('seeds',JSON.stringify(protocol[stage+'_synthetic_seeds']));core.setOutput('requested','true');
+            core.info('Frozen stage '+stage+'; source manifest '+protocol.source_manifest_sha256);
+
+  public:
+    needs: plan
+    if: needs.plan.outputs.requested == 'true'
+    name: Paired public participant ${{ matrix.subject }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ needs.plan.outputs.stage == 'development' && 4 || 6 }}
+      matrix:
+        subject: ${{ fromJSON(needs.plan.outputs.people) }}
+    env:
+      DISPLAY: ':99'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Fetch frozen participant and verify source manifest
+        timeout-minutes: 20
+        run: python PipeCompare/benchmarks/fetch_optimization_data.py --stage ${{ needs.plan.outputs.stage }} --subject ${{ matrix.subject }} --out input
+      - name: Wait for frozen legacy artifacts to finish uploading
+        if: needs.plan.outputs.stage == 'development' && needs.plan.outputs.legacy_run != ''
+        timeout-minutes: 12
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const id=Number('${{ needs.plan.outputs.legacy_run }}');
+            for(let n=0;n<120;n++) {
+              try {
+                const r=await github.rest.actions.getWorkflowRun({...context.repo,run_id:id});
+                if(r.data.head_sha!=='f58e9ebafad580939c3cac14027a02d9c2dba818')throw new Error('Unexpected legacy source');
+                if(r.data.status==='completed')return;
+                const jobs=await github.paginate(github.rest.actions.listJobsForWorkflowRun,{...context.repo,run_id:id,filter:'latest',per_page:100});
+                const native=jobs.filter(j=>/^Paired (public participant|simulation seed) /.test(j.name));
+                if(native.length===8&&native.every(j=>j.status==='completed'))return;
+              }catch(e){if(![429,500,502,503,504].includes(e.status))throw e;}
+              await new Promise(resolve=>setTimeout(resolve,5000));
+            }
+            throw new Error('Legacy jobs have not stopped/uploaded; retry after artifact preservation');
+      - name: Download any completed frozen legacy control
+        if: needs.plan.outputs.stage == 'development' && needs.plan.outputs.legacy_run != ''
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: optimization-public-${{ matrix.subject }}
+          path: legacy
+          run-id: ${{ needs.plan.outputs.legacy_run }}
+          github-token: ${{ github.token }}
+      - uses: ./PipeCompare/.github/actions/setup-2026
+      - name: Run both actual searches and detector-driven repairs
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab'));eeglab nogui;
+            addpath(fullfile(pwd,'PipeCompare'));addpath(fullfile(pwd,'PipeCompare','benchmarks'));
+            pipecompare_optimization_public(fullfile(pwd,'input'),fullfile(pwd,'results'),${{ matrix.subject }},'${{ needs.plan.outputs.stage }}',fullfile(pwd,'legacy'));
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ needs.plan.outputs.stage }}-optimization-public-${{ matrix.subject }}
+          path: results
+          retention-days: 90
+
+  synthetic-1:
+    needs: [plan]
+    if: needs.plan.outputs.requested == 'true'
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        seed: ${{ fromJSON(needs.plan.outputs.seeds) }}
+        recipe: [standard, balanced]
+    uses: ./.github/workflows/optimization-synthetic-slice.yml
+    with:
+      stage: ${{ needs.plan.outputs.stage }}
+      seed: ${{ matrix.seed }}
+      recipe: ${{ matrix.recipe }}
+      slice: 1
+
+  synthetic-2:
+    needs: [plan, synthetic-1]
+    if: needs.plan.outputs.requested == 'true'
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        seed: ${{ fromJSON(needs.plan.outputs.seeds) }}
+        recipe: [standard, balanced]
+    uses: ./.github/workflows/optimization-synthetic-slice.yml
+    with:
+      stage: ${{ needs.plan.outputs.stage }}
+      seed: ${{ matrix.seed }}
+      recipe: ${{ matrix.recipe }}
+      slice: 2
+
+  synthetic-3:
+    needs: [plan, synthetic-2]
+    if: needs.plan.outputs.requested == 'true'
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        seed: ${{ fromJSON(needs.plan.outputs.seeds) }}
+        recipe: [standard, balanced]
+    uses: ./.github/workflows/optimization-synthetic-slice.yml
+    with:
+      stage: ${{ needs.plan.outputs.stage }}
+      seed: ${{ matrix.seed }}
+      recipe: ${{ matrix.recipe }}
+      slice: 3
+
+  synthetic-4:
+    needs: [plan, synthetic-3]
+    if: needs.plan.outputs.requested == 'true'
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        seed: ${{ fromJSON(needs.plan.outputs.seeds) }}
+        recipe: [standard, balanced]
+    uses: ./.github/workflows/optimization-synthetic-slice.yml
+    with:
+      stage: ${{ needs.plan.outputs.stage }}
+      seed: ${{ matrix.seed }}
+      recipe: ${{ matrix.recipe }}
+      slice: 4
+
+  synthetic-5:
+    needs: [plan, synthetic-4]
+    if: needs.plan.outputs.requested == 'true'
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        seed: ${{ fromJSON(needs.plan.outputs.seeds) }}
+        recipe: [standard, balanced]
+    uses: ./.github/workflows/optimization-synthetic-slice.yml
+    with:
+      stage: ${{ needs.plan.outputs.stage }}
+      seed: ${{ matrix.seed }}
+      recipe: ${{ matrix.recipe }}
+      slice: 5
+
+  synthetic-6:
+    needs: [plan, synthetic-5]
+    if: needs.plan.outputs.requested == 'true'
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        seed: ${{ fromJSON(needs.plan.outputs.seeds) }}
+        recipe: [standard, balanced]
+    uses: ./.github/workflows/optimization-synthetic-slice.yml
+    with:
+      stage: ${{ needs.plan.outputs.stage }}
+      seed: ${{ matrix.seed }}
+      recipe: ${{ matrix.recipe }}
+      slice: 6
+
+  nulls:
+    needs: plan
+    if: needs.plan.outputs.requested == 'true'
+    name: Known-null false-positive and known-spectrum controls
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash .github/scripts/prepare-matlab.sh
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+          products: Signal_Processing_Toolbox
+      - uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(pwd);addpath(fullfile(pwd,'benchmarks'));
+            pipecompare_optimization_null(fullfile(pwd,'results'),'${{ needs.plan.outputs.stage }}');
+            pipecompare_spectral_validation(fullfile(pwd,'results'));
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ needs.plan.outputs.stage }}-optimization-null-spectrum
+          path: results
+
+  components:
+    needs: plan
+    if: needs.plan.outputs.requested == 'true'
+    name: Annotated blink and real ERP component controls
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      DISPLAY: ':99'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Fetch existing frozen component controls only
+        timeout-minutes: 30
+        run: python PipeCompare/benchmarks/fetch_open_data.py --components-only --shard 0 --shards 1 --out input
+      - uses: ./PipeCompare/.github/actions/setup-2026
+      - uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab'));eeglab nogui;
+            addpath(fullfile(pwd,'PipeCompare'));addpath(fullfile(pwd,'PipeCompare','benchmarks'));
+            pipecompare_optimization_controls(fullfile(pwd,'input'),fullfile(pwd,'results'));
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ needs.plan.outputs.stage }}-optimization-component-controls
+          path: results
+
+  public-summary:
+    needs: [plan, public]
+    if: always() && needs.plan.outputs.requested == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ${{ needs.plan.outputs.stage }}-optimization-public-[0-9]*
+          path: source
+      - name: Normalize stage prefix for the public summary reader
+        env:
+          STAGE: ${{ needs.plan.outputs.stage }}
+        run: |
+          python - <<'PYCODE'
+          import os
+          from pathlib import Path
+          for p in Path('source').glob(os.environ['STAGE']+'-optimization-public-*'):
+              p.rename(p.with_name(p.name.removeprefix(os.environ['STAGE']+'-')))
+          PYCODE
+      - run: bash .github/scripts/prepare-matlab.sh
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+      - uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(pwd);addpath(fullfile(pwd,'benchmarks'));
+            pipecompare_optimization_summary(fullfile(pwd,'source'),fullfile(pwd,'results'),'${{ needs.plan.outputs.stage }}');
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ needs.plan.outputs.stage }}-optimization-public-summary
+          path: results
+
+  synthetic-summary:
+    needs: [plan, synthetic-6]
+    if: always() && needs.plan.outputs.requested == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ${{ needs.plan.outputs.stage }}-synthetic-*-slice-6
+          path: slices
+      - name: Require complete matching arms for every planned seed
+        env:
+          VALIDATION_REVISION: ${{ github.sha }}
+        run: >-
+          python benchmarks/collect_synthetic_slices.py --root slices --out source
+          --stage ${{ needs.plan.outputs.stage }} --revision "$VALIDATION_REVISION"
+          --protocol benchmarks/optimization_protocol.json
+      - run: bash .github/scripts/prepare-matlab.sh
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+      - uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(pwd);addpath(fullfile(pwd,'benchmarks'));
+            pipecompare_optimization_synthetic_summary(fullfile(pwd,'source'),fullfile(pwd,'results'),'${{ needs.plan.outputs.stage }}');
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ needs.plan.outputs.stage }}-optimization-synthetic-summary
+          path: results
+

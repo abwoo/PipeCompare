@@ -48,7 +48,7 @@ classdef Threshold
             % the trials of the starting data (minRetention is a share of them);
             % without them (a preview), those at this step
             ref = pipecompare.utils.fieldOr(ctx, 'ref', []);
-            if isempty(ref), ref = pipecompare.eval.Measure.reference(EEG, contract); end
+            if isempty(ref), ref = pipecompare.eval.Measure.reference(EEG, contract,pipecompare.utils.fieldOr(ctx,'rank',struct())); end
             opts = pipecompare.utils.withDefaults(pipecompare.utils.fieldOr(ctx, 'rank', struct()), ...
                 pipecompare.eval.Rank.defaults());
             assert(pipecompare.eval.Threshold.applies(contract), 'PipeCompare:Threshold', ...
@@ -191,7 +191,7 @@ classdef Threshold
                     sm2(Nb < 2) = Inf;
                     if nargin > 5
                         for j = 1:numel(v)
-                            sm2(j, :) = sm2(j, :) + eyeSq(x, ref, C.use(o), c, C.loc{c}, K(:, j) .* W);
+                            sm2(j, :) = sm2(j, :) + eyeSq(x, ref, C.use(o), c, C.loc{c}, K(:, j) .* W, K(:, j) .* W);
                         end
                     end
                     acc = acc + sm2;
@@ -202,14 +202,16 @@ classdef Threshold
     end
 end
 
-function q = eyeSq(x, ref, k, c, loc, K)
+function q = eyeSq(x, ref, k, c, loc, K, counts)
 % The squared bias blinks add to measure k's mean in condition c
 % (Measure.eyeBias) for the rows loc of the reference trials (scores x,
 % weights K, a column per mean); 0 when the blinks are not known.
 q = zeros(1, size(K, 2));
 blink = pipecompare.utils.fieldOr(ref, 'blink', {});
 if numel(blink) < k || isempty(blink{k}), return; end
-[~, q] = pipecompare.eval.Measure.eyeBias(x, blink{k}{c}(loc), K);
+mode=pipecompare.utils.fieldOr(ref,'artifactVariance','pooled');
+if nargin<7||strcmp(mode,'legacy-total'),counts=ones(size(K));end
+[~, q] = pipecompare.eval.Measure.eyeBias(x, blink{k}{c}(loc), K,counts,mode);
 end
 
 function b = nextAbove(v, j)

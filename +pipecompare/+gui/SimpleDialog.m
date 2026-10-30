@@ -45,6 +45,7 @@ classdef SimpleDialog < handle
         EventLabel; EventList; RightList; EventGrid; PoolBox
         Types; Counts          % the event types offered and how many of each
         StepBoxes; StepNotes   % one per Presets.stepNames, in that order
+        CompareCleanup = false % compare cleanup against preserving the input
         Ticks                  % the steps ticked (shown unticked while the data cannot take them)
         Why; Info              % per step: why the data cannot take it, what to know about it
         EpochBox; RefDrop
@@ -155,10 +156,11 @@ classdef SimpleDialog < handle
             obj.StepBoxes = gobjects(1, numel(names)); obj.StepNotes = gobjects(1, numel(names));
             s = uigridlayout(g, [12 2]); s.Padding = [0 0 0 0]; s.RowSpacing = 4;
             s.RowHeight = repmat({22}, 1, 12); s.ColumnWidth = {330, '1x'};
-            b = uigridlayout(s, [1 3]); b.Padding = [0 0 0 0]; b.ColumnWidth = {'fit', 'fit', '1x'};
+            b = uigridlayout(s, [1 4]); b.Padding = [0 0 0 0]; b.ColumnWidth = {'fit', 'fit', 'fit', '1x'};
             b.Layout.Row = 1; b.Layout.Column = [1 2];
             uibutton(b, 'Text', 'Standard', 'ButtonPushedFcn', @(~, ~) obj.usePreset('standard'));
             uibutton(b, 'Text', 'Filters only', 'ButtonPushedFcn', @(~, ~) obj.usePreset('filters'));
+            uibutton(b,'Text','Balanced: compare cleanup','ButtonPushedFcn',@(~,~)obj.usePreset('balanced'));
             grey = [0.3 0.3 0.3];
             uilabel(b, 'Text', 'or tick the steps you want', 'FontColor', grey);
             % rows: bad channels, reference, ICA, components by the noise,
@@ -186,6 +188,7 @@ classdef SimpleDialog < handle
 
         function usePreset(obj, name)
             % tick the steps of a recipe (Standard, Filters only)
+            obj.CompareCleanup=strcmp(name,'balanced');
             obj.Ticks = ismember(pipecompare.simple.Presets.stepNames(), pipecompare.simple.Presets.recipeSteps(name));
             obj.update();
         end
@@ -372,6 +375,7 @@ classdef SimpleDialog < handle
             o = struct('measure', m, 'events', {cellstr(obj.EventList.Value)}, 'left', {{}}, 'right', {{}}, ...
                 'pool', obj.PoolBox.Value, 'window', [], 'band', [], 'channels', {{}}, ...
                 'recipe', pipecompare.simple.Presets.recipeOf(steps), 'steps', {steps}, ...
+                'comparecleanup',obj.CompareCleanup, ...
                 'reference', obj.RefDrop.Value, 'segment', 2, 'show', 'on');
             if ~erp, o.events = {}; o.pool = false; end
             if lateral
@@ -418,7 +422,7 @@ classdef SimpleDialog < handle
                 c = obj.contract(o);
                 c.validate(obj.State);
                 [plan, notes] = pipecompare.simple.Presets.recipe(o.steps, obj.State, c, o.reference, ...
-                    pipecompare.simple.Presets.nonEegChannels(obj.EEG));
+                    pipecompare.simple.Presets.nonEegChannels(obj.EEG),o.comparecleanup);
                 [leaves, tree] = plan.enumerate(obj.State, c, struct('maxLeaves', Inf));
                 n = numel(leaves);
                 nIca = sum(arrayfun(@(k) strcmp(tree(k).inst.type, 'ica'), 2:numel(tree)));   % shared prefixes run once
@@ -509,7 +513,7 @@ classdef SimpleDialog < handle
             app.setOptions(pipecompare.utils.withDefaults(pipecompare.simple.Presets.searchOptions(), app.Options));
             if ~isempty(c)
                 [plan, notes] = pipecompare.simple.Presets.recipe(o.steps, obj.State, c, o.reference, ...
-                    pipecompare.simple.Presets.nonEegChannels(obj.EEG));
+                    pipecompare.simple.Presets.nonEegChannels(obj.EEG),o.comparecleanup);
                 app.Plan = plan;
                 if strcmp(c.analysis, 'bandpower')
                     app.AnalysisDrop.Value = 'bandpower'; app.SegField.Value = c.segment; app.analysisChanged();

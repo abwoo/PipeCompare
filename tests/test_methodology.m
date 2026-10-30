@@ -6,6 +6,287 @@ function setupOnce(~)
 addpath(fullfile(fileparts(mfilename('fullpath')), '..'));
 end
 
+function testMultiscaleCoversStrongFaultInTerminalRemainder(tc)
+rs=RandStream('mt19937ar','Seed',20261026);fs=250;
+for tail=[1 20 124]
+    X=randn(rs,12,60*fs+tail);at=60*fs+(1:tail);
+    X(3,at)=X(3,at)+100*(-1).^(1:tail);
+    [st,check]=pipecompare.run.Steps.badStretches(X,fs,'multiscale');
+    hit=false(1,size(X,2));
+    for k=find([st.row]==3),hit(st(k).samples(1):st(k).samples(2))=true;end
+    verifyTrue(tc,check.assessed);
+    verifyTrue(tc,all(hit(at)),sprintf('Missed terminal remainder of %d samples.',tail));
+    verifyLessThanOrEqual(tc,nnz(hit),round(0.5*fs));
+    verifyEmpty(tc,pipecompare.run.Steps.badStretches(X,fs,'long'));
+end
+end
+
+function testMultiscaleTerminalWindowDoesNotRepairQuietNoise(tc)
+rs=RandStream('mt19937ar','Seed',82107);
+for fs=[100 125.5 250]
+    X=randn(rs,12,round(60*fs)+17);
+    [st,check]=pipecompare.run.Steps.badStretches(X,fs,'multiscale');
+    verifyTrue(tc,check.assessed);verifyEmpty(tc,st);
+end
+end
+
+function testMultitaperAgreesWithIndependentDpssPeriodograms(tc)
+assumeTrue(tc,exist('dpss','file')==2&&exist('periodogram','file')==2, ...
+    'Independent spectral reference requires Signal Processing Toolbox.');
+rs=RandStream('mt19937ar','Seed',82108);fs=250;
+for n=[127 250 501]
+    band=[0 fs/2];X=randn(rs,2,n,3);
+    [got,info]=pipecompare.eval.Measure.bandScores(X,fs,band);
+    % Independent DPSS and one-sided normalization, including DC/Nyquist.
+    H=dpss(n,info.NW,info.tapers);expected=zeros(3,1);
+    for trial=1:3
+        density=[];
+        for channel=1:2
+            p=0;
+            for k=1:size(H,2)
+                p=p+periodogram(reshape(X(channel,:,trial),[],1),H(:,k),n,fs,'onesided');
+            end
+            density(:,channel)=p/size(H,2); %#ok<AGROW>
+        end
+        expected(trial)=log10(mean(density(:)));
+    end
+    verifyEqual(tc,got,expected,'AbsTol',1e-7);
+end
+end
+
+function testGroupValidationRejectsOverlappingAndRepeatedCohorts(tc)
+oldPath=path;cleanup=onCleanup(@()path(oldPath)); %#ok<NASGU>
+addpath(fullfile(fileparts(mfilename('fullpath')),'..','benchmarks'));
+S=struct('name',{});
+verifyError(tc,@()validation_group_transfer(S,[],tempdir,[81 82],[82 90]),'PipeCompare:Validation');
+verifyError(tc,@()validation_group_transfer(S,[],tempdir,[81 81],90),'PipeCompare:Validation');
+verifyError(tc,@()validation_group_transfer(S,[],tempdir,81,[90 90]),'PipeCompare:Validation');
+verifyError(tc,@()validation_group_transfer(S,[],tempdir,NaN,90),'PipeCompare:Validation');
+end
+
+function testGroupValidationRejectsDuplicateOrMalformedRecordIdentities(tc)
+oldPath=path;cleanup=onCleanup(@()path(oldPath)); %#ok<NASGU>
+addpath(fullfile(fileparts(mfilename('fullpath')),'..','benchmarks'));
+S=struct('name',{'S081R01.mat','S081R01.mat'},'keys',{{},{}});
+verifyError(tc,@()validation_group_transfer(S,[],tempdir,81,90),'PipeCompare:Validation');
+S=struct('name','S081R01.mat.extra','keys',{{}});
+verifyError(tc,@()validation_group_transfer(S,[],tempdir,81,90),'PipeCompare:Validation');
+end
+
+function testGroupValidationKeepsMissingCohortExplicit(tc)
+oldPath=path;cleanup=onCleanup(@()path(oldPath)); %#ok<NASGU>
+addpath(fullfile(fileparts(mfilename('fullpath')),'..','benchmarks'));
+S=struct('name',{});
+r=validation_group_transfer(S,[],tempdir,81:89,90:109);
+verifyEqual(tc,r.trainingRequested,9);verifyEqual(tc,r.testRequested,20);
+verifyEqual(tc,r.trainingObserved,0);verifyEqual(tc,r.testCovered,0);
+end
+
+function testArtifactBiasIsInvariantToWeightScale(tc)
+x = [zeros(20,1); 10*ones(20,1)]; b = [false(20,1); true(20,1)];
+K = [ones(40,1), linspace(0.2,1,40)'];
+[bias, sq] = pipecompare.eval.Measure.eyeBias(x,b,K);
+[scaledBias, scaledSq] = pipecompare.eval.Measure.eyeBias(x,b,100*K);
+verifyEqual(tc,scaledBias,bias,'AbsTol',1e-12);
+verifyEqual(tc,scaledSq,sq,'AbsTol',1e-12);
+end
+
+function testArtifactBiasBootstrapCountsMatchExpandedSample(tc)
+x = [0; 1; 2; 7; 9; 10]; b = logical([0;0;0;1;1;1]);
+w = [0.4;1;0.7;0.5;0.8;1]; counts = [1;3;2;2;1;3];
+idx = repelem((1:numel(x))',counts);
+[bias,sq] = pipecompare.eval.Measure.eyeBias(x,b,counts.*w,counts);
+[expandedBias,expandedSq] = pipecompare.eval.Measure.eyeBias(x(idx),b(idx),w(idx));
+verifyEqual(tc,bias,expandedBias,'AbsTol',1e-12);
+verifyEqual(tc,sq,expandedSq,'AbsTol',1e-12);
+end
+
+function testWeightedRankingAndBootstrapIgnoreWeightNormalization(tc)
+x=[linspace(-1,1,20)'; 10+linspace(-1,1,20)']; b=[false(20,1);true(20,1)];
+c=nqc_cand(x); ref=nqc_ref(40); ref.blink={{b}};
+opts=pipecompare.eval.Rank.defaults(); opts.nBoot=99; opts.nSplits=0;
+w=linspace(0.2,1,40)';
+for scale=[1 100]
+    o=c.m.objectives; o.w={scale*w};
+    [o.estimate,o.sme]=pipecompare.eval.Measure.estimate(o,x,opts,0,o.w{1});
+    [o.eyeBias,o.eyeBiasSq]=pipecompare.eval.Measure.eyeBias(x,b,o.w{1});
+    c.m.objectives=o;
+    R=pipecompare.eval.Rank.run(c,ref,opts); B=pipecompare.eval.Rank.bootstrap(c,ref,opts);
+    if scale==1, point=R.table.objective; boot=B{1};
+    else
+        verifyEqual(tc,R.table.objective,point,'AbsTol',1e-12);
+        verifyEqual(tc,B{1},boot,'AbsTol',1e-12);
+    end
+end
+end
+
+function testZeroWeightBootstrapBranchesDoNotPoisonPositiveDraws(tc)
+% Round 9 B3 test: the three Round 8 B3 branches in Measure.m, plus
+% the control that positive-weight draws are unchanged. All three
+% branches share one idea: a draw whose total weight is 0 has no
+% defined weighted mean, so it must be excluded / marked Inf, never
+% allowed to poison the whole candidate; a draw with total weight > 0
+% must keep its pre-B3 value.
+% (1) Weighted scalar smeBoot: s0 == 0 -> Inf, s0 > 0 -> formula value.
+% Four trials, weights [0;0;1;1], X = [10;20;30;40]. Draw 1 counts
+% [1;1;0;0]: Nb = 2 but s0 = 0, so sm2 must be Inf (this isolates the
+% B3 branch from the Nb<2 -> Inf rule, which does not fire here).
+% Draw 2 counts [0;0;1;1]: Nb = 2, s0 = 2, s1 = 70, mu = 35,
+% q0 = 2, q1 = 70, q2 = 2500, so sm2 = max(2500-2*35*70+35^2*2,0)
+% * 2/(2-1)/2^2 = 25, and v = sqrt(25) = 5. If B3 leaked Inf into
+% positive draws, draw 2 would fail here.
+x = [10;20;30;40]; wt = [0;0;1;1];
+o = struct('kind','scalar','X',{{x}},'w',{{wt}});
+opts = pipecompare.eval.Rank.defaults();
+Wc = [1 0; 1 0; 0 1; 0 1];
+v = pipecompare.eval.Measure.smeBoot(o,{Wc},opts,0,1);
+verifyTrue(tc,isinf(v(1)));
+verifyEqual(tc,v(2),5,'AbsTol',1e-12);
+% (2) Weighted peak estimate: zero-weight draws are excluded, not the
+% whole candidate. One positive-weight trial out of four, 1000 draws
+% (Measure.defaults nBootPeak): a draw that picks only zero-weight
+% trials has probability (3/4)^4 = 0.316 per draw, so over 1000 draws
+% such draws are effectively certain to occur; the old code let one
+% NaN average poison std(pv) to NaN, the B3 code filters finite pv
+% and returns a finite sme. The point estimate itself is the weighted
+% mean over the single positive trial.
+op = struct('kind','peak','polarity','positive','X',{{x}});
+mopts = pipecompare.eval.Measure.defaults();
+[estp, smep] = pipecompare.eval.Measure.estimate(op,x,mopts,0,[0;0;0;1]);
+verifyEqual(tc,estp,40,'AbsTol',1e-12);
+verifyTrue(tc,isfinite(smep));
+% Positive-weight control for the peak estimate: all weights > 0, so
+% no draw is excluded and the estimate is the weighted mean.
+[estpos, smepos] = pipecompare.eval.Measure.estimate(op,x,mopts,0,[0.5;1;1.5;2]);
+verifyEqual(tc,estpos,30,'AbsTol',1e-12);
+verifyTrue(tc,isfinite(smepos));
+% (3) Weighted peak nested smeBoot: zero-weight inner draws are
+% excluded. One outer draw, counts [1;1;1;1], weights [0;0;0;1]:
+% each of the 100 inner draws picks 4 trials uniformly from the 4
+% count-positive trials, so a zero-weight inner draw has probability
+% (3/4)^4 = 0.316 per draw and is effectively certain over 100 draws;
+% the old code let one NaN inner average poison var(pvInner) to NaN,
+% the B3 code filters finite pvInner and returns a finite v.
+% Positive-weight control: weights all 1, same outer draw, v finite
+% under both old and new code, so it only guards against B3 breaking
+% the positive path.
+op2 = struct('kind','peak','polarity','positive','X',{{x}},'w',{{[0;0;0;1]}});
+vpeak = pipecompare.eval.Measure.smeBoot(op2,{ones(4,1)},opts,0,1);
+verifyTrue(tc,isfinite(vpeak));
+op3 = struct('kind','peak','polarity','positive','X',{{x}},'w',{{ones(4,1)}});
+vpeakPos = pipecompare.eval.Measure.smeBoot(op3,{ones(4,1)},opts,0,1);
+verifyTrue(tc,isfinite(vpeakPos));
+end
+
+function testGroupRankPassesPairedCovarianceToOwnChoices(tc)
+rs=RandStream('mt19937ar','Seed',3007); x=randn(rs,60,1);
+Y=[1 1.05; 1.08 1; 1.01 1.02]; opts=pipecompare.eval.Rank.defaults();
+opts.nBoot=199; opts.nSplits=0;
+S=struct('name',{},'keys',{},'labels',{},'table',{},'cands',{},'ref',{},'ranking',{});
+for i=1:size(Y,1)
+    c=[nqc_cand(x*Y(i,1)),nqc_cand(x*Y(i,2))]; ref=nqc_ref(60);
+    R=pipecompare.eval.Rank.run(c,ref,opts);
+    S(i)=struct('name',sprintf('record%d',i),'keys',{{'a','b'}},'labels',{{'a','b'}}, ...
+        'table',R.table,'cands',c,'ref',ref,'ranking',struct('options',opts,'objective',R.objective));
+end
+G=pipecompare.Group.rank(S);
+verifyEqual(tc,G.own.id,[1;2;1]);
+verifyTrue(tc,G.twoLevelModel.pairedCovariance);
+verifyEqual(tc,G.ownShrunk./G.ownShrunk(:,1),Y./Y(:,1),'AbsTol',1e-9);
+end
+
+function testGroupVarianceRespectsDisconnectedDesign(tc)
+A = [1 2; 2 1]; Y = nan(4); Y(1:2,1:2)=A; Y(3:4,3:4)=A;
+[~,~,one] = pipecompare.Group.twoLevel(A,0.01*ones(2));
+[~,~,two] = pipecompare.Group.twoLevel(Y,0.01*ones(4));
+verifyEqual(tc,two,one,'AbsTol',1e-12);
+end
+
+function testGroupPairedCovariancePreservesKnownContrasts(tc)
+rs = RandStream('mt19937ar','Seed',41);
+Y = exp(0.3*randn(rs,20,1)+0.03*randn(rs,1,12)+0.08*randn(rs,20,12));
+V = (0.3*Y).^2;
+C = arrayfun(@(i) 0.3^2*(Y(i,:)'*Y(i,:)),(1:size(Y,1))','UniformOutput',false);
+[theta,~,tau,model] = pipecompare.Group.twoLevel(Y,V,C);
+% The only estimation error is a shared recording scale: pipeline
+% contrasts are exact and must not be shrunk towards a common choice.
+verifyGreaterThan(tc,tau,0);
+verifyEqual(tc,log(theta)-mean(log(theta),2),log(Y)-mean(log(Y),2),'AbsTol',1e-9);
+verifyTrue(tc,model.pairedCovariance);
+end
+
+function testGroupDiagonalCovarianceMatchesIndependentModel(tc)
+rs = RandStream('mt19937ar','Seed',19); Y=exp(0.2*randn(rs,8,5)); V=(0.05*Y).^2;
+C=arrayfun(@(i) diag(V(i,:)),(1:size(Y,1))','UniformOutput',false);
+[a,sa,ta]=pipecompare.Group.twoLevel(Y,V); [b,sb,tb]=pipecompare.Group.twoLevel(Y,V,C);
+verifyEqual(tc,b,a,'AbsTol',1e-12); verifyEqual(tc,[sb tb],[sa ta],'AbsTol',1e-12);
+end
+
+function testMultitaperEndpointsAreNotDoubled(tc)
+n=256; fs=256;
+for band = {[0 0.1],[127.9 128]}
+    f=band{1}; X=ones(1,n); if f(1)>0, X=(-1).^(0:n-1); end
+    H=pipecompare.eval.Measure.tapers(n,fs,f); F=fft(X'.*H(:,1));
+    at=1; if f(1)>0, at=n/2+1; end
+    expected=log10(abs(F(at))^2/fs);
+    verifyEqual(tc,pipecompare.eval.Measure.bandScores(X,fs,f),expected,'AbsTol',1e-10);
+end
+end
+
+function testFrozenGroupPriorDoesNotPoolNewParticipants(tc)
+rs=RandStream('mt19937ar','Seed',6701);
+Y=exp(0.2*randn(rs,12,3)+[0 0.1 -0.1]); V=(0.1*Y).^2;
+[~,~,~,prior]=pipecompare.Group.twoLevel(Y,V);
+x=[1.2 0.9 1.1]; v=(0.08*x).^2;
+[a,info]=pipecompare.Group.applyPrior(prior,x,v);
+b=pipecompare.Group.applyPrior(prior,[x;1000 1 1e-3],[v;ones(1,3)]);
+verifyEqual(tc,b(1,:),a,'AbsTol',1e-12);
+verifyFalse(tc,info.priorRefitted); verifyTrue(tc,info.assessed);
+verifyFalse(tc,info.fullyHeldOut);
+scaled=pipecompare.Group.applyPrior(prior,10*x,100*v);
+verifyEqual(tc,scaled,10*a,'AbsTol',1e-10);
+end
+
+function testFrozenGroupPriorPreservesExactPairedContrasts(tc)
+Y=[1 1.1;1.3 1.2;0.9 1.15;1.2 1.1]; V=(0.2*Y).^2;
+C=arrayfun(@(s) 0.2^2*(Y(s,:)'*Y(s,:)),(1:4)','UniformOutput',false);
+[~,~,~,prior]=pipecompare.Group.twoLevel(Y,V,C);
+x=[1.05 1.02]; v=(0.2*x).^2;
+[a,info]=pipecompare.Group.applyPrior(prior,x,v,{0.2^2*(x'*x)});
+verifyTrue(tc,info.assessed);
+verifyEqual(tc,a(2)/a(1),x(2)/x(1),'AbsTol',1e-9);
+end
+
+function testFrozenGroupPriorRejectsDisconnectedScales(tc)
+Y=nan(4);Y(1:2,1:2)=[1 2;2 1];Y(3:4,3:4)=[1 2;2 1];
+[~,~,~,prior]=pipecompare.Group.twoLevel(Y,0.01*ones(4));
+x=[1 2 3 4];[a,info]=pipecompare.Group.applyPrior(prior,x,0.01*ones(1,4));
+verifyEqual(tc,a,x);verifyFalse(tc,info.assessed);verifyNotEmpty(tc,info.reason{1});
+end
+
+function testMultitaperRejectsAliasedBand(tc)
+verifyError(tc,@()pipecompare.eval.Measure.bandScores(ones(1,256),256,[120 140]),'PipeCompare:Measure');
+verifyError(tc,@()pipecompare.eval.Measure.bandScores(ones(1,256),256,[-1 10]),'PipeCompare:Measure');
+end
+
+function testBadStretchMissingSamplesAreUnassessed(tc)
+rs=RandStream('mt19937ar','Seed',6702);X=randn(rs,8,3000);X(1,100)=NaN;
+[st,check]=pipecompare.run.Steps.badStretches(X,50);
+verifyEmpty(tc,st);verifyFalse(tc,check.assessed);verifyEqual(tc,check.reason,'nonfinite input samples');
+end
+
+function testHmmKeepsFiniteEventsWhenASampleIsMissing(tc)
+rs=RandStream('mt19937ar','Seed',317); fs=250; t=(0:30*fs-1)/fs;
+X=0.2*randn(rs,size(t));
+for at=5:5:25, X=X+12*exp(-0.5*((t-at)/0.08).^2); end
+X(100)=NaN;
+[hit,m]=pipecompare.eval.Hmm.events(X,fs);
+verifyTrue(tc,m.valid); verifyGreaterThan(tc,nnz(hit),100);
+verifyFalse(tc,hit(100)); verifyEqual(tc,m.inputMissingSamples,1);
+[hit,m]=pipecompare.eval.Hmm.segment([0:8 nan(1,100)],3.5,3);
+verifyFalse(tc,m.valid); verifyFalse(tc,any(hit));
+end
+
 function testHmmExtremeImpulseDoesNotMarkWholeRecording(tc)
 rs = RandStream('mt19937ar', 'Seed', 93);
 fs = 250; X = randn(rs, 1, 150000); X(75000) = 1e4;
@@ -95,6 +376,11 @@ verifyEqual(tc,C.reportedError,reported(:),'AbsTol',1e-12);
 verifyGreaterThan(tc,C.reportedError,sqrt(o.sme(:).^2+o.eyeBiasSq(:))/g);
 verifyEqual(tc,C.actualError-C.conditionalError,ones(2,1),'AbsTol',1e-12);
 verifyTrue(tc,all(C.selected));
+verifyEqual(tc,C.rawEstimate,o.estimate(:),'AbsTol',1e-12);
+verifyEqual(tc,C.correctedEstimate,o.estimate(:)/g,'AbsTol',1e-12);
+verifyEqual(tc,C.rawError,o.estimate(:)-[8;28],'AbsTol',1e-12);
+verifyEqual(tc,C.actualError,C.correctedEstimate-C.populationTruth,'AbsTol',1e-12);
+verifyNotEqual(tc,C.rawError,C.actualError);
 E=pipecompare.eval.Calibration.rows(r,[],[8 28],[9 29],10); S=pipecompare.eval.Calibration.summarize(E);
 verifyEqual(tc,height(E),0); verifyTrue(tc,isnan(S.ratio));
 end
@@ -106,6 +392,40 @@ c.m.objectives(2).eyeBiasAssessed=false;
 opts=pipecompare.eval.Rank.defaults(); opts.objective='obj1'; opts.nBoot=99; opts.nSplits=0;
 R=pipecompare.eval.Rank.run(c,ref,opts);
 verifyEqual(tc,R.recommended,1); verifyTrue(tc,isnan(R.table.eyeBias_obj2));
+end
+
+function testNonScalarEyeBiasIsNotZeroAndDoesNotBlock(tc)
+% Non-scalar (peak) eye bias is not computed: it must be NaN in the
+% table, not 0, and must not block the candidate, because it is
+% explicitly not applicable (eyeBiasApplicable=false). The ranking
+% bias is then shape-only, by exemption, not by treating an unknown
+% bias as zero.
+x=(1:40)'; c=nqc_cand(x,'kind',{'peak'}); o=c.m.objectives;
+o.eyeBias=NaN; o.eyeBiasSq=NaN; o.eyeBiasAssessed=false; o.eyeBiasApplicable=false; c.m.objectives=o;
+opts=pipecompare.eval.Rank.defaults(); opts.nBoot=99; opts.nSplits=0;
+R=pipecompare.eval.Rank.run(c,nqc_ref(40),opts);
+% Round 9 fix for the Round 8 matlab-tests failure: the Round 8
+% comment guessed eyeBias_P3mean, but CI proved that column does not
+% exist. Rank.m builds the column with
+% matlab.lang.makeValidName(['eyeBias_' ref.objectives{k}]) and the
+% default ReplacementStyle is 'underscore', so '.' becomes '_':
+% 'eyeBias_P3.mean' -> 'eyeBias_P3_mean'. Do NOT hard-code a guessed
+% column name again: derive it with makeValidName in the test itself,
+% and keep one hard-coded eyeBias_P3_mean assertion as the
+% dot-to-underscore control. That control is intentionally brittle:
+% if a future MATLAB changed the default ReplacementStyle, it fails
+% and flags the change, instead of silently passing on a wrong column.
+col = matlab.lang.makeValidName('eyeBias_P3.mean');
+% (The ancillary test above uses an explicit {'obj1','obj2'} ref, so
+% eyeBias_obj2 there is correct and is left alone.)
+verifyEqual(tc,R.recommended,1); verifyTrue(tc,isnan(R.table.(col))); verifyTrue(tc,isfinite(R.table.objective(1)));
+verifyTrue(tc,isnan(R.table.eyeBias_P3_mean));
+% Scalar counterpart with the same unassessed bias must still block:
+% eyeBiasApplicable=true is the old behaviour for scalar objectives.
+c2=nqc_cand(x); o2=c2.m.objectives;
+o2.eyeBias=NaN; o2.eyeBiasSq=NaN; o2.eyeBiasAssessed=false; o2.eyeBiasApplicable=true; c2.m.objectives=o2;
+R2=pipecompare.eval.Rank.run(c2,nqc_ref(40),opts);
+verifyEmpty(tc,R2.recommended); verifyTrue(tc,contains(R2.table.reason{1},'artifact bias unassessed'));
 end
 
 function testCalibrationRecordsAreTheSamplingUnits(tc)
@@ -122,11 +442,81 @@ C.reportedError(1)=NaN; S=pipecompare.eval.Calibration.summarize(C);
 verifyEqual(tc,S.unassessedRecords,1); verifyEqual(tc,S.nRecords,1); verifyTrue(tc,all(isnan(S.ci)));
 end
 
+function testCalibrationRetainsInfiniteRatioDraws(tc)
+% Two equal-error recordings, one reporting zero: a quarter of
+% two-record resamples have an infinite ratio. The upper CI must be Inf.
+C=table([1;2],ones(2,1),[0;1], ...
+    'VariableNames',{'recording','actualError','reportedError'});
+S=pipecompare.eval.Calibration.summarize(C,1999,4);
+verifyEqual(tc,S.ratio,sqrt(2),'AbsTol',1e-12);
+verifyEqual(tc,S.ci(1),1,'AbsTol',1e-12);verifyEqual(tc,S.ci(2),Inf);
+verifyEqual(tc,S.bootstrapDraws,1999);
+verifyGreaterThan(tc,S.bootstrapInfiniteShare,0.15);
+verifyLessThan(tc,S.bootstrapInfiniteShare,0.35);
+verifyEqual(tc,S.bootstrapUndefinedShare,0);
+end
+
+function testCalibrationRetainsUndefinedRatioMass(tc)
+% Zero/zero resamples convey no ratio. Returning [1,1] after deleting
+% them would certify precision that these two recordings cannot supply.
+C=table([1;2],[0;1],[0;1], ...
+    'VariableNames',{'recording','actualError','reportedError'});
+S=pipecompare.eval.Calibration.summarize(C,1999,4);
+verifyEqual(tc,S.ratio,1);verifyEqual(tc,S.ci,[0 Inf]);
+verifyGreaterThan(tc,S.bootstrapUndefinedShare,0.15);
+verifyEqual(tc,S.bootstrapInfiniteShare,0);
+end
+
+function testCalibrationZeroReportingHasExplicitPointResult(tc)
+C=table([1;2],[1;2],zeros(2,1), ...
+    'VariableNames',{'recording','actualError','reportedError'});
+S=pipecompare.eval.Calibration.summarize(C);
+verifyEqual(tc,S.ratio,Inf);verifyEqual(tc,S.actualRms,sqrt(2.5),'AbsTol',1e-12);
+verifyEqual(tc,S.reportedRms,0);
+verifyTrue(tc,contains(S.interpretation,'zero error'));
+C.actualError(:)=0;S=pipecompare.eval.Calibration.summarize(C);
+verifyTrue(tc,isnan(S.ratio));verifyEqual(tc,S.actualRms,0);
+verifyEqual(tc,S.reportedRms,0);
+end
+
 function testCrossfitStatesItsConditionalScope(tc)
 c = nqc_cand((1:40)'); opts=pipecompare.eval.Rank.defaults(); opts.nSplits=2;
 cf=pipecompare.eval.Rank.crossfit(c,nqc_ref(40),opts,'composite',c.m.composite);
 verifyEqual(tc,cf.scope,'conditional-selection'); verifyFalse(tc,cf.fullyHeldOut);
 verifyTrue(tc,any(strcmp(cf.fixedDecisions,'factorial shrinkage')));
+opts.nBoot=99; R=pipecompare.eval.Rank.run(c,nqc_ref(40),opts);
+verifyEqual(tc,R.validationScope,'conditional-on-fitted-candidates'); verifyFalse(tc,R.fullyHeldOut);
+end
+
+function testCrossfitIgnoresUnassessedCandidatesWhenPickingHalfSampleBest(tc)
+% Round 9 dedicated test for the Round 8 A1 guard (Rank.crossfit):
+% before A1, a never-assessed candidate's non-finite shrunk value was
+% passed to min() without finite filtering, so it could be chosen as
+% the half-sample best (MATLAB min propagates NaN: [~, ia] = min([NaN,
+% finite]) returns the NaN position). After A1, non-finite shrunk
+% values are Inf for the argmin only, and a split with no finite
+% shrunk value on either half is skipped.
+% Fake candidates: one all-NaN candidate (Measure.estimate returns
+% NaN with <2 retained trials, so its per-objective half-sample score
+% is NaN) and one finite candidate. The guard is proven only if the
+% crossfit result is finite: a finite honest/halfInSample pair can
+% only come from the finite candidate being picked on both halves,
+% because the unassessed candidate's honest/inSample values are NaN
+% and are filtered out at the end of crossfit.
+bad = nqc_cand(NaN(40, 1));
+good = nqc_cand((1:40)');
+opts = pipecompare.eval.Rank.defaults(); opts.nSplits = 2;
+cf = pipecompare.eval.Rank.crossfit([bad good], nqc_ref(40), opts, 'composite', good.m.composite);
+verifyFalse(tc, isempty(cf));
+verifyTrue(tc, isfinite(cf.honest));
+verifyTrue(tc, isfinite(cf.halfInSample));
+verifyEqual(tc, cf.scope, 'conditional-selection'); verifyFalse(tc, cf.fullyHeldOut);
+% Control: the bad candidate alone must produce no finite split at
+% all (cf empty). Without this control the main assertion would be
+% vacuous: it proves the bad candidate really is unassessed here,
+% rather than accidentally finite.
+cfBad = pipecompare.eval.Rank.crossfit(bad, nqc_ref(40), opts, 'composite', NaN);
+verifyTrue(tc, isempty(cfBad));
 end
 
 function testBadStretchesReportUnsupportedRank(tc)
@@ -152,4 +542,445 @@ if exist('dpss','file')
         end
     end
 end
+end
+
+function testFrozenGroupPriorHandlesNoAssessedTrainingRecordings(tc)
+[~,~,~,prior]=pipecompare.Group.twoLevel(nan(0,3),nan(0,3));
+x=[1 NaN -1];v=[0.01 0.01 0.01];
+[a,info]=pipecompare.Group.applyPrior(prior,x,v);
+verifyEqual(tc,a(1),1);verifyTrue(tc,all(isnan(a(2:3))));
+verifyFalse(tc,info.assessed);verifyEqual(tc,info.reason{1},'training interaction variance unassessed');
+end
+
+function testValidationScoresSurviveCheckpointAndGroupRanking(tc)
+old=path;restore=onCleanup(@()path(old)); %#ok<NASGU>
+addpath(fullfile(fileparts(mfilename('fullpath')),'..','benchmarks'));
+opts=pipecompare.eval.Rank.defaults();opts.nBoot=99;opts.nSplits=0;
+x=sin((1:40)');ref=nqc_ref(40);S=pipecompare_record_summary();
+for j=1:2
+    c=[nqc_cand(j*x),nqc_cand(1.1*j*x)];
+    c(1).id=1;c(1).key='a';c(2).id=2;c(2).key='b';
+    rank=pipecompare.eval.Rank.run(c,ref,opts);
+    r=struct('cands',c,'leaves',struct('key',{'a','b'}),'labels',{{'a','b'}},'ranking',rank,'ref',ref);
+    S(end+1)=pipecompare_record_summary(r,sprintf('checkpoint%d',j)); %#ok<AGROW>
+end
+file=[tempname '.mat'];clean=onCleanup(@()delete(file)); %#ok<NASGU>
+save(file,'S');D=load(file);G=pipecompare.Group.rank(D.S);
+verifyEqual(tc,{D.S.name},{'checkpoint1','checkpoint2'});
+verifySize(tc,G.perRecording,[2 2]);verifyTrue(tc,all(isfinite(G.perRecording(:))));
+end
+
+function testValidationScriptsHaveNoAnalyzerErrors(tc)
+assumeTrue(tc,exist('codeIssues','file')>0||exist('codeIssues','class')==8,'Code Analyzer requires R2022b or newer.');
+folder=fullfile(fileparts(mfilename('fullpath')),'..','benchmarks');
+issues=codeIssues(folder,'CodeAnalyzerConfiguration','factory');
+errors=issues.Issues(string(issues.Issues.Severity)=="error",:);
+verifyEmpty(tc,errors,evalc('disp(errors)'));
+end
+
+function testMultitaperFractionalSampleRateKeepsNyquist(tc)
+% These grids round the Nyquist frequency in opposite directions. The
+% endpoint must be included once, using its FFT index rather than equality.
+cases=[100.1 328; 160.1 416; 200.1 328; 250.003 264; 250.1 264];
+for q=1:size(cases,1)
+    fs=cases(q,1);n=cases(q,2);band=[fs/2-fs/n/10 fs/2];
+    X=(-1).^(0:n-1);H=pipecompare.eval.Measure.tapers(n,fs,band);
+    F=fft(X'.*H(:,1));
+    expected=log10(abs(F(n/2+1))^2/(fs*sum(H(:,1).^2)));
+    verifyEqual(tc,pipecompare.eval.Measure.bandScores(X,fs,band),expected,'AbsTol',1e-10);
+end
+end
+
+function testMissingEyeChannelsCannotBecomeQuietEvidence(tc)
+EEG=nqc_synth(struct('seconds',90,'nPerCond',20,'artifactTrials',0,'blinkRate',0));
+eyes=pipecompare.eval.Injection.eyeChannels(EEG.chanlocs);
+assert(~isempty(eyes));
+c=nqc_contract();
+quiet=EEG;quiet.data(eyes,:,:)=0;
+refQuiet=pipecompare.eval.Measure.reference(quiet,c);
+mQuiet=pipecompare.eval.Measure.candidate(quiet,c,refQuiet);
+verifyTrue(tc,all(isfinite(mQuiet.objectives.eyeBiasSq)));
+EEG.data(eyes,:,:)=NaN;
+ref=pipecompare.eval.Measure.reference(EEG,c);
+m=pipecompare.eval.Measure.candidate(EEG,c,ref);
+verifyTrue(tc,all(isfinite(m.objectives.estimate)));
+verifyFalse(tc,any(m.objectives.eyeBiasAssessed));
+verifyTrue(tc,all(isnan(m.objectives.eyeBiasSq)));
+candidate=nqc_cand(m.objectives.X{1});candidate.m=m;
+opts=pipecompare.eval.Rank.defaults();opts.nBoot=99;opts.nSplits=0;
+R=pipecompare.eval.Rank.run(candidate,ref,opts);
+verifyEmpty(tc,R.recommended);
+verifyTrue(tc,contains(R.table.reason{1},'artifact bias unassessed'));
+end
+
+function testOcularMissingWindowIsAssessedOnlyAfterItsTrialIsRemoved(tc)
+EEG=nqc_synth(struct('seconds',90,'nPerCond',20,'artifactTrials',0,'blinkRate',0));
+eyes=pipecompare.eval.Injection.eyeChannels(EEG.chanlocs);EEG.data(eyes,:,:)=0;
+c=nqc_contract();
+[~,EEG]=evalc('pop_epoch(EEG,c.allEvents(),c.epoch,''epochinfo'',''yes'')');
+times=EEG.xmin+(0:EEG.pnts-1)/EEG.srate;
+EEG.data(eyes,times>=0.3&times<=0.6,1)=NaN;
+EEG.data(eyes,times>=0.3&times<=0.6,2:4)=100;
+ref=pipecompare.eval.Measure.reference(EEG,c);
+verifyTrue(tc,all(ref.blink{1}{1}(2:4)));
+m=pipecompare.eval.Measure.candidate(EEG,c,ref);
+verifyTrue(tc,all(isfinite(m.objectives.estimate)));
+verifyFalse(tc,any(m.objectives.eyeBiasAssessed));
+verifyTrue(tc,all(isnan(m.objectives.eyeBiasSq)));
+[~,remaining]=evalc('pop_select(EEG,''notrial'',1)');
+m=pipecompare.eval.Measure.candidate(remaining,c,ref);
+verifyTrue(tc,all(m.objectives.eyeBiasAssessed));
+verifyTrue(tc,all(isfinite(m.objectives.eyeBiasSq)));
+end
+
+function testGroupValidationUsesActualRecommendationInsteadOfRawMinimum(tc)
+oldPath=path;cleanup=onCleanup(@()path(oldPath)); %#ok<NASGU>
+addpath(fullfile(fileparts(mfilename('fullpath')),'..','benchmarks'));
+C=table(21*ones(4,1),{'raw-minimum';'raw-minimum';'selected';'selected'},[1;2;1;2], ...
+    [0.1;0.1;2;3],logical([0;0;1;1]),[0.1;0.1;2;3],ones(4,1), ...
+    'VariableNames',{'recording','steps','condition','actualError','selected','rawEstimate','gain'});
+S=struct('name','S021R01.mat','keys',{{'a','b'}},'labels',{{'raw-minimum','selected'}});
+S.table=table(ones(2,1),'VariableNames',{'gain_P3'});
+S.cands=struct('m',{struct('objectives',struct('estimate',[0.1 0.1])), ...
+    struct('objectives',struct('estimate',[2 3]))});
+[loss,contrast,inFamily]=validation_recommended_loss(C,S,{'a'});
+verifyEqual(tc,loss,6.5);verifyEqual(tc,contrast,-1);verifyFalse(tc,inFamily);
+[again,~,inFamily]=validation_recommended_loss(C,S,{'b'});
+verifyEqual(tc,again,loss);verifyTrue(tc,inFamily);
+C.selected(:)=false;
+[missing,contrast,inFamily]=validation_recommended_loss(C,S,{'a','b'});
+verifyTrue(tc,isnan(missing));verifyTrue(tc,isnan(contrast));verifyFalse(tc,inFamily);
+end
+
+function testUnassessedCovarianceCannotCreateAnApparentPriorChange(tc)
+oldPath=path;cleanup=onCleanup(@()path(oldPath)); %#ok<NASGU>
+addpath(fullfile(fileparts(mfilename('fullpath')),'..','benchmarks'));
+Y=[1 1.2;1.1 1.1;0.9 1.3];V=0.01*ones(size(Y));
+[~,~,~,prior]=pipecompare.Group.twoLevel(Y,V);
+y=[1 2];v=[NaN 0.01];
+[theta,~]=pipecompare.Group.applyPrior(prior,y,v);
+[a,b,eligible]=validation_group_choices(y,v,theta);
+verifyEqual(tc,a,2);verifyEqual(tc,b,2);verifyEqual(tc,eligible,2);
+v(:)=NaN;
+[theta,info]=pipecompare.Group.applyPrior(prior,y,v);
+[a,b,eligible]=validation_group_choices(y,v,theta);
+verifyEmpty(tc,eligible);verifyTrue(tc,isnan(a));verifyTrue(tc,isnan(b));
+verifyFalse(tc,info.assessed);
+end
+
+function testMissingPairedReplicatesCannotCertifyEquivalence(tc)
+[keep,eqv]=pipecompare.eval.Rank.confidenceSet([1;1],nan(2,99),1,0.02,0.05);
+verifyTrue(tc,all(keep));verifyTrue(tc,eqv(1));verifyFalse(tc,eqv(2));
+B=repmat([1;2],1,99);B(2,1:20)=NaN;
+[keep,eqv]=pipecompare.eval.Rank.confidenceSet([1;2],B,1,0.02,0.05);
+verifyTrue(tc,all(keep));verifyFalse(tc,eqv(2));
+end
+
+function testNestedEquivalencePreservesMissingTailMass(tc)
+pts=[1;1.01];B=repmat(pts,1,99);
+[chosen,nEq]=pipecompare.eval.Rank.fixedSequence(pts,B,1,2,0.02,0.05);
+verifyEqual(tc,[chosen nEq],[2 2]);
+B(2,1:20)=NaN;
+[chosen,nEq]=pipecompare.eval.Rank.fixedSequence(pts,B,1,2,0.02,0.05);
+verifyEqual(tc,[chosen nEq],[1 1]);
+end
+
+function testIncompleteBootstrapCannotFitFactorialVariance(tc)
+rs=RandStream('mt19937ar','Seed',20261023);
+pts=(1:5)';B=pts+0.1*randn(rs,5,99);levels=repmat({{'step','same'}},1,5);
+F=pipecompare.eval.Rank.factorialModel(levels,B,pts);verifyNotEmpty(tc,F);
+% A few incomplete draws no longer veto the model: the covariance uses
+% the complete draws only, and the gate is now "at least 20 complete
+% draws", not "every draw complete". With 98 complete draws the model
+% still fits.
+B(1,1)=NaN;
+F=pipecompare.eval.Rank.factorialModel(levels,B,pts);verifyNotEmpty(tc,F);
+% Below the complete-draw floor the model is still refused, and shrink
+% then returns its input unchanged.
+B(1,20:99)=NaN;
+F=pipecompare.eval.Rank.factorialModel(levels,B,pts);verifyEmpty(tc,F);
+verifyEqual(tc,pipecompare.eval.Rank.shrink(F,pts),pts);
+end
+
+function testBootstrapStabilityCountsUnavailableRecommendations(tc)
+b=[false(2,1);true(18,1)];c=nqc_cand([zeros(2,1);10*ones(18,1)]);
+o=c.m.objectives;[o.eyeBias,o.eyeBiasSq,o.eyeBiasAssessed]=pipecompare.eval.Measure.eyeBias(o.X{1},b,ones(20,1));
+c.m.objectives=o;ref=nqc_ref(20);ref.blink={{b}};
+opts=pipecompare.eval.Rank.defaults();opts.nBoot=99;opts.nSplits=0;
+R=pipecompare.eval.Rank.run([c c],ref,opts);
+missing=R.byStratum.bootstrapUnavailableShare;
+verifyGreaterThan(tc,missing,0);verifyLessThan(tc,R.byStratum.bootstrapCompleteShare,1);
+verifyEqual(tc,sum(R.table.chosenShare)+missing,1,'AbsTol',1e-12);
+end
+
+function testBiasUncertaintyRespectsPhysicalMultiplicity(tc)
+x=[0;1;2;7;9;10];b=logical([0;0;0;1;1;1]);w=[0.4;1;0.7;0.5;0.8;1];counts=[1;3;2;2;1;3];
+idx=repelem((1:numel(x))',counts);
+[~,~,~,a]=pipecompare.eval.Measure.eyeBias(x,b,counts.*w,counts);
+[~,~,~,q]=pipecompare.eval.Measure.eyeBias(x(idx),b(idx),w(idx));
+[~,~,~,scaled]=pipecompare.eval.Measure.eyeBias(x,b,100*counts.*w,counts);
+verifyEqual(tc,a,q,'AbsTol',1e-12);verifyEqual(tc,a,scaled,'AbsTol',1e-12);
+end
+
+function testRiskSensitivityDoesNotChangeFittedScore(tc)
+c=nqc_cand((1:40)');o=c.m.objectives;o.eyeBias=2;o.eyeBiasSq=0.25;o.eyeBiasSE=0.7;
+[total,noise,bias,s]=pipecompare.eval.Rank.conditionErrors(o,0.9,0.1);
+verifyEqual(tc,total,sqrt(noise.^2+bias.^2),'AbsTol',1e-12);
+verifyGreaterThan(tc,s.associationError,total);verifyEqual(tc,s.artifactBiasSE,0.7/0.9,'AbsTol',1e-12);
+verifyTrue(tc,contains(s.scope,'not causal'));
+end
+
+function testFrozenPriorNeedsIndependentCandidateSupport(tc)
+Y=[1 2;2 1];V=0.01*ones(2);
+[~,~,~,prior]=pipecompare.Group.twoLevel(Y,V);
+[a,info]=pipecompare.Group.applyPrior(prior,[1.1 1.2],[0.01 0.01]);
+verifyEqual(tc,a,[1.1 1.2]);verifyFalse(tc,info.assessed);
+verifyTrue(tc,contains(info.reason{1},'training support'));
+verifyEqual(tc,prior.recordsPerPipeline,[2 2]);
+end
+
+function testMultiscaleDetectsStrongShortFaultWithoutFalseRepair(tc)
+rs=RandStream('mt19937ar','Seed',20261025);fs=100;X=randn(rs,12,60*fs);
+[quiet,check]=pipecompare.run.Steps.badStretches(X,fs,'multiscale');
+verifyTrue(tc,check.assessed);verifyEmpty(tc,quiet);
+for seconds=[0.5 1 5]
+    D=X;at=20*fs+(1:round(seconds*fs));D(3,at)=D(3,at)+30*randn(rs,1,numel(at));
+    [st,info]=pipecompare.run.Steps.badStretches(D,fs,'multiscale');pred=false(size(X));
+    for k=1:numel(st),pred(st(k).row,st(k).samples(1):st(k).samples(2))=true;end
+    verifyTrue(tc,info.assessed);verifyGreaterThan(tc,mean(pred(3,at)),0.95);
+    truth=false(size(X));truth(3,at)=true;
+    verifyLessThan(tc,nnz(pred&~truth)/nnz(~truth),0.005);
+end
+end
+
+function testMultiscaleRemainsUnassessedForUnsupportedInput(tc)
+X=randn(8,4000);X=X-mean(X,1);
+[st,check]=pipecompare.run.Steps.badStretches(X,100,'multiscale');
+verifyEmpty(tc,st);verifyFalse(tc,check.assessed);
+verifyError(tc,@()pipecompare.run.Steps.badStretches(X,100,'unknown'),'PipeCompare:Stretches');
+end
+
+function testBalancedRecipeContainsMinimalAndCleanupAlternatives(tc)
+P=pipecompare.simple.Presets;st=nqc_fakeState(false,250);
+st.nLocated=16;st.filters.lowpass=[];c=nqc_contract();
+p=P.recipe('balanced',st,c,'average',{'EOG1'});
+for id={'badchannels','ica','icremove'}
+    k=find(strcmp({p.Slots.id},id{1}),1);
+    if isempty(k),continue;end
+    verifyTrue(tc,any(cellfun(@(a)strcmp(a.type,'none'),p.Slots(k).alternatives)));
+end
+L=p.enumerate(st,c);noIca=false;withIca=false;noRepair=false;
+for j=1:numel(L)
+    types=cellfun(@(s)s.type,L(j).path,'UniformOutput',false);
+    noIca=noIca||~any(strcmp(types,'ica'));withIca=withIca||any(strcmp(types,'ica'));
+    noRepair=noRepair||~any(strcmp(types,'badchannels'));
+    verifyEqual(tc,nnz(strcmp(types,'reref')),1);
+    if any(strcmp(types,'icremove')),verifyTrue(tc,any(strcmp(types,'ica')));end
+end
+verifyTrue(tc,noIca);verifyTrue(tc,withIca);verifyTrue(tc,noRepair);
+end
+
+function testUnavailableCalibrationHasTypedSchema(tc)
+C=pipecompare.eval.Calibration.empty();
+verifyEqual(tc,height(C),0);verifyEqual(tc,width(C),20);
+verifyClass(tc,C.recording,'double');verifyClass(tc,C.selected,'logical');
+S=pipecompare.eval.Calibration.summarize(C);verifyEqual(tc,S.nRecords,0);verifyTrue(tc,isnan(S.ratio));
+end
+
+function testUnknownArtifactUncertaintyDoesNotBecomeZero(tc)
+c=nqc_cand((1:40)');o=c.m.objectives;
+[~,~,~,s]=pipecompare.eval.Rank.conditionErrors(o,1,0);
+verifyTrue(tc,all(isnan(s.artifactBiasSE)));
+end
+
+function testBiasSESeparatesWithinVariationAndPrevalence(tc)
+% Flat values within each group: only the estimated artifact share varies.
+for nB=[10 90]
+    n=100;b=(1:n)'<=nB;x=10*double(b);p=nB/n;
+    [bias,sq,ok,se]=pipecompare.eval.Measure.eyeBias(x,b,ones(n,1));
+    [~,~,~,legacy]=pipecompare.eval.Measure.eyeBias(x,b,ones(n,1),ones(n,1),'legacy-total');
+    verifyTrue(tc,ok);verifyEqual(tc,bias,10*p,'AbsTol',1e-12);
+    verifyEqual(tc,se,sqrt(100*p*(1-p)/(n-1)),'AbsTol',1e-12);
+    if p>0.5,verifyLessThan(tc,se,legacy);else,verifyGreaterThan(tc,se,legacy);end
+    verifyGreaterThanOrEqual(tc,sq,0);
+end
+end
+
+function testBiasUncertaintyMatchesIndependentRecordSampling(tc)
+rs=RandStream('mt19937ar','Seed',20261025);n=200;replicates=700;
+for prevalence=[0.1 0.5 0.9]
+    for effect=[0 10]
+        bias=nan(1,replicates);estimated=nan(1,replicates);
+        for j=1:replicates
+            b=rand(rs,n,1)<prevalence;x=3*randn(rs,n,1)+effect*b;
+            [bias(j),~,~,se]=pipecompare.eval.Measure.eyeBias(x,b,ones(n,1));estimated(j)=se^2;
+        end
+        ratio=sqrt(mean(estimated)/var(bias));
+        verifyGreaterThan(tc,ratio,0.85);verifyLessThan(tc,ratio,1.15);
+    end
+end
+end
+
+function testAutomaticThresholdBootstrapUsesPhysicalCounts(tc)
+x=[0;1;2;7;9;10];b=logical([0;0;0;1;1;1]);n=numel(x);
+ref=nqc_ref(n);ref.blink={{b}};ref.artifactVariance='pooled';
+opts=pipecompare.eval.Rank.defaults();opts.seed=81;opts.nBoot=99;
+C=struct('loc',{{(1:n)'}},'use',1);
+got=pipecompare.eval.Threshold.bootstrap({x},{zeros(n,1)},Inf,opts,ref,C);
+rs=RandStream('mt19937ar','Seed',opts.seed+202);
+W=pipecompare.eval.Rank.resampleWeights(rs,n,opts.nBoot,false);expected=nan(size(got));
+for j=1:opts.nBoot
+    at=repelem((1:n)',W(:,j));
+    [~,sq]=pipecompare.eval.Measure.eyeBias(x(at),b(at),ones(n,1));
+    expected(j)=sqrt(var(x(at))/n+sq);
+end
+ok=isfinite(expected);verifyEqual(tc,got(ok),expected(ok),'AbsTol',1e-10);
+verifyEqual(tc,isnan(got),isnan(expected));
+end
+
+function testBalancedComparesDedicatedEogWithAndWithoutIca(tc)
+st=nqc_fakeState(false,250);st.nLocated=16;st.filters.lowpass=[];st.eyeChannels={'EOG1'};
+P=pipecompare.simple.Presets;c=nqc_contract();plan=P.recipe('balanced',st,c,'average',{'EOG1'});
+L=plan.enumerate(st,c);onlyEog=false;both=false;none=false;
+for j=1:numel(L)
+    types=cellfun(@(s)s.type,L(j).path,'UniformOutput',false);
+    eog=find(strcmp(types,'eogregress'),1);ica=find(strcmp(types,'ica'),1);
+    onlyEog=onlyEog||(~isempty(eog)&&isempty(ica));
+    both=both||(~isempty(eog)&&~isempty(ica));none=none||(isempty(eog)&&isempty(ica));
+    if ~isempty(eog)&&~isempty(ica),verifyLessThan(tc,eog,ica);end
+end
+verifyTrue(tc,onlyEog);verifyTrue(tc,both);verifyTrue(tc,none);
+end
+
+function testGuardUpgradeMaintainsProposalUnlessBaselineIsSignificantlyBetter(tc)
+% The guard's default action changed: indistinguishable evidence maintains
+% the proposal; only a baseline shown significantly better replaces it,
+% and missing evidence is recorded as unassessed rather than as a veto.
+critical=0.05;
+[pick,guard]=pipecompare.eval.Rank.guardUpgrade([1.0;1.01],2,1,critical);
+verifyEqual(tc,pick,2);verifyEqual(tc,guard.decision,'maintain');
+verifyEqual(tc,guard.critical,critical);verifyEqual(tc,guard.ptsDifference,0.01,'AbsTol',1e-12);
+% Baseline significantly better: reverse bound below zero.
+[pick,guard]=pipecompare.eval.Rank.guardUpgrade([1.0;1.2],2,1,critical);
+verifyEqual(tc,pick,1);verifyEqual(tc,guard.decision,'retain-baseline');
+% Proposal significantly better: upper bound below zero, proposal kept.
+[pick,guard]=pipecompare.eval.Rank.guardUpgrade([1.0;0.9],2,1,critical);
+verifyEqual(tc,pick,2);verifyEqual(tc,guard.decision,'maintain');
+% Missing evidence: unbounded critical records unassessed, proposal kept.
+[pick,guard]=pipecompare.eval.Rank.guardUpgrade([1.0;1.01],2,1,Inf);
+verifyEqual(tc,pick,2);verifyEqual(tc,guard.decision,'unassessed');
+% Missing evidence: non-finite objective records unassessed, proposal kept.
+[pick,guard]=pipecompare.eval.Rank.guardUpgrade([1.0;NaN],2,1,critical);
+verifyEqual(tc,pick,2);verifyEqual(tc,guard.decision,'unassessed');
+% Baseline already selected: no change, explicit decision.
+[pick,guard]=pipecompare.eval.Rank.guardUpgrade([1.0;1.01],1,1,critical);
+verifyEqual(tc,pick,1);verifyEqual(tc,guard.decision,'baseline-already-selected');
+end
+
+function testShrinkKeepsNonFiniteEntriesUnchanged(tc)
+% Element-wise shrinkage: finite entries are shrunk through the model,
+% non-finite entries keep NaN instead of vetoing shrinkage for all.
+rs=RandStream('mt19937ar','Seed',20261023);
+pts=(1:5)';B=pts+0.1*randn(rs,5,99);levels=repmat({{'step','same'}},1,5);
+F=pipecompare.eval.Rank.factorialModel(levels,B,pts);verifyNotEmpty(tc,F);
+v=pts;v(2)=NaN;
+th=pipecompare.eval.Rank.shrink(F,v);
+verifyTrue(tc,isnan(th(2)));verifyTrue(tc,all(isfinite(th([1 3 4 5]))));
+verifyTrue(tc,all(isfinite(pipecompare.eval.Rank.shrink(F,pts))));
+end
+
+function testGuardReferenceReplacesSkipOnlyWhenBaselineIsSignificantlyBetter(tc)
+% guardReference is the rule Group.rank reuses per recording: a candidate
+% that skips channel repair before average reference is replaced only by
+% an eligible repaired candidate shown significantly better, never by
+% indistinguishable evidence.
+pts=[1.0;0.9];th=pts;biased=[false;false];repaired=[false;true];needsRepair=[true;true];
+[pick,guard]=pipecompare.eval.Rank.guardReference(pts,th,biased,repaired,needsRepair,1,0.05);
+verifyEqual(tc,pick,2);verifyEqual(tc,guard.decision,'retain-baseline');
+% Baseline only 0.02 better with critical 0.05: evidence is insufficient,
+% so the proposal is maintained rather than vetoed.
+[pick,guard]=pipecompare.eval.Rank.guardReference([1.0;0.98],[1.0;0.98],biased,repaired,needsRepair,1,0.05);
+verifyEqual(tc,pick,1);verifyEqual(tc,guard.decision,'maintain');
+% A biased repaired candidate is still the baseline when it is the only
+% eligible repaired candidate (the unbiased preference only narrows a
+% choice among several eligible candidates, it does not drop the last one).
+[pick,guard]=pipecompare.eval.Rank.guardReference(pts,th,[false;true],repaired,needsRepair,1,0.05);
+verifyEqual(tc,pick,2);verifyEqual(tc,guard.decision,'retain-baseline');
+% Proposal already repaired: the guard is idle and returns an empty guard.
+[pick,guard]=pipecompare.eval.Rank.guardReference(pts,th,biased,repaired,needsRepair,2,0.05);
+verifyEqual(tc,pick,2);verifyTrue(tc,isempty(guard));
+% No eligible repaired candidate: the guard is idle, proposal kept.
+[pick,guard]=pipecompare.eval.Rank.guardReference(pts,th,biased,[false;false],needsRepair,1,0.05);
+verifyEqual(tc,pick,1);verifyTrue(tc,isempty(guard));
+end
+
+function testGroupGuardMarksRecordingsWithoutCriticalValueUnprotected(tc)
+% Group.rank must never silently skip a recording whose guard cannot run:
+% when its ranking table lacks the diffHi column the critical value is
+% unrecoverable, so that recording is marked 'unprotected', the group
+% status becomes 'partially-unguarded', and no candidate is vetoed on
+% that recording's behalf.
+rs=RandStream('mt19937ar','Seed',3007);x=randn(rs,60,1);
+Y=[1 1.05;1.08 1;1.01 1.02];opts=pipecompare.eval.Rank.defaults();
+opts.nBoot=199;opts.nSplits=0;
+S=struct('name',{},'keys',{},'labels',{},'table',{},'cands',{},'ref',{},'ranking',{});
+for i=1:size(Y,1)
+    c=[nqc_cand(x*Y(i,1)),nqc_cand(x*Y(i,2))];ref=nqc_ref(60);
+    R=pipecompare.eval.Rank.run(c,ref,opts);
+    T=R.table;if i==2,T=removevars(T,'diffHi');end
+    S(i)=struct('name',sprintf('record%d',i),'keys',{{'a','b'}},'labels',{{'a','b'}}, ...
+        'table',T,'cands',c,'ref',ref,'ranking',struct('options',opts,'objective',R.objective));
+end
+G=pipecompare.Group.rank(S);
+verifyTrue(tc,strcmp(G.guardProtection.guardStatus{2},'unprotected'));
+verifyTrue(tc,strcmp(G.guardProtection.reason{2},'ranking table lacks guard inputs'));
+verifyTrue(tc,strcmp(G.guardProtection.guardStatus{1},'guarded'));
+verifyTrue(tc,strcmp(G.guardProtection.guardStatus{3},'guarded'));
+verifyEqual(tc,G.guardGroupStatus,'partially-unguarded');
+verifyTrue(tc,all(~G.groupGuardBlocked));
+end
+
+function testCalibrationRatioIsNeverReportedWithoutCoverage(tc)
+% Round 10, report-only: Calibration.summarize already returns
+% ratio + coverage + plannedRecords (Round 8). This test locks
+% that a ratio from a partially assessable set is incomplete:
+% one of two records is dropped (NaN actual error), so coverage
+% is 0.5 and the pooled ratio must not be read as a full result.
+% Calibration never changes a pick; this is visibility only.
+vars = {'recording','steps','condition','actualError','reportedError', ...
+    'sme','eyeBias','gain','selected','conditionalError','shapeSpread','totalBias', ...
+    'rawError','rawConditionalError','rawEstimate','correctedEstimate','populationTruth','realizedTruth','associationSensitivityError','artifactBiasSE'};
+C = table([1; 2], {'a'; 'a'}, [1; 1], [1.0; NaN], [0.5; 0.5], ...
+    [0.1; 0.1], [0; 0], [1; 1], [true; true], [1.0; 1.0], [0; 0], [0; 0], ...
+    [1.0; 1.0], [1.0; 1.0], [1.0; 1.0], [1.0; 1.0], [0; 0], [0; 0], [0; 0], [0; 0], ...
+    'VariableNames', vars);
+S = pipecompare.eval.Calibration.summarize(C, 20, 7407);
+verifyEqual(tc, S.plannedRecords, 2);
+verifyEqual(tc, S.nRecords, 1);
+verifyEqual(tc, S.coverage, 0.5);
+verifyTrue(tc, isfinite(S.ratio));
+verifyTrue(tc, S.coverage < 1);
+end
+
+function testCalibrationStratumCollapseCannotHideInPooledRatio(tc)
+% Round 10, report-only: summarizeByStratum must show a collapsed
+% stratum (coverage 0, ratio NaN) next to a good stratum, so a
+% good pooled ratio cannot hide a collapsed high-blink stratum.
+vars = {'recording','steps','condition','actualError','reportedError', ...
+    'sme','eyeBias','gain','selected','conditionalError','shapeSpread','totalBias', ...
+    'rawError','rawConditionalError','rawEstimate','correctedEstimate','populationTruth','realizedTruth','associationSensitivityError','artifactBiasSE'};
+C = table([1; 2; 3], {'a'; 'a'; 'a'}, [1; 1; 1], [1.0; 2.0; NaN], [0.5; 1.0; 0.5], ...
+    [0.1; 0.1; 0.1], [0; 0; 0], [1; 1; 1], [true; true; true], [1.0; 1.0; 1.0], [0; 0; 0], [0; 0; 0], ...
+    [1.0; 1.0; 1.0], [1.0; 1.0; 1.0], [1.0; 1.0; 1.0], [1.0; 1.0; 1.0], [0; 0; 0], [0; 0; 0], [0; 0; 0], [0; 0; 0], ...
+    'VariableNames', vars);
+T = pipecompare.eval.Calibration.summarizeByStratum(C, {'low'; 'low'; 'high'});
+verifyEqual(tc, height(T), 2);
+% unique(...,'stable') preserves input order: row 1 is 'low', row 2
+% is 'high'. (The stratum column itself is not asserted here: its
+% cell nesting is an existing summarizeByStratum detail, not this
+% test's claim; coverage and ratio are the claims.)
+verifyEqual(tc, T.coverage(1), 1);
+verifyTrue(tc, isfinite(T.ratio(1)));
+verifyEqual(tc, T.coverage(2), 0);
+verifyTrue(tc, isnan(T.ratio(2)));
 end

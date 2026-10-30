@@ -33,8 +33,9 @@ classdef Measure
     %   weightTrials) are averaged with their weights w: estimate =
     %   sum(w .* x) / sum(w), and SME = sqrt(n / (n - 1) * sum(w.^2 .* (x -
     %   estimate).^2)) / sum(w), the sandwich (robust) standard error of a
-    %   weighted mean, valid whatever the weights; equal weights give SD /
-    %   sqrt(n). Peak measures average the waveforms with the weights.
+    %   weighted mean conditional on the fitted weights; equal weights give
+    %   SD / sqrt(n). Adaptive weights and dependent trials still need
+    %   separate validation. Peak measures average with the weights.
     %
     %   w = pipecompare.eval.Measure.epochWeights(EEG)
     %   The weight of each epoch (1 x trials; all 1 without weighting): the
@@ -54,14 +55,16 @@ classdef Measure
 
     methods (Static)
         function o = defaults()
-            o = struct('nBootPeak', 1000, 'seed', 1);
+            o = struct('nBootPeak', 1000, 'seed', 1,'artifactVariance','pooled');
         end
 
-        function ref = reference(EEG, contract)
+        function ref = reference(EEG, contract, opts)
             % trial identities only: the ROI may be restored later in the plan
+            if nargin<3,opts=struct();end
+            varianceMode=pipecompare.utils.fieldOr(opts,'artifactVariance','pooled');
             T = pipecompare.eval.Measure.trials(EEG, contract, true);
             conds = contract.conditions;
-            ref = struct('ids', {cell(1, numel(conds))}, 'names', {{conds.name}});
+            ref = struct('ids', {cell(1, numel(conds))}, 'names', {{conds.name}},'artifactVariance',varianceMode);
             for c = 1:numel(conds)
                 ref.ids{c} = unique(T.id(T.cond == c))';
                 assert(numel(ref.ids{c}) >= 2, 'PipeCompare:Contract', ...
@@ -104,7 +107,8 @@ classdef Measure
             % ''), share (of the trials, per component), kinds and
             % kindShare (components x kinds).
             kinds = {'blinks', 'eye movements', 'muscle'};
-            B = {}; info = struct('channels', {{}}, 'horizontal', '', 'share', [], 'kinds', {kinds}, 'kindShare', []);
+            B = {}; info = struct('channels', {{}}, 'horizontal', '', 'share', [], 'kinds', {kinds}, 'kindShare', [], ...
+                'invalidEyeInput', false, 'reason', '', 'available', {{}});
             if ~strcmp(contract.analysis, 'erp') || isempty(contract.components), return; end
             labs = lower({EEG.chanlocs.labels});
             roi = find(ismember(labs, lower(contract.allRoi())));
@@ -113,6 +117,13 @@ classdef Measure
             use = unique([eyes hl hr roi]);
             if isempty(use), return; end
             info.channels = {EEG.chanlocs(eyes).labels};
+            if ~isempty(eyes) && ~any(isfinite(EEG.data(eyes,:,:)), 'all')
+                % A declared eye channel with no observations is unavailable
+                % evidence, rather than observed absence of ocular events.
+                info.invalidEyeInput = true;
+                info.reason = 'no finite eye-channel samples';
+                return;
+            end
             if ~isempty(hl), info.horizontal = sprintf('%s-%s', EEG.chanlocs(hl).labels, EEG.chanlocs(hr).labels); end
             E = EEG; E.icaact = []; E.icaweights = []; E.icasphere = []; E.icawinv = []; E.icachansind = [];
             [~, E] = evalc('pop_select(E, ''channel'', use)');
@@ -123,7 +134,7 @@ classdef Measure
             end
             T = pipecompare.eval.Measure.trials(E, contract, true);
             times = E.xmin + (0:E.pnts-1) / E.srate;
-            D = double(E.data);
+            D = double(E.data); D(~isfinite(D))=NaN;
             De = D(ismember(use, eyes), :, :); Dh = [];
             if ~isempty(hl), Dh = D(use == hl, :, :) - D(use == hr, :, :); end
             bsel = false(size(times));
@@ -134,15 +145,21 @@ classdef Measure
                     if ~isempty(Dh), Dh = Dh - mean(Dh(:, bsel, :), 2); end
                 end
             end
-            z = @(v) (v - median(v)) / max(1.4826 * median(abs(v - median(v))), eps);
+            z = @(v) (v - median(v,'omitnan')) / max(1.4826 * median(abs(v - median(v,'omitnan')),'omitnan'), eps);
             perTrial = @(v) reshape(v, [], 1);
             nJ = numel(contract.components); nC = numel(ref.ids);
+            info.available = cell(1,nJ);
             B = cell(1, nJ); info.share = nan(1, nJ); info.kindShare = nan(nJ, numel(kinds));
             for j = 1:nJ
                 B{j} = arrayfun(@(c) false(ref.n(c), 1), 1:nC, 'UniformOutput', false);
+                info.available{j} = arrayfun(@(c) false(ref.n(c),1),1:nC,'UniformOutput',false);
                 comp = contract.components(j);
                 w = times >= comp.window(1) - 1e-9 & times <= comp.window(2) + 1e-9;
                 if ~strcmp(comp.measure, 'mean') || ~any(w), continue; end
+                available=true(E.trials,1);support=unique([eyes hl hr]);
+                if ~isempty(support)
+                    available=reshape(all(all(isfinite(D(ismember(use,support),w|bsel,:)),1),2),[],1);
+                end
                 K = false(numel(T.epoch), numel(kinds));
                 if ~isempty(De)
                     v = perTrial(max(abs(mean(De(:, w, :), 2)), [], 1)); K(:, 1) = z(v(T.epoch)) > pipecompare.eval.Measure.BlinkZ;
@@ -167,47 +184,89 @@ classdef Measure
                     rr = find(T.cond == c);
                     [tf, loc] = ismember(T.id(rr), ref.ids{c});
                     B{j}{c}(loc(tf)) = isB(rr(tf));
+                    info.available{j}{c}(loc(tf)) = available(T.epoch(rr(tf)));
                 end
                 info.share(j) = mean(isB); info.kindShare(j, :) = mean(K, 1);
             end
         end
 
-        function [bias, sq, assessed] = eyeBias(x, b, K)
+        function [bias, sq, assessed, se] = eyeBias(x, b, K, counts, varianceMode)
             % What the blink trials add to a weighted mean score. x: scores
             % (n x 1, NaN = absent), b: blink trials (n x 1 logical), K:
-            % weights (n x L: a column per mean, e.g. the trials kept at a
-            % limit, a bootstrap resample's counts, or trial weights). The
+            % weights (n x L: a column per mean). Optional counts are the
+            % physical resampling multiplicities, before trial weights;
+            % without them each positive weight is one observation. Pass
+            % counts separately for bootstrap draws, so duplicating a trial
+            % differs from increasing its reliability weight. The
             % mean is sum(K .* x) / sum(K); with blink share p (of the
             % weight) and blink and other trials' means mB and mN, it is mN
             % + p (mB - mN): bias = p (mB - mN), what the blinks add. The
-            % estimate is noisy (its standard error se = p s sqrt(1/nB +
-            % 1/nN), s the scores' SD, often larger than the SME itself when
-            % most trials have a blink), so what counts is only the part
-            % beyond what chance makes: sq = max(|bias| - BiasZ se, 0)^2
-            % (soft thresholding). Taking only the variance off (bias^2 -
-            % se^2, kept at 0 or more) left a bias where there is none: in
-            % simulation with 70% blink trials and no real effect it added a
-            % third to the total error on average and pushed the choices
-            % towards rejecting blink trials; with soft thresholding about
-            % 1%. Zero when no kept trial has a detected artifact. NaN
+            % estimate is noisy: pooled within-group variation supplies
+            % the contrast SE, and a delta-method term retains uncertainty
+            % in the estimated artifact share. Mean separation is not
+            % treated as within-group noise. This assumes common within-
+            % group variance and fixed fitted labels/weights; uncertainty
+            % from learning preprocessing is not included. The explicit
+            % 'heteroscedastic' mode estimates the two within-group variances
+            % separately; each group must have residual degrees of freedom.
+            % sq=max(abs(bias)-BiasZ*se,0)^2 is a fitted risk proxy, not a
+            % calibrated absolute error or causal artifact effect.
+            % Zero when no kept trial has a detected artifact. NaN
             % when every kept trial has one, or no trial remains: there is
             % no artifact-free comparison and the bias is unidentifiable.
             % assessed says which weighted means have an estimate. 1 x L.
-            ok = ~isnan(x); x(~ok) = 0; b = double(b(:) & ok(:)); o = double(ok(:)) - b;
+            if nargin < 4, counts = ones(size(K)); end
+            if nargin < 5,varianceMode='pooled';end
+            assert(any(strcmp(varianceMode,{'pooled','legacy-total','heteroscedastic'})),'PipeCompare:Weights','Unknown artifact variance model.');
+            assert(all(isfinite(K(:)) & K(:) >= 0), 'PipeCompare:Weights', 'Bias weights must be finite and nonnegative.');
+            assert(all(isfinite(counts(:)) & counts(:) >= 0 & counts(:) == fix(counts(:))), ...
+                'PipeCompare:Weights', 'Resampling counts must be nonnegative integers.');
+            counts = double(counts) + zeros(size(K));
+            assert(all(K(counts == 0) == 0), 'PipeCompare:Weights', 'A positive weight needs a physical observation.');
+            ok = isfinite(x); x(~ok) = 0; b = double(b(:) & ok(:)); o = double(ok(:)) - b;
             K = double(K) .* double(ok(:));
+            Q = K .^ 2 ./ max(counts, 1);
             nB = b' * K; nN = o' * K; n = nB + nN;
             sB = (x .* b)' * K; sN = (x .* o)' * K;
-            s2 = (x .^ 2)' * K;
-            mu = (sB + sN) ./ n;
-            v = max(s2 ./ n - mu .^ 2, 0) .* n ./ max(n - 1, eps);
-            p = nB ./ n;
-            bias = p .* (sB ./ nB - sN ./ nN);
-            se = p .* sqrt(v .* (1 ./ nB + 1 ./ nN));
+            qB=b'*Q;qN=o'*Q;
+            if strcmp(varianceMode,'legacy-total')
+                % Reproduce the old risk model for frozen comparisons.
+                s2=(x.^2)'*K;mu=(sB+sN)./n;
+                v=max(s2./n-mu.^2,0)./max(1-sum(Q,1)./n.^2,eps);
+                varianceAssessed=true(size(n));
+            else
+                % Pool class-centered residuals under a common within-
+                % group variance, using physical multiplicities for DOF.
+                mB=sB./max(nB,realmin);mN=sN./max(nN,realmin);
+                ssB=sum(K.*b.*(x-mB).^2,1);ssN=sum(K.*o.*(x-mN).^2,1);
+                dof=max(nB-qB./max(nB,realmin),0)+max(nN-qN./max(nN,realmin),0);
+                v=(ssB+ssN)./max(dof,realmin);
+                varianceAssessed=dof>10*eps.*max(n,realmin);
+            end
+            p=nB./n;contrast=sB./nB-sN./nN;bias=p.*contrast;
+            se2=p.^2.*v.*(qB./nB.^2+qN./nN.^2);
+            if strcmp(varianceMode,'heteroscedastic')
+                % Welch-type contrast variance: artifact and clean trials
+                % need not have equal residual variance. Q retains physical
+                % bootstrap multiplicities separately from reliability weights.
+                dofB=nB-qB./max(nB,realmin);dofN=nN-qN./max(nN,realmin);
+                vB=ssB./max(dofB,realmin);vN=ssN./max(dofN,realmin);
+                se2=p.^2.*(vB.*qB./nB.^2+vN.*qN./nN.^2);
+                varianceAssessed=dofB>10*eps.*max(nB,realmin) & ...
+                    dofN>10*eps.*max(nN,realmin);
+            end
+            if ~strcmp(varianceMode,'legacy-total')
+                % The share is estimated too: retain its delta-method
+                % uncertainty without calling mean separation noise.
+                prevalenceVar=(qB.*(1-p).^2+qN.*p.^2)./max(n.^2-qB-qN,realmin);
+                se2=se2+contrast.^2.*prevalenceVar;
+            end
+            se=sqrt(se2);
             sq = max(abs(bias) - pipecompare.eval.Measure.BiasZ * se, 0) .^ 2;
             clean = nB == 0 & nN > 0;
-            assessed = nN > 0;
-            bias(clean) = 0; sq(clean) = 0;
-            bias(~assessed) = NaN; sq(~assessed) = NaN;
+            assessed = nN > 0 & (clean | varianceAssessed);
+            bias(clean) = 0; sq(clean) = 0; se(clean)=0;
+            bias(~assessed) = NaN; sq(~assessed) = NaN; se(~assessed)=NaN;
         end
 
         function m = candidate(EEG, contract, ref, opts)
@@ -224,14 +283,19 @@ classdef Measure
                 [tf, loc] = ismember(T.id(rows), ref.ids{c});
                 m.extraTrials = m.extraTrials + sum(~tf);
                 rows = rows(tf); loc = loc(tf);
+                nBeforeDup = numel(loc);
                 [loc, first] = unique(loc, 'stable'); rows = rows(first);
+                if numel(loc) < nBeforeDup
+                    % Round 8 A6: report-only. First-wins logic unchanged.
+                    pipecompare.utils.log('Measure: condition %d dropped %d duplicate trial id(s); first occurrence kept.', c, nBeforeDup - numel(loc));
+                end
                 rowOf{c} = struct('rows', rows, 'loc', loc);
                 m.kept(c) = numel(loc);
                 m.retention(c) = m.kept(c) / ref.n(c);
             end
             objs = repmat(struct('name', '', 'unit', '', 'kind', '', 'polarity', '', 'times', [], ...
                 'X', {{}}, 'w', {{}}, 'estimate', [], 'sme', [], 'agg', NaN, 'eyeBias', [], 'eyeBiasSq', [], ...
-                'eyeBiasAssessed', [], 'segmented', false), 1, nO);
+                'eyeBiasAssessed', [], 'eyeBiasApplicable', [], 'eyeBiasSE', [], 'eyeBiasSEMode',opts.artifactVariance,'segmented', false), 1, nO);
             blink = pipecompare.utils.fieldOr(ref, 'blink', {});
             % the epochs' weights (weight_trials), by the trial's urevent
             wRow = [];
@@ -248,9 +312,18 @@ classdef Measure
                 o.segmented = pipecompare.utils.fieldOr(ref, 'segmented', false);
                 o.times = T.times{k};
                 o.X = cell(1, nC); o.estimate = nan(1, nC); o.sme = nan(1, nC);
-                % what blinks add to each condition's mean (Measure.eyeBias;
-                % 0 without eye channels, for peak measures and band power)
-                o.eyeBias = zeros(1, nC); o.eyeBiasSq = zeros(1, nC);
+                % what blinks add to each condition's mean (Measure.eyeBias).
+                % Only scalar objectives have an eyeBias: for peak, latency
+                % and other non-scalar kinds it is not computed, so it is
+                % NaN (not 0) and eyeBiasApplicable is false. A 0 must mean
+                % "assessed and no bias", never "not assessed".
+                o.eyeBias = zeros(1, nC); o.eyeBiasSq = zeros(1, nC); o.eyeBiasSE=nan(1,nC);
+                if strcmp(o.kind, 'scalar')
+                    o.eyeBiasApplicable = true;
+                else
+                    o.eyeBiasApplicable = false;
+                    o.eyeBias = nan(1, nC); o.eyeBiasSq = nan(1, nC); o.eyeBiasAssessed = false(1, nC);
+                end
                 if strcmp(o.kind, 'scalar') && numel(blink) >= k && ~isempty(blink{k})
                     o.eyeBiasAssessed = false(1, nC);
                 end
@@ -266,7 +339,18 @@ classdef Measure
                     [o.estimate(c), o.sme(c)] = pipecompare.eval.Measure.estimate(o, X, opts, k * 1000 + c, w);
                     if strcmp(o.kind, 'scalar') && numel(blink) >= k && ~isempty(blink{k})
                         K = ones(ref.n(c), 1); if ~isempty(w), K = w; K(isnan(K)) = 0; end
-                        [o.eyeBias(c), o.eyeBiasSq(c), o.eyeBiasAssessed(c)] = pipecompare.eval.Measure.eyeBias(X(:, 1), blink{k}{c}, K);
+                        [o.eyeBias(c), o.eyeBiasSq(c), o.eyeBiasAssessed(c), o.eyeBiasSE(c)] = pipecompare.eval.Measure.eyeBias(X(:, 1), blink{k}{c}, K,ones(size(K)),opts.artifactVariance);
+                    end
+                    if strcmp(o.kind, 'scalar') && isfield(ref, 'blinkInfo')
+                        invalid=pipecompare.utils.fieldOr(ref.blinkInfo,'invalidEyeInput',false);
+                        if isfield(ref.blinkInfo,'available') && numel(ref.blinkInfo.available)>=k && ...
+                                ~isempty(ref.blinkInfo.available{k})
+                            kept=isfinite(X(:,1));if ~isempty(w),kept=kept&w>0;end
+                            invalid=invalid||any(kept&~ref.blinkInfo.available{k}{c}(:));
+                        end
+                        if invalid
+                            o.eyeBias(c)=NaN;o.eyeBiasSq(c)=NaN;o.eyeBiasAssessed(c)=false;o.eyeBiasSE(c)=NaN;
+                        end
                     end
                 end
                 o.agg = sqrt(mean(o.sme .^ 2));
@@ -284,15 +368,24 @@ classdef Measure
             % density averaged over the tapers of Measure.tapers, the band's
             % bins and the ROI channels).
             [~, n, nt] = size(X);
+            assert(isscalar(fs) && isfinite(fs) && fs>0 && numel(band)==2 && all(isfinite(band)) && ...
+                band(1)>=0 && band(1)<band(2) && band(2)<=fs/2, ...
+                'PipeCompare:Measure', 'A one-sided PSD band must lie between zero and Nyquist.');
             [H, resolution] = pipecompare.eval.Measure.tapers(n, fs, band);
             f = (0:n-1) * fs / n;
+            % Locate the Nyquist bin by index. Fractional sample rates can
+            % round its computed frequency above/below fs/2 by one ulp.
+            if mod(n,2)==0, f(n/2+1)=fs/2; end
             sel = f >= band(1) & f <= band(2);
             assert(any(sel), 'PipeCompare:Measure', 'The window is too short to resolve the band [%g %g] Hz.', band(1), band(2));
             Xp = permute(X, [2 1 3]);                              % samples x ROI x trials
             P = 0;
+            sided = 2 * ones(nnz(sel), 1);
+            bins=find(sel);
+            sided(bins == 1 | (mod(n,2) == 0 & bins == n/2+1)) = 1;
             for k = 1:size(H, 2)
                 F = fft(Xp .* H(:, k), [], 1);
-                P = P + 2 * abs(F(sel, :, :)) .^ 2 / (fs * sum(H(:, k) .^ 2));
+                P = P + sided .* abs(F(sel, :, :)) .^ 2 / (fs * sum(H(:, k) .^ 2));
             end
             s = reshape(log10(mean(mean(P / size(H, 2), 1), 2)), nt, 1);
         end
@@ -374,7 +467,11 @@ classdef Measure
                         idx = randi(s, n, n, opts.nBootPeak);
                         W = full(sparse(idx, repmat(1:opts.nBootPeak, n, 1), 1, n, opts.nBootPeak));
                         avgs = (W' * (w .* Y)) ./ (W' * w);
-                        sme = std(peakOf(avgs, o));
+                        % Round 8 B3: a draw whose total weight is 0 gives
+                        % NaN averages; excluding those draws (not the
+                        % whole candidate) is the weighted-peak semantics.
+                        pv = peakOf(avgs, o); pv = pv(isfinite(pv));
+                        if isempty(pv), sme = NaN; else, sme = std(pv); end
                 end
                 return;
             end
@@ -448,6 +545,9 @@ classdef Measure
                     q0 = (wt .^ 2)' * Wc{c}; q1 = (wt .^ 2 .* X0)' * Wc{c}; q2 = (wt .^ 2 .* X0 .^ 2)' * Wc{c};
                     mu = s1 ./ s0;
                     sm2 = max(q2 - 2 * mu .* q1 + mu .^ 2 .* q0, 0) .* Nb ./ (Nb - 1) ./ s0 .^ 2;
+                    % Round 8 B3: a draw whose total weight is 0 has no
+                    % defined weighted mean; mark it Inf like Nb<2 below.
+                    sm2(s0 == 0) = Inf;
                 elseif strcmp(o.kind, 'scalar')
                     s1 = X0' * Wc{c}; s2 = (X0 .^ 2)' * Wc{c};
                     sm2 = max((s2 - s1 .^ 2 ./ Nb) ./ (Nb - 1), 0) ./ Nb;
@@ -468,7 +568,10 @@ classdef Measure
                         else
                             avgs = (Win' * X(kk, :)) / n;
                         end
-                        sm2(b) = var(peakOf(avgs, o));
+                        % Round 8 B3: exclude zero-weight / NaN inner draws
+                        % instead of letting one NaN poison the variance.
+                        pvInner = peakOf(avgs, o); pvInner = pvInner(isfinite(pvInner));
+                        if isempty(pvInner), sm2(b) = Inf; else, sm2(b) = var(pvInner); end
                     end
                 end
                 sm2(:, Nb < 2) = Inf;
@@ -675,9 +778,10 @@ rows = {double(E.data(isEye, :))};
 if any(isL) && any(isR), rows{2} = double(E.data(isL, :)) - double(E.data(isR, :)); end
 w = round(0.05 * E.srate); M = zeros(numel(rows), E.pnts);
 for k = 1:numel(rows)
-    Y = rows{k} - movmedian(rows{k}, round(E.srate), 2);
-    Y = abs(Y - median(Y, 2));
-    on = any(Y > 5 * max(1.4826 * median(Y, 2), eps), 1) | pipecompare.eval.Hmm.events(rows{k}, E.srate);
+    Y = rows{k};Y(~isfinite(Y))=NaN;
+    Y = Y - movmedian(Y, round(E.srate), 2, 'omitnan');
+    Y = abs(Y - median(Y, 2, 'omitnan'));
+    on = any(Y > 5 * max(1.4826 * median(Y, 2, 'omitnan'), eps), 1) | pipecompare.eval.Hmm.events(rows{k}, E.srate);
     M(k, :) = conv(double(on), ones(1, 2 * w + 1), 'same') > 0;
 end
 H = E; H.data = single(M); H.nbchan = size(M, 1);

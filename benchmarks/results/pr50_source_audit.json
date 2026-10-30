@@ -1,0 +1,868 @@
+{
+  "source_run": 40460170075,
+  "source_commit": "87f8e2680f1af817cfecad1456c4c6881c9540dc",
+  "cached_data_run": 40282756637,
+  "cached_data_commit": "4116ea11f3d5d39e4d3d282894dcf487172bd50d",
+  "scope": "Source-resolved fixed-fitted-operator development diagnosis. No ICA fitting. Generating components are used only for evaluation, never operational selection.",
+  "tests_passed": 3,
+  "operator_cases": 7,
+  "ica_fits": 0,
+  "max_additive_closure_error": 0.0000015061088536327816,
+  "original_four_record_paired_comparison": {
+    "mean_mse_difference": 0.26225246885920583,
+    "conditional_95_interval": [
+      -0.02716509072772752,
+      0.7808290377216535
+    ]
+  },
+  "records": [
+    {
+      "record": 40102,
+      "roles": [
+        "original"
+      ],
+      "candidateId": 225,
+      "key": "reref(channels={},exclude={EOG1;EOG2},mode=average) > ica(extended=1,fitClean=1,fitHighpass=1) > highpass(cutoff=0.1) > lowpass(cutoff=40) > icremove(classes={Muscle;Eye;Heart;Line Noise;Channel Noise},threshold=auto) > epoch > baseline > reject_threshold(exclude={EOG1;EOG2},interpolate=0,method=absolute,uv=auto,window=200) > weight_trials",
+      "population": [
+        2.66332882800982,
+        0.887776276003273
+      ],
+      "realized": [
+        2.60030762522132,
+        0.904190236405691
+      ],
+      "estimate": [
+        2.7035593489453458,
+        0.8686712602362168
+      ],
+      "error": [
+        0.04023052093552559,
+        -0.019105015767056255
+      ],
+      "mse": 0.0009917482211016155,
+      "nominalGain": 0.995190999375659,
+      "trueSignalGain": [
+        0.995191060157929,
+        0.9951910584262249
+      ],
+      "parts": [
+        "finite_sample",
+        "retention_weighting",
+        "signal_transform",
+        "background",
+        "blink",
+        "movement",
+        "muscle",
+        "badChannel",
+        "rounding"
+      ],
+      "signedErrorParts": [
+        [
+          -0.06302120278850021,
+          0.016413960402417938
+        ],
+        [
+          0.04600751372662737,
+          0.01554272228869269
+        ],
+        [
+          1.6162630211979945e-7,
+          5.4573194185891793e-8
+        ],
+        [
+          0.3096841806719162,
+          0.043688861203142915
+        ],
+        [
+          -0.16054599106063355,
+          -0.0034951967289123405
+        ],
+        [
+          -0.11982451426096989,
+          -0.11082256863610257
+        ],
+        [
+          0.0008993086804306733,
+          0.0022955314438309403
+        ],
+        [
+          0.027031120821994516,
+          0.017271636753422782
+        ],
+        [
+          6.286388791395764e-9,
+          -1.5273290129955914e-8
+        ]
+      ],
+      "squaredErrorAllocation": [
+        -0.0014244823952263967,
+        0.0007769811448910566,
+        2.7298442978910454e-9,
+        0.005812039765895919,
+        -0.0031960365329323447,
+        -0.0013516678542133606,
+        -0.000003838253866298713,
+        0.0003787505898214808,
+        2.7235057231436657e-10
+      ],
+      "eyeAssociation": [
+        -0.6307655356861287,
+        0.2341556092514127
+      ],
+      "eyeAssociationSE": [
+        0.7602408746601887,
+        0.4139570439298408
+      ],
+      "softBiasRisk": [
+        0,
+        0
+      ],
+      "kept": [
+        74,
+        72
+      ],
+      "retention": [
+        0.9866666666666667,
+        0.96
+      ],
+      "closureError": 6.27680307729861e-8,
+      "sourceRun": 40282756637,
+      "sourceRevision": "4116ea11f3d5d39e4d3d282894dcf487172bd50d",
+      "scope": {
+        "scope": "fixed-fitted-operator",
+        "fullyHeldOut": false,
+        "preprocessingRefitted": false,
+        "icaFits": 0,
+        "steps": 9
+      },
+      "interpretation": "Fixed fitted-operator development diagnosis; signed allocations include cross terms and can be negative."
+    },
+    {
+      "record": 40102,
+      "roles": [
+        "guarded"
+      ],
+      "candidateId": 17,
+      "key": "eogregress(channels={}) > badchannels(action=interpolate,detectHighpass=1,detectLowpass=40,exclude={EOG1;EOG2},measure=kurt+prob+resid,repair=error,stretchMode=multiscale,stretches=true,threshold=5) > reref(channels={},exclude={EOG1;EOG2},mode=average) > ica(extended=1,fitClean=1,fitHighpass=1) > highpass(cutoff=0.3) > lowpass(cutoff=30) > icremove(classes={Muscle;Eye;Heart;Line Noise;Channel Noise},threshold=auto) > epoch > baseline > reject_threshold(exclude={EOG1;EOG2},interpolate=0,method=absolute,uv=auto,window=200) > weight_trials",
+      "population": [
+        2.66332882800982,
+        0.887776276003273
+      ],
+      "realized": [
+        2.60030762522132,
+        0.904190236405691
+      ],
+      "estimate": [
+        2.174813856053809,
+        0.8168586152117492
+      ],
+      "error": [
+        -0.4885149719560111,
+        -0.07091766079152384
+      ],
+      "mse": 0.121838096218662,
+      "nominalGain": 0.9903550374370076,
+      "trueSignalGain": [
+        0.990648870123551,
+        0.9897773030191749
+      ],
+      "parts": [
+        "finite_sample",
+        "retention_weighting",
+        "signal_transform",
+        "background",
+        "blink",
+        "movement",
+        "muscle",
+        "badChannel",
+        "rounding"
+      ],
+      "signedErrorParts": [
+        [
+          -0.06302120278850021,
+          0.016413960402417938
+        ],
+        [
+          0.08999153803934101,
+          0.02140386804725314
+        ],
+        [
+          0.0007981964051921864,
+          -0.0005399554209057911
+        ],
+        [
+          0.19070699817723683,
+          -0.05208076421620577
+        ],
+        [
+          -0.7075197656259427,
+          -0.05731021680774028
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0.0005277501361161586,
+          0.0011967153455708938
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          7.591691700127054e-9,
+          -1.483993422157425e-8
+        ]
+      ],
+      "squaredErrorAllocation": [
+        0.014811380718397046,
+        -0.02274006296768431,
+        -0.00017581925955775424,
+        -0.04473488894795985,
+        0.1748491524892705,
+        0,
+        -0.00017134104794288709,
+        0,
+        -1.3281208183460605e-9
+      ],
+      "eyeAssociation": [
+        -1.1256327859339927,
+        0.29436904712022516
+      ],
+      "eyeAssociationSE": [
+        0.7630687128137815,
+        0.3694193215345043
+      ],
+      "softBiasRisk": [
+        0,
+        0
+      ],
+      "kept": [
+        69,
+        68
+      ],
+      "retention": [
+        0.92,
+        0.9066666666666666
+      ],
+      "closureError": 0.0000015061088536327816,
+      "sourceRun": 40282756637,
+      "sourceRevision": "4116ea11f3d5d39e4d3d282894dcf487172bd50d",
+      "scope": {
+        "scope": "fixed-fitted-operator",
+        "fullyHeldOut": false,
+        "preprocessingRefitted": false,
+        "icaFits": 0,
+        "steps": 11
+      },
+      "interpretation": "Fixed fitted-operator development diagnosis; signed allocations include cross terms and can be negative."
+    },
+    {
+      "record": 40102,
+      "roles": [
+        "repair_only_counterpart"
+      ],
+      "candidateId": 153,
+      "key": "badchannels(action=interpolate,detectHighpass=1,detectLowpass=40,exclude={EOG1;EOG2},measure=kurt+prob+resid,repair=error,stretchMode=multiscale,stretches=true,threshold=5) > reref(channels={},exclude={EOG1;EOG2},mode=average) > ica(extended=1,fitClean=1,fitHighpass=1) > highpass(cutoff=0.1) > lowpass(cutoff=40) > icremove(classes={Muscle;Eye;Heart;Line Noise;Channel Noise},threshold=auto) > epoch > baseline > reject_threshold(exclude={EOG1;EOG2},interpolate=0,method=absolute,uv=auto,window=200) > weight_trials",
+      "population": [
+        2.66332882800982,
+        0.887776276003273
+      ],
+      "realized": [
+        2.60030762522132,
+        0.904190236405691
+      ],
+      "estimate": [
+        2.402752049471943,
+        0.9644341512356088
+      ],
+      "error": [
+        -0.2605767785378772,
+        0.0766578752323358
+      ],
+      "mse": 0.03688834367415713,
+      "nominalGain": 0.988987272513951,
+      "trueSignalGain": [
+        0.9888088130726895,
+        0.9896030695305091
+      ],
+      "parts": [
+        "finite_sample",
+        "retention_weighting",
+        "signal_transform",
+        "background",
+        "blink",
+        "movement",
+        "muscle",
+        "badChannel",
+        "rounding"
+      ],
+      "signedErrorParts": [
+        [
+          -0.06302120278850021,
+          0.016413960402417938
+        ],
+        [
+          0.11270102119179448,
+          0.02682498242712794
+        ],
+        [
+          -0.0004895533245297123,
+          0.0005797004775097703
+        ],
+        [
+          0.33888685911641514,
+          -0.019435032004341917
+        ],
+        [
+          -0.6466332074346914,
+          0.048860348269571904
+        ],
+        [
+          -0.0017245758172352082,
+          0.002308066181636533
+        ],
+        [
+          -0.000296107366763451,
+          0.0011058973086490475
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          8.24539102969031e-9,
+          -1.350341087296144e-8
+        ]
+      ],
+      "squaredErrorAllocation": [
+        0.008840060665403361,
+        -0.01365546144203923,
+        0.00008600241755276491,
+        -0.0448979471479501,
+        0.08612156428520205,
+        0.00031315793008967227,
+        0.00008096722081937419,
+        0,
+        -1.591850109106128e-9
+      ],
+      "eyeAssociation": [
+        -0.6806168834589725,
+        0.3502829993746158
+      ],
+      "eyeAssociationSE": [
+        0.7347623703463717,
+        0.34699831414286747
+      ],
+      "softBiasRisk": [
+        0,
+        0
+      ],
+      "kept": [
+        65,
+        66
+      ],
+      "retention": [
+        0.8666666666666667,
+        0.88
+      ],
+      "closureError": 3.432682460502434e-8,
+      "sourceRun": 40282756637,
+      "sourceRevision": "4116ea11f3d5d39e4d3d282894dcf487172bd50d",
+      "scope": {
+        "scope": "fixed-fitted-operator",
+        "fullyHeldOut": false,
+        "preprocessingRefitted": false,
+        "icaFits": 0,
+        "steps": 10
+      },
+      "interpretation": "Fixed fitted-operator development diagnosis; signed allocations include cross terms and can be negative."
+    },
+    {
+      "record": 40102,
+      "roles": [
+        "without_ic_removal_of_guarded"
+      ],
+      "candidateId": 19,
+      "key": "eogregress(channels={}) > badchannels(action=interpolate,detectHighpass=1,detectLowpass=40,exclude={EOG1;EOG2},measure=kurt+prob+resid,repair=error,stretchMode=multiscale,stretches=true,threshold=5) > reref(channels={},exclude={EOG1;EOG2},mode=average) > ica(extended=1,fitClean=1,fitHighpass=1) > highpass(cutoff=0.3) > lowpass(cutoff=30) > epoch > baseline > reject_threshold(exclude={EOG1;EOG2},interpolate=0,method=absolute,uv=auto,window=200) > weight_trials",
+      "population": [
+        2.66332882800982,
+        0.887776276003273
+      ],
+      "realized": [
+        2.60030762522132,
+        0.904190236405691
+      ],
+      "estimate": [
+        2.0667553786979735,
+        0.9579204773253898
+      ],
+      "error": [
+        -0.5965734493118466,
+        0.07014420132211674
+      ],
+      "mse": 0.18041004470147606,
+      "nominalGain": 0.9885916605481263,
+      "trueSignalGain": [
+        0.9868502728820517,
+        0.9971808936353531
+      ],
+      "parts": [
+        "finite_sample",
+        "retention_weighting",
+        "signal_transform",
+        "background",
+        "blink",
+        "movement",
+        "muscle",
+        "badChannel",
+        "rounding"
+      ],
+      "signedErrorParts": [
+        [
+          -0.06302120278850021,
+          0.016413960402417938
+        ],
+        [
+          0.10141645460569793,
+          0.024591202233983478
+        ],
+        [
+          -0.004759041753537474,
+          0.008069580780342478
+        ],
+        [
+          0.08674714771143045,
+          0.055514349809543305
+        ],
+        [
+          -0.7356977960964466,
+          -0.04240232472658932
+        ],
+        [
+          0.01885555315913104,
+          0.0073013930700257185
+        ],
+        [
+          -0.00011446788384695976,
+          0.0006560462194530138
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          8.568918763396473e-9,
+          -1.3897080932394498e-8
+        ]
+      ],
+      "squaredErrorAllocation": [
+        0.019374060235138695,
+        -0.02938871695042305,
+        0.0017025761265841884,
+        -0.023928517699432654,
+        0.21796174733311655,
+        -0.005368286000694949,
+        0.00005715316919796719,
+        0,
+        -3.0433945331320332e-9
+      ],
+      "eyeAssociation": [
+        -0.9608604942543371,
+        0.2503186042218878
+      ],
+      "eyeAssociationSE": [
+        0.7544423601285665,
+        0.3479111890902853
+      ],
+      "softBiasRisk": [
+        0,
+        0
+      ],
+      "kept": [
+        68,
+        68
+      ],
+      "retention": [
+        0.9066666666666666,
+        0.9066666666666666
+      ],
+      "closureError": 1.0483469381483701e-7,
+      "sourceRun": 40282756637,
+      "sourceRevision": "4116ea11f3d5d39e4d3d282894dcf487172bd50d",
+      "scope": {
+        "scope": "fixed-fitted-operator",
+        "fullyHeldOut": false,
+        "preprocessingRefitted": false,
+        "icaFits": 0,
+        "steps": 10
+      },
+      "interpretation": "Fixed fitted-operator development diagnosis; signed allocations include cross terms and can be negative."
+    },
+    {
+      "record": 40103,
+      "roles": [
+        "original"
+      ],
+      "candidateId": 95,
+      "key": "eogregress(channels={}) > reref(channels={},exclude={EOG1;EOG2},mode=average) > ica(extended=1,fitClean=1,fitHighpass=1) > highpass(cutoff=0.3) > lowpass(cutoff=40) > epoch > baseline > reject_threshold(exclude={EOG1;EOG2},interpolate=0,method=absolute,uv=auto,window=200) > weight_trials",
+      "population": [
+        2.66332882800982,
+        0.887776276003273
+      ],
+      "realized": [
+        2.535884619407,
+        0.898901381894812
+      ],
+      "estimate": [
+        1.2288913158976194,
+        0.08303520909244969
+      ],
+      "error": [
+        -1.4344375121122008,
+        -0.8047410669108234
+      ],
+      "mse": 1.3526095804637053,
+      "nominalGain": 0.9999144601441912,
+      "trueSignalGain": [
+        0.9979044422907177,
+        1.0030261787123418
+      ],
+      "parts": [
+        "finite_sample",
+        "retention_weighting",
+        "signal_transform",
+        "background",
+        "blink",
+        "movement",
+        "muscle",
+        "badChannel",
+        "rounding"
+      ],
+      "signedErrorParts": [
+        [
+          -0.12744420860282002,
+          0.011125105891538922
+        ],
+        [
+          0.008172412972670351,
+          0.016802729522946036
+        ],
+        [
+          -0.005114037509368785,
+          0.00284965724570041
+        ],
+        [
+          -0.20769651393615537,
+          -0.6021328056785233
+        ],
+        [
+          -0.8638770481871686,
+          -0.18227780948649733
+        ],
+        [
+          -0.258516988889287,
+          -0.07846949467434086
+        ],
+        [
+          -0.0009962995125810674,
+          -0.0006106501820546392
+        ],
+        [
+          0.021035191375699078,
+          0.027972369893184308
+        ],
+        [
+          -3.380391627883726e-9,
+          -2.8803135542308768e-8
+        ]
+      ],
+      "squaredErrorAllocation": [
+        0.0869289619683423,
+        -0.01262233110789016,
+        0.0025212655147761652,
+        0.39124433359434907,
+        0.6929320413263829,
+        0.21698704562263427,
+        0.0009602723365806617,
+        -0.026342091187813572,
+        1.401401329168053e-8
+      ],
+      "eyeAssociation": [
+        -1.3478685547602982,
+        -0.30305179443136343
+      ],
+      "eyeAssociationSE": [
+        1.0159994877241596,
+        0.5241894366956649
+      ],
+      "softBiasRisk": [
+        0,
+        0
+      ],
+      "kept": [
+        70,
+        72
+      ],
+      "retention": [
+        0.9333333333333333,
+        0.96
+      ],
+      "closureError": 1.4063964132171591e-7,
+      "sourceRun": 40282756637,
+      "sourceRevision": "4116ea11f3d5d39e4d3d282894dcf487172bd50d",
+      "scope": {
+        "scope": "fixed-fitted-operator",
+        "fullyHeldOut": false,
+        "preprocessingRefitted": false,
+        "icaFits": 0,
+        "steps": 9
+      },
+      "interpretation": "Fixed fitted-operator development diagnosis; signed allocations include cross terms and can be negative."
+    },
+    {
+      "record": 40103,
+      "roles": [
+        "guarded"
+      ],
+      "candidateId": 21,
+      "key": "eogregress(channels={}) > badchannels(action=interpolate,detectHighpass=1,detectLowpass=40,exclude={EOG1;EOG2},measure=kurt+prob+resid,repair=error,stretchMode=multiscale,stretches=true,threshold=5) > reref(channels={},exclude={EOG1;EOG2},mode=average) > ica(extended=1,fitClean=1,fitHighpass=1) > highpass(cutoff=0.3) > lowpass(cutoff=40) > icremove(classes={Muscle;Eye;Heart;Line Noise;Channel Noise},threshold=auto) > epoch > baseline > reject_threshold(exclude={EOG1;EOG2},interpolate=0,method=absolute,uv=auto,window=200) > weight_trials",
+      "population": [
+        2.66332882800982,
+        0.887776276003273
+      ],
+      "realized": [
+        2.535884619407,
+        0.898901381894812
+      ],
+      "estimate": [
+        2.4044796222662397,
+        0.2797999722016064
+      ],
+      "error": [
+        -0.2588492057435805,
+        -0.6079763038016666
+      ],
+      "mse": 0.21831904864920942,
+      "nominalGain": 0.9921107533469106,
+      "trueSignalGain": [
+        0.9921107567430928,
+        0.9921107591569631
+      ],
+      "parts": [
+        "finite_sample",
+        "retention_weighting",
+        "signal_transform",
+        "background",
+        "blink",
+        "movement",
+        "muscle",
+        "badChannel",
+        "rounding"
+      ],
+      "signedErrorParts": [
+        [
+          -0.12744420860282002,
+          0.011125105891538922
+        ],
+        [
+          0.055114910298633024,
+          0.005946949444160521
+        ],
+        [
+          8.869480261353146e-9,
+          5.299021665905457e-9
+        ],
+        [
+          -0.15264972688755513,
+          -0.6179805147890214
+        ],
+        [
+          -0.03260215458845113,
+          -0.006658240291775925
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          -0.0012680185117249626,
+          -0.00040995982552196084
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          7.102779579892713e-10,
+          -1.718101765941517e-8
+        ]
+      ],
+      "squaredErrorAllocation": [
+        0.013112515707059586,
+        -0.008941027548692967,
+        -2.7587687636058877e-9,
+        0.20761538488234926,
+        0.00624354707158363,
+        0,
+        0.0002887357220280908,
+        0,
+        5.13089836341985e-9
+      ],
+      "eyeAssociation": [
+        -0.21236204986809856,
+        0.08036655494983644
+      ],
+      "eyeAssociationSE": [
+        0.9961993743181071,
+        0.5179439804492576
+      ],
+      "softBiasRisk": [
+        0,
+        0
+      ],
+      "kept": [
+        64,
+        68
+      ],
+      "retention": [
+        0.8533333333333334,
+        0.9066666666666666
+      ],
+      "closureError": 3.676509492400726e-7,
+      "sourceRun": 40282756637,
+      "sourceRevision": "4116ea11f3d5d39e4d3d282894dcf487172bd50d",
+      "scope": {
+        "scope": "fixed-fitted-operator",
+        "fullyHeldOut": false,
+        "preprocessingRefitted": false,
+        "icaFits": 0,
+        "steps": 11
+      },
+      "interpretation": "Fixed fitted-operator development diagnosis; signed allocations include cross terms and can be negative."
+    },
+    {
+      "record": 40103,
+      "roles": [
+        "repair_only_counterpart",
+        "without_ic_removal_of_guarded"
+      ],
+      "candidateId": 23,
+      "key": "eogregress(channels={}) > badchannels(action=interpolate,detectHighpass=1,detectLowpass=40,exclude={EOG1;EOG2},measure=kurt+prob+resid,repair=error,stretchMode=multiscale,stretches=true,threshold=5) > reref(channels={},exclude={EOG1;EOG2},mode=average) > ica(extended=1,fitClean=1,fitHighpass=1) > highpass(cutoff=0.3) > lowpass(cutoff=40) > epoch > baseline > reject_threshold(exclude={EOG1;EOG2},interpolate=0,method=absolute,uv=auto,window=200) > weight_trials",
+      "population": [
+        2.66332882800982,
+        0.887776276003273
+      ],
+      "realized": [
+        2.535884619407,
+        0.898901381894812
+      ],
+      "estimate": [
+        1.2869309583078228,
+        0.07610266575262813
+      ],
+      "error": [
+        -1.3763978697019974,
+        -0.8116736102506449
+      ],
+      "mse": 1.2766425726487562,
+      "nominalGain": 0.9921171608517251,
+      "trueSignalGain": [
+        0.9901912239780927,
+        0.9952337263816733
+      ],
+      "parts": [
+        "finite_sample",
+        "retention_weighting",
+        "signal_transform",
+        "background",
+        "blink",
+        "movement",
+        "muscle",
+        "badChannel",
+        "rounding"
+      ],
+      "signedErrorParts": [
+        [
+          -0.12744420860282002,
+          0.011125105891538922
+        ],
+        [
+          -0.002335450553190288,
+          0.021675745614134212
+        ],
+        [
+          -0.004918225344743732,
+          0.002891834811918792
+        ],
+        [
+          -0.17834164736282307,
+          -0.6054255466971502
+        ],
+        [
+          -0.7965572051839197,
+          -0.16229305232998378
+        ],
+        [
+          -0.2659736920866929,
+          -0.07913989126789468
+        ],
+        [
+          -0.0008273765109446475,
+          -0.0005078718137232835
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          -3.196571954006178e-9,
+          -3.0684239792790875e-8
+        ]
+      ],
+      "squaredErrorAllocation": [
+        0.08319199118168616,
+        -0.007189560765646717,
+        0.002211104442590512,
+        0.3684385013674904,
+        0.6140543140070993,
+        0.21516069222257733,
+        0.0007755127078475023,
+        0,
+        1.4652671259127161e-8
+      ],
+      "eyeAssociation": [
+        -1.2755283658663616,
+        -0.2762463133273965
+      ],
+      "eyeAssociationSE": [
+        1.0161251752674516,
+        0.5253679004675698
+      ],
+      "softBiasRisk": [
+        0,
+        0
+      ],
+      "kept": [
+        69,
+        71
+      ],
+      "retention": [
+        0.92,
+        0.9466666666666667
+      ],
+      "closureError": 9.622475495574268e-8,
+      "sourceRun": 40282756637,
+      "sourceRevision": "4116ea11f3d5d39e4d3d282894dcf487172bd50d",
+      "scope": {
+        "scope": "fixed-fitted-operator",
+        "fullyHeldOut": false,
+        "preprocessingRefitted": false,
+        "icaFits": 0,
+        "steps": 10
+      },
+      "interpretation": "Fixed fitted-operator development diagnosis; signed allocations include cross terms and can be negative."
+    }
+  ]
+}

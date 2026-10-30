@@ -1,0 +1,107 @@
+name: guarded optimization confirmation
+on:
+  push:
+    branches: [codex/optimization-confirmation-20261025-v3]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: optimization-confirmation-pr50
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: python -m unittest discover -s tests -p test_confirmation_gate.py
+      - run: python -m unittest discover -s tests -p test_optimization_protocol.py
+  admit:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    outputs:
+      ready: ${{ steps.admit.outputs.ready }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test the admission and data-split guards
+        run: |
+          python -m unittest discover -s tests -p test_confirmation_gate.py
+          python -m unittest discover -s tests -p test_optimization_protocol.py
+      - name: Wait for the exact development experiment and full 2026 CI
+        timeout-minutes: 350
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs=require('fs');
+            const gate=JSON.parse(fs.readFileSync('benchmarks/optimization_confirmation_gate.json','utf8'));
+            const id=gate.development_run,expected=gate.algorithm_head;
+            const allowed=new Set(['.github/workflows/optimization-validation.yml',
+              '.github/workflows/optimization-confirmation.yml','benchmarks/gate_optimization_confirmation.py',
+              'benchmarks/optimization_confirmation_gate.json','tests/test_confirmation_gate.py','docs/VALIDATION.md']);
+            async function retry(fn) {
+              for(let n=0;;n++) {try{return await fn();}catch(e){
+                if(n>=4||![429,500,502,503,504].includes(e.status))throw e;
+                await new Promise(resolve=>setTimeout(resolve,2000*(n+1)));
+              }}
+            }
+            async function revisionGuard() {
+              const pr=await retry(()=>github.rest.pulls.get({...context.repo,pull_number:50}));
+              if(pr.data.state!=='open'||pr.data.merged)throw new Error('PR #50 is no longer open');
+              if(pr.data.base.sha!==gate.base_head)throw new Error('PR base changed after the frozen experiment');
+              for(const sha of [context.sha,pr.data.head.sha]) {
+                const diff=await retry(()=>github.rest.repos.compareCommitsWithBasehead({...context.repo,basehead:expected+'...'+sha}));
+                const unexpected=(diff.data.files||[]).filter(f=>!allowed.has(f.filename));
+                if(unexpected.length)throw new Error('Algorithm changed after development: '+unexpected.map(f=>f.filename).join(','));
+              }
+              core.info('Exact algorithm revision checked: '+expected+'; orchestration '+context.sha);
+              return pr.data.head.sha;
+            }
+            let ciHead=await revisionGuard();
+            const deadline=Date.now()+345*60*1000;
+            for(let n=0;Date.now()<deadline;n++) {
+              const r=await retry(()=>github.rest.actions.getWorkflowRun({...context.repo,run_id:id}));
+              if(r.data.head_sha!==expected||r.data.name!=='paired optimization validation')throw new Error('Unexpected development source');
+              let ready=r.data.status==='completed';
+              if(ready&&r.data.conclusion!=='success')throw new Error('Development execution failed; confirmation stays unused');
+              for(const workflow of ['matlab-tests.yml','compat.yml']) {
+                const rs=await retry(()=>github.rest.actions.listWorkflowRuns({...context.repo,workflow_id:workflow,head_sha:ciHead,event:'pull_request'}));
+                const ci=rs.data.workflow_runs.find(z=>z.head_sha===ciHead);
+                if(ci?.status==='completed'&&ci.conclusion!=='success')throw new Error(workflow+' did not pass');
+                ready=ready&&ci?.status==='completed'&&ci.conclusion==='success';
+              }
+              if(ready) {
+                const current=await revisionGuard();
+                if(current!==ciHead){ciHead=current;continue;}
+                core.info('Development and unchanged-algorithm full 2026 CI passed at '+ciHead);return;
+              }
+              if(n%10===0)core.info('Waiting for development '+id+' and exact-revision full CI');
+              await new Promise(resolve=>setTimeout(resolve,30000));
+            }
+            throw new Error('Development not finished within this wait; confirmation was not started');
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: optimization-*-summary
+          path: development_source
+          run-id: 40159157180
+          github-token: ${{ github.token }}
+      - id: admit
+        name: Evaluate the prespecified development admission screen
+        run: python benchmarks/gate_optimization_confirmation.py development_source admission/admission.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: optimization-confirmation-admission
+          path: admission
+          retention-days: 90
+      - name: Explain a withheld confirmation
+        if: steps.admit.outputs.ready == 'false'
+        run: echo 'Development needs method review; no confirmation recordings have been consumed.'
+
+  confirmation:
+    needs: admit
+    if: needs.admit.outputs.ready == 'true'
+    uses: ./.github/workflows/optimization-validation.yml
+    with:
+      stage: confirmation

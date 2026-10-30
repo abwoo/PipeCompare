@@ -111,7 +111,7 @@ classdef Presets
         end
 
         function names = recipeNames()
-            names = {'filters', 'standard'};
+            names = {'filters', 'standard', 'balanced'};
         end
 
         function names = stepNames()
@@ -174,7 +174,7 @@ classdef Presets
                 return;
             end
             switch name
-                case 'standard', steps = {'badchannels', 'ica', 'highpass', 'lowpass', 'reject', 'weight'};
+                case {'standard','balanced'}, steps = {'badchannels', 'ica', 'highpass', 'lowpass', 'reject', 'weight'};
                 case 'filters', steps = {'highpass', 'lowpass'};
                 otherwise, error('PipeCompare:Simple', 'Unknown recipe %s (filters, standard).', name);
             end
@@ -871,8 +871,22 @@ classdef Presets
             for o = 1:numel(ref.objectives)
                 col = matlab.lang.makeValidName(['eyeBias_' ref.objectives{o}]);
                 if ismember(col, T.Properties.VariableNames) && abs(T.(col)(k)) > 0
-                    parts{end+1} = sprintf('blinks, eye movements and muscle activity in the trials it keeps add about %.2g %s to the %s mean', ...
+                    parts{end+1} = sprintf('artifact association (blinks, eye movements and muscle activity in the trials it keeps): weighted %.2g %s difference for %s', ...
                         T.(col)(k), ref.units{o}, ref.objectives{o}); %#ok<AGROW>
+                end
+                sensitivity=matlab.lang.makeValidName(['associationRisk_' ref.objectives{o}]);
+                if ismember(sensitivity,T.Properties.VariableNames)&&isfinite(T.(sensitivity)(k))
+                    parts{end+1}=sprintf('unshrunk-association sensitivity %.2g %s RMS for %s', ...
+                        T.(sensitivity)(k),ref.units{o},ref.objectives{o}); %#ok<AGROW>
+                end
+                uncertainty=matlab.lang.makeValidName(['artifactBiasSE_' ref.objectives{o}]);
+                if ismember(uncertainty,T.Properties.VariableNames)
+                    if isfinite(T.(uncertainty)(k))
+                        parts{end+1}=sprintf('largest-condition association standard error %.2g %s', ...
+                            T.(uncertainty)(k),ref.units{o}); %#ok<AGROW>
+                    else
+                        parts{end+1}='artifact-association standard error unavailable'; %#ok<AGROW>
+                    end
                 end
                 col = matlab.lang.makeValidName(['shapeSpread_' ref.objectives{o}]);
                 if ismember(col, T.Properties.VariableNames) && T.(col)(k) >= 0.01
@@ -881,8 +895,9 @@ classdef Presets
                 end
             end
             if ~isempty(parts)
-                t = sprintf(['In pipeline %d, %s. This bias counts in its error together with the noise ', ...
-                    '(the error column).'], k, strjoin(parts, '; '));
+                t = sprintf(['In pipeline %d, %s. The fitted score shrinks the association and combines it with noise. ', ...
+                    'Association can include genuine neural differences; this is not a calibrated absolute error.'], ...
+                    k, strjoin(parts, '; '));
             end
             info = pipecompare.utils.fieldOr(ref, 'blinkInfo', struct('channels', {{}}));
             if isfield(result, 'contract') && strcmp(result.contract.analysis, 'erp') && isempty(info.channels)
@@ -1002,7 +1017,7 @@ classdef Presets
                 strjoin(what, ' and '));
         end
 
-        function [plan, notes] = recipe(name, state, contract, reference, exclude)
+        function [plan, notes] = recipe(name, state, contract, reference, exclude, compareCleanup)
             % The plan of a recipe (or of the steps given, a cell of
             % pipecompare.simple.Presets.stepNames; they always run in that
             % order) for these data, and why a step was left out.
@@ -1014,10 +1029,19 @@ classdef Presets
             if nargin < 5, exclude = {}; end
             assert(any(strcmp(reference, {'asis', 'average'})), 'PipeCompare:Simple', ...
                 'reference must be asis or average.');
+            if nargin<6,compareCleanup=false;end
+            balanced = compareCleanup || (ischar(name) && strcmp(name,'balanced'));
             steps = pipecompare.simple.Presets.recipeSteps(name);   % validates the name or steps
             has = @(s) any(strcmp(steps, s));
             notes = {};
             plan = pipecompare.plan.Plan();
+            if balanced && ~isempty(pipecompare.utils.fieldOr(state,'eyeChannels',{})) && ...
+                    (has('ica')||has('badchannels'))
+                % Fit regression before ICA, so ICA is learned from the
+                % data it actually decomposes. Both operations stay optional.
+                plan=plan.addChoice('eogregress',{'eogregress'},'none');
+                notes{end+1}='dedicated-EOG regression and no regression compared before ICA';
+            end
             continuous = ~state.isEpoched;
             ica = false;
             exclusion = {};
@@ -1149,6 +1173,20 @@ classdef Presets
                 else
                     notes{end+1} = 'weighting epochs by their noise is for ERPs: left out';
                 end
+            end
+            if balanced
+                % Cleanup must be compared, rather than shared by every
+                % candidate. Illegal ICA-removal-without-ICA paths are
+                % rejected by the ordinary plan state machine.
+                for id={'badchannels','ica','icremove'}
+                    at=find(strcmp({plan.Slots.id},id{1}),1);
+                    if isempty(at),continue;end
+                    plan=plan.setSkippable(id{1},true);
+                    if strcmp(id{1},'badchannels')
+                        plan.Slots(at).alternatives{1}.params.stretchMode='multiscale';
+                    end
+                end
+                notes{end+1}='balanced: cleanup and no-cleanup branches compared; multiscale strong short faults enabled';
             end
             if has('peaktopeak') && ~has('reject')
                 notes{end+1} = 'peak-to-peak rejection needs epoch rejection (it is its method)';

@@ -282,14 +282,19 @@ function testWhatBlinksAddToTheMean(tc)
 % blink trial kept, NaN with no other trial, and every mean (a column of weights)
 % at once.
 x = [1 1 1 3 3 NaN]'; b = logical([0 0 0 1 1 1])';
-[bias, sq] = pipecompare.eval.Measure.eyeBias(x, b, ones(6, 1));
+[bias, sq, ~, se] = pipecompare.eval.Measure.eyeBias(x, b, ones(6, 1));
 verifyEqual(tc, bias, 0.4 * 2, 'AbsTol', 1e-12);
-v = var([1 1 1 3 3]);
-verifyEqual(tc, sq, max(0.8 - 2 * 0.4 * sqrt(v * (1 / 2 + 1 / 3)), 0) ^ 2, 'AbsTol', 1e-12);
+verifyEqual(tc,se,2*sqrt(0.4*0.6/(5-1)),'AbsTol',1e-12);
+verifyEqual(tc,sq,max(0.8-2*se,0)^2,'AbsTol',1e-12);
 x2 = [1 1 1 1 9 9 9]'; b2 = logical([0 0 0 0 1 1 1])';   % a clear difference
-[bias, sq] = pipecompare.eval.Measure.eyeBias(x2, b2, ones(7, 1));
-se = 3 / 7 * std(x2) * sqrt(1 / 3 + 1 / 4);
-verifyEqual(tc, sq, (bias - 2 * se) ^ 2, 'AbsTol', 1e-12);
+[bias, sq, ~, se] = pipecompare.eval.Measure.eyeBias(x2, b2, ones(7, 1));
+verifyEqual(tc,se,8*sqrt((3/7)*(4/7)/(7-1)),'AbsTol',1e-12);
+verifyEqual(tc,sq,(bias-2*se)^2,'AbsTol',1e-12);
+% Retain an exact regression for the old convention as an explicit control.
+[oldBias,oldSq]=pipecompare.eval.Measure.eyeBias(x2,b2,ones(7,1),ones(7,1),'legacy-total');
+oldSE=3/7*std(x2)*sqrt(1/3+1/4);
+verifyEqual(tc,oldBias,bias,'AbsTol',1e-12);
+verifyEqual(tc,oldSq,(oldBias-2*oldSE)^2,'AbsTol',1e-12);
 verifyGreaterThan(tc, sq, 0);
 K = [1 1 1 0 0 0; 0 0 0 1 1 0; 1 1 1 1 1 1]';
 [bias, sq] = pipecompare.eval.Measure.eyeBias(x, b, K);

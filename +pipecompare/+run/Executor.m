@@ -59,12 +59,31 @@ classdef Executor
     %                   A callback that takes two arguments is also told
     %                   each step as it starts: f(0, inst), inst being the
     %                   plan's step (type, params, label).
+    %     artifactVariance 'pooled' (default) | 'legacy-total' |
+    %                   'heteroscedastic': how the artifact contribution
+    %                   to the paired bootstrap variance is pooled
+    %                   (pipecompare.eval.Measure.defaults); run() and
+    %                   execute() share this one default.
+
+    properties (Constant)
+        % The one default for opts.artifactVariance, shared by run() and
+        % execute(): a resumed search must not silently change its
+        % variance model, and it matches pipecompare.eval.Measure.defaults.
+        ArtifactVarianceDefault = 'pooled';
+    end
 
     methods (Static)
         function result = run(plan, contract, opts)
             if nargin < 3, opts = struct(); end
             opts = pipecompare.utils.withDefaults(opts, struct('dryRun', false, 'injectUv', 5, 'filterCheck', true, ...
-                'refineCutoffs', false, 'eogCheck', false, 'icaSeeds', 0, 'signalTemplate', 'bump', 'dataUnit', 'uV', 'checkpoint', '', 'parallel', false, 'verbose', 'normal', 'progress', []));
+                'refineCutoffs', false, 'eogCheck', false, 'icaSeeds', 0, 'signalTemplate', 'bump', 'dataUnit', 'uV', 'checkpoint', '', 'maxSeconds', Inf, 'parallel', false, 'verbose', 'normal', 'progress', []));
+            validateattributes(opts.maxSeconds,{'numeric'},{'scalar','real','positive','nonnan'});
+            assert(isinf(opts.maxSeconds)||~isempty(opts.checkpoint),'PipeCompare:Options', ...
+                'A time-limited search requires a checkpoint folder.');
+            assert(isinf(opts.maxSeconds)||~opts.parallel,'PipeCompare:Options', ...
+                'Time slices use serial prefix sharing; run independent recordings in parallel.');
+            opts.artifactVariance=pipecompare.utils.fieldOr(opts,'artifactVariance',pipecompare.run.Executor.ArtifactVarianceDefault);
+            assert(any(strcmp(opts.artifactVariance,{'pooled','legacy-total','heteroscedastic'})),'PipeCompare:Options','Unknown artifact variance model.');
             assert(isnumeric(opts.icaSeeds) && isscalar(opts.icaSeeds) && opts.icaSeeds >= 0 && opts.icaSeeds == round(opts.icaSeeds), ...
                 'PipeCompare:Options', 'icaSeeds must be a whole number >= 0.');
             assert(any(strcmp(opts.signalTemplate, {'bump', 'data'})), 'PipeCompare:Options', ...
@@ -91,8 +110,18 @@ classdef Executor
             result = pipecompare.run.Executor.execute(result, false(numel(leaves), 1));
         end
 
-        function result = resume(dirName)
+        function result = resume(dirName, runtime)
             % Continue an interrupted search from its checkpoint folder.
+            if nargin<2,runtime=struct();end
+            % Round 8 strict checkpoint: the default resume path is
+            % unchanged (version warning + pooled default). Only when
+            % the caller explicitly passes strictCheckpoint=true does
+            % resume refuse a version mismatch or a missing
+            % artifactVariance, so old checkpoints cannot be silently
+            % mixed under a new variance model.
+            assert(all(ismember(fieldnames(runtime),{'maxSeconds','strictCheckpoint'})),'PipeCompare:Options', ...
+                'Resume overrides may only change maxSeconds and strictCheckpoint.');
+            strictCheckpoint = pipecompare.utils.fieldOr(runtime, 'strictCheckpoint', false);
             M = load(fullfile(dirName, 'manifest.mat'));
             R = load(fullfile(dirName, 'root.mat'));
             assert(isfield(M, 'identity') && isfield(R, 'identity') && strcmp(M.identity, R.identity), ...
@@ -104,15 +133,33 @@ classdef Executor
             assert(strcmp(searchIdentity(result), M.identity), 'PipeCompare:Checkpoint', ...
                 '%s: the stored starting dataset no longer matches the search identity.', dirName);
             v = versions();
-            if ~isequal(v.eeglab, result.versions.eeglab) || ~isequal(v.matlab, result.versions.matlab)
+            if strictCheckpoint
+                assert(isequal(v.eeglab, result.versions.eeglab) && isequal(v.matlab, result.versions.matlab), ...
+                    'PipeCompare:Checkpoint', 'Strict resume refuses a version mismatch (%s / %s now, %s / %s then).', ...
+                    v.matlab, v.eeglab, result.versions.matlab, result.versions.eeglab);
+                assert(isfield(result.options, 'artifactVariance') && ~isempty(result.options.artifactVariance), ...
+                    'PipeCompare:Checkpoint', 'Strict resume refuses a checkpoint without an explicit artifactVariance (it must not silently default to pooled).');
+            elseif ~isequal(v.eeglab, result.versions.eeglab) || ~isequal(v.matlab, result.versions.matlab)
                 pipecompare.utils.log('WARNING: software versions differ from the interrupted run (%s / %s now, %s / %s then).', ...
                     v.matlab, v.eeglab, result.versions.matlab, result.versions.eeglab);
             end
             done = false(numel(result.leaves), 1);
             files = dir(fullfile(dirName, 'leaf_*.mat'));
+            files=files(~cellfun(@isempty,regexp({files.name},'^leaf_[0-9]{6}\.mat$','once')));
             prev = repmat(emptyCand(), numel(result.leaves), 1);
             for f = 1:numel(files)
                 d = load(fullfile(dirName, files(f).name));
+                if isfield(d, 'id') && isscalar(d.id) && d.id > numel(result.leaves)
+                    % An adaptive candidate (refineCutoffs/eogCheck): saved
+                    % for audit and replay, but the manifest predates it, so
+                    % resume cannot restore it by id. Skipping it here keeps
+                    % resume working; the resumed search re-derives the
+                    % adaptive candidates when it reaches those phases.
+                    % The identity check below still applies, unchanged, to
+                    % every file that is actually loaded.
+                    pipecompare.utils.log('Skipping adaptive leaf file %s (id %d beyond the manifest leaves; saved for audit, re-derived on resume).', files(f).name, d.id);
+                    continue;
+                end
                 assert(isfield(d, 'identity') && strcmp(d.identity, M.identity) && d.id <= numel(result.leaves) && ...
                     strcmp(d.key, result.leaves(d.id).key), 'PipeCompare:Checkpoint', ...
                     'Checkpoint file %s does not belong to this search.', files(f).name);
@@ -123,13 +170,25 @@ classdef Executor
             pipecompare.utils.log('Resuming: %d of %d candidates already evaluated.', sum(done), numel(done));
             result.prevCands = prev;
             if isfield(result.options, 'stopAfter'), result.options = rmfield(result.options, 'stopAfter'); end
+            if isfield(runtime,'maxSeconds')
+                validateattributes(runtime.maxSeconds,{'numeric'},{'scalar','real','positive','nonnan'});
+                assert(isinf(runtime.maxSeconds)||~result.options.parallel,'PipeCompare:Options','Time slices require serial prefix sharing.');
+                result.options.maxSeconds=runtime.maxSeconds;
+            end
             result = pipecompare.run.Executor.execute(result, done);
         end
 
         function result = execute(result, done)
-            opts = result.options; contract = result.contract; leaves = result.leaves; tree = result.tree;
+            opts = result.options;
+            % Single default (was 'legacy-total' here): a checkpoint made
+            % before this option existed now resumes under 'pooled', the
+            % same model run() uses, rather than silently changing models
+            % between the two entry points.
+            opts.artifactVariance=pipecompare.utils.fieldOr(opts,'artifactVariance',pipecompare.run.Executor.ArtifactVarianceDefault);
+            result.options=opts;
+            contract = result.contract; leaves = result.leaves; tree = result.tree;
             root = result.root;
-            ref = pipecompare.eval.Measure.reference(root, contract);
+            ref = pipecompare.eval.Measure.reference(root, contract,opts);
             result.ref = ref;
             pipecompare.utils.log('Reference trials per condition: %s', ...
                 strjoin(arrayfun(@(c) sprintf('%s=%d', ref.names{c}, ref.n(c)), 1:numel(ref.n), 'UniformOutput', false), ', '));
@@ -146,6 +205,7 @@ classdef Executor
             try
                 env.spread = pipecompare.eval.Injection.shapeSpreads(S, contract, env.truth, leaves);
             catch ME
+                    if startsWith(ME.identifier,'PipeCompare:Checkpoint') || strcmp(ME.identifier,'PipeCompare:Interrupted'),rethrow(ME);end
                 env.spread = {};
                 pipecompare.utils.log('Signal shapes: not checked (%s); the bias leaves out what the filters do to other shapes.', ME.message);
             end
@@ -207,6 +267,7 @@ classdef Executor
                     c = emptyCand(); c.id = li; c.key = leaves(li).key; c.stratum = leaves(li).stratum;
                     c.status = 'excluded'; c.message = why{li};
                     pre(end+1, 1) = c; env.done(li) = true; tick(env, 1); %#ok<AGROW>
+                    saveLeaf(env, c);   % an excluded candidate is still part of the ranking input
                     pipecompare.utils.log('candidate %d excluded before running: %s', li, c.message);
                 end
                 if ~isempty(out)
@@ -257,6 +318,9 @@ classdef Executor
             end
             result.cands = allc;
             result.ranking = R;
+            if isempty(notRun)
+                saveRanking(env, R, result.labels);
+            end
             result.marginal = pipecompare.eval.Rank.marginal(R, result.leaves, result.report.searched);
             result.robustness = pipecompare.eval.Rank.robustness(allc, R, result.leaves, result.report.searched, ref);
             pipecompare.eval.Rank.print(R, result.labels);
@@ -295,13 +359,19 @@ classdef Executor
                     cx = ctx;
                     if strcmp(in.type, 'icremove'), cx.iclabel = labels; end
                     cx = choiceContext(env, child, cx, S);
-                    [E2, coms, info] = runStep(in, E, cx, env.opts.verbose);
+                    if strcmp(in.type,'ica') && ~isempty(env.opts.checkpoint)
+                        [E2,coms,info]=pipecompare.run.IcaCheckpoint.run(E,in,cx, ...
+                            env.opts.checkpoint,env.identity,@()runStep(in,E,cx,env.opts.verbose));
+                    else
+                        [E2, coms, info] = runStep(in, E, cx, env.opts.verbose);
+                    end
                     if isfield(info, 'iclabel'), labels = info.iclabel; end
                     for q = 1:numel(coms)
                         fprintf('    %s\n', coms{q});
                         E2 = eeg_hist(E2, coms{q});
                     end
                 catch ME
+                    if startsWith(ME.identifier,'PipeCompare:Checkpoint') || strcmp(ME.identifier,'PipeCompare:Interrupted'),rethrow(ME);end
                     out = [out; failUnder(env, under, in, ME)]; %#ok<AGROW>
                     continue;
                 end
@@ -363,6 +433,7 @@ classdef Executor
                     afterEach(q, @(args) relayProgress(prog, args, stopFile));
                     env.opts.progress = @(varargin) workerProgress(q, stopFile, varargin);
                 catch ME
+                    if startsWith(ME.identifier,'PipeCompare:Checkpoint') || strcmp(ME.identifier,'PipeCompare:Interrupted'),rethrow(ME);end
                     pipecompare.utils.log('Progress and Stop are not available while the pool runs (%s).', ME.message);
                 end
             end
@@ -536,7 +607,7 @@ classdef Executor
                 steps(:, 1), steps(:, 2));
             if any(chosen('uv') | chosen('threshold') | repair)
                 % a limit or threshold chosen from the data is judged against these data's own trials
-                ctx.ref = pipecompare.eval.Measure.reference(EEG, contract);
+                ctx.ref = pipecompare.eval.Measure.reference(EEG, contract,opts);
             end
             S = []; truth = [];
             if any(chosen('threshold') | repair)
@@ -814,10 +885,14 @@ if isfield(info, 'overLimit') && ~isempty(info.overLimit.counts)
     [labels, ~, j] = unique([acc.overLimit.labels(:); info.overLimit.labels(:)]);
     acc.overLimit = struct('labels', {labels(:)'}, 'counts', accumarray(j(:), [acc.overLimit.counts(:); info.overLimit.counts(:)])');
 end
-acc.steps{end+1} = stepFacts(in, info);
+acc.steps{end+1} = stepFacts(in, info, secs);
 end
 
-function f = stepFacts(in, info)
+function f = stepFacts(in, info, secs)
+% Round 8 timing: per-step wall seconds. Rank, replayDecision and
+% searchIdentity do not read this field, so ranking, replay and
+% checkpoint identity are unchanged by adding it.
+if nargin < 3, secs = NaN; end
 % What a step did, for the results' list of steps: its settings and the
 % decisions it made on these data (channels, components, epochs, epochs
 % kept by interpolating channels in them), and for ICLabel how many
@@ -839,7 +914,7 @@ function f = stepFacts(in, info)
 % error, those left as they are (leftAsIs), and those bad for part of the
 % recording (stretches: channel, samples); for the eye channels regressed
 % out, the channels and coefficients (eog).
-f = struct('type', in.type, 'params', in.params, 'interpolated', {{}}, 'removed', {{}}, ...
+f = struct('type', in.type, 'params', in.params, 'seconds', secs, 'interpolated', {{}}, 'removed', {{}}, ...
     'icsRemoved', NaN, 'icsTotal', NaN, 'rejected', NaN, 'epochsBefore', NaN, 'epochsInterpolated', NaN, ...
     'icsBrain', NaN, 'icsOther', NaN, 'otherMedian', NaN, 'icaPoints', NaN, 'uvChosen', NaN, 'thresholdChosen', NaN, 'icsConsidered', NaN, 'icsProtected', NaN, ...
     'comps', [], 'rejIdx', [], 'cutoffRefined', false, 'weightRatio', NaN, 'trialWeights', [], 'curves', [], 'keptShift', [], 'leftAsIs', {{}}, 'eog', [], 'stretches', [], 'stretchCheck', []);
@@ -862,6 +937,7 @@ try
     [~, S, matched] = evalc('pipecompare.run.Steps.replayDecision(in, S, info, ctx)');
     if ~matched, unmatched = {in.type}; end
 catch ME
+                    if startsWith(ME.identifier,'PipeCompare:Checkpoint') || strcmp(ME.identifier,'PipeCompare:Interrupted'),rethrow(ME);end
     pipecompare.utils.log('Signal check: the copy failed at step %s (%s); the pipelines below have no signal check.', ...
         in.label, ME.message);
     S = [];
@@ -977,6 +1053,7 @@ try
     end
     c.status = 'ok';
 catch ME
+                    if startsWith(ME.identifier,'PipeCompare:Checkpoint') || strcmp(ME.identifier,'PipeCompare:Interrupted'),rethrow(ME);end
     c.status = 'failed'; c.message = ['evaluation: ' ME.message];
 end
 el = toc(env.tStart);
@@ -1063,6 +1140,7 @@ try
     [cut, cinfo] = pipecompare.eval.Cutoff.search(E, rest, dec, struct('m', c.m, 'gain', c.signal.gain, ...
         'spread', pipecompare.utils.fieldOr(c.signal, 'shapeSpread', [])), cenv);
 catch ME
+                    if startsWith(ME.identifier,'PipeCompare:Checkpoint') || strcmp(ME.identifier,'PipeCompare:Interrupted'),rethrow(ME);end
     pipecompare.utils.log('Filter cutoffs not fine-tuned: %s', ME.message);
     return;
 end
@@ -1106,6 +1184,7 @@ try
         [ctx, acc] = advance(in, ctx, acc, info, coms, unmatched, toc(t0));
     end
 catch ME
+                    if startsWith(ME.identifier,'PipeCompare:Checkpoint') || strcmp(ME.identifier,'PipeCompare:Interrupted'),rethrow(ME);end
     pipecompare.utils.log('The pipeline with the fine-tuned cutoffs failed at step %s: %s', in.label, ME.message);
     return;
 end
@@ -1115,6 +1194,8 @@ cand.notes{end+1} = sprintf(['filter cutoffs fine-tuned from these data, startin
     cinfo.objectiveBase, cinfo.objectiveBest);
 result.leaves(li) = leaf; result.labels{li} = key2;
 allc(li, 1) = cand;
+saveLeaf(env, cand);   % an adaptive candidate is ranking input too: without
+                       % this file the recommendation cannot be replayed
 added = true;
 end
 
@@ -1174,6 +1255,7 @@ try
         [ctx, acc] = advance(in, ctx, acc, info, coms, unmatched, toc(t0));
     end
 catch ME
+                    if startsWith(ME.identifier,'PipeCompare:Checkpoint') || strcmp(ME.identifier,'PipeCompare:Interrupted'),rethrow(ME);end
     pipecompare.utils.log('Eye channels: pipeline %d with them regressed out failed (%s).', ib, ME.message);
     return;
 end
@@ -1184,6 +1266,8 @@ if strcmp(cand.status, 'ok') && strcmp(c.status, 'ok')
 end
 result.leaves(li) = leaf; result.labels{li} = key2;
 allc(li, 1) = cand;
+saveLeaf(env, cand);   % an adaptive candidate is ranking input too: without
+                       % this file the recommendation cannot be replayed
 added = true;
 end
 
@@ -1292,6 +1376,7 @@ try
         c.signal.shapeSpread = orig.signal.shapeSpread;
     end
 catch ME
+                    if startsWith(ME.identifier,'PipeCompare:Checkpoint') || strcmp(ME.identifier,'PipeCompare:Interrupted'),rethrow(ME);end
     pipecompare.utils.log('ICA check: pipeline %d failed (%s); not checked.', li, ME.message);
     c = [];
 end
@@ -1301,6 +1386,9 @@ function stop = tick(env, n, in)
 % Tell the caller's opts.progress that n more candidates are evaluated (and,
 % before a step, which step starts) and return its request to stop.
 stop = false;
+if toc(env.tStart)>=pipecompare.utils.fieldOr(env.opts,'maxSeconds',Inf)
+    error('PipeCompare:Interrupted','Time slice ended; saved candidates and ICA fits can be resumed.');
+end
 if ~isfield(env.opts, 'progress') || isempty(env.opts.progress), return; end
 if nargin < 3, stop = callProgress(env.opts.progress, {n}); else, stop = callProgress(env.opts.progress, {n, in}); end
 end
@@ -1337,6 +1425,20 @@ if isfield(env.opts, 'stopAfter') && numel(dir(fullfile(env.checkpoint, 'leaf_*.
     % simulated interruption (tests): everything saved so far is kept
     error('PipeCompare:Interrupted', 'Search interrupted after %d candidates (opts.stopAfter).', env.opts.stopAfter);
 end
+end
+
+function saveRanking(env, R, labels)
+% The final ranking, saved with the checkpoint for audit and replay: it
+% covers the adaptive candidates too, which the manifest predates (the
+% manifest is written before the search runs, so it cannot list them).
+% resume() never reads this file — it rebuilds the ranking from the leaf
+% files — so saving it cannot disturb a resumed search. Only saved for a
+% completed search: a stopped search has no final ranking.
+if isempty(env.checkpoint), return; end
+identity = env.identity; %#ok<NASGU>
+tmp = fullfile(env.checkpoint, 'ranking.tmp.mat');
+save(tmp, 'R', 'labels', 'identity', '-v7.3');
+movefile(tmp, fullfile(env.checkpoint, 'ranking.mat'), 'f');
 end
 
 function n = dataLevels(path, fs0)
@@ -1438,7 +1540,7 @@ function id = searchIdentity(result)
 % analysis contract, the enumerated pipelines and the options that change
 % results. A checkpoint folder belongs to exactly one identity.
 o = result.options;
-o = rmfield(o, intersect(fieldnames(o), {'checkpoint','stopAfter','parallel','verbose','dryRun','progress'}));
+o = rmfield(o, intersect(fieldnames(o), {'checkpoint','stopAfter','maxSeconds','parallel','verbose','dryRun','progress'}));
 md = java.security.MessageDigest.getInstance('SHA-256');
 root = result.root;
 % the data in blocks: the same bytes as double(root.data(:)), without a
@@ -1454,4 +1556,5 @@ parts = {getByteStreamFromArray(result.rootComs), getByteStreamFromArray(result.
 for k = 1:numel(parts), md.update(parts{k}); end
 id = lower(reshape(dec2hex(typecast(md.digest(), 'uint8'))', 1, []));
 end
+
 

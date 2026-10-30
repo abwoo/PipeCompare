@@ -1,4 +1,4 @@
-function out = pipecompare_benchmark(nRec, outDir, firstSeed)
+function out = pipecompare_benchmark(nRec, outDir, firstSeed, recipe, artifactVariance, resumeDir, maxSeconds)
 %PIPECOMPARE_BENCHMARK Ground-truth benchmark: does the pipeline PipeCompare
 %   recommends measure the P3 more accurately than common fixed pipelines?
 %
@@ -44,6 +44,10 @@ if nargin < 1 || isempty(nRec)
 end
 if nargin < 2 || isempty(outDir), outDir = tempdir; end
 if nargin < 3, firstSeed = 1; end
+if nargin < 4, recipe='standard'; end
+if nargin < 5, artifactVariance='pooled'; end
+if nargin < 6,resumeDir='';end
+if nargin < 7,maxSeconds=Inf;end
 validateattributes(nRec,{'numeric'},{'scalar','integer','positive'});
 validateattributes(firstSeed,{'numeric'},{'scalar','integer','positive'});
 names = {'PipeCompare', 'minimal', 'common'};
@@ -53,7 +57,18 @@ for rec = 1:nRec
     s = firstSeed + rec - 1;
     [EEG, truth] = bench_synth(s);
     setBase(EEG);
-    [~, ~, r] = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'11', '31'}, 'reference', 'average', 'show', 'off');
+    searchDir='';if ~isempty(resumeDir),searchDir=fullfile(resumeDir,sprintf('record_%d',s),'search');end
+    r=completedResult(searchDir);
+    if isempty(r)
+        if ~isempty(searchDir)&&isfile(fullfile(searchDir,'manifest.mat'))
+            r=pipecompare.PipeCompare.resume(searchDir,struct('maxSeconds',maxSeconds));
+        else
+            [~, ~, r] = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'11', '31'}, 'recipe', recipe, ...
+                'artifactvariance', artifactVariance, 'reference', 'average', 'show', 'off', ...
+                'checkpoint',searchDir,'maxseconds',maxSeconds);
+        end
+        saveResult(searchDir,r);
+    end
     c = r.contract;
     want = trueP3(truth, c, EEG.srate);
     population = populationP3(truth, c, EEG.srate);
@@ -71,6 +86,13 @@ for rec = 1:nRec
     end
     feas = find(strcmp(r.ranking.table.status, 'feasible'))';
     C = pipecompare.eval.Calibration.rows(r,feas,population,want,s);
+    % Keep reusable per-trial statistics outside the disposable checkpoints.
+    % Later scoring/uncertainty audits must not require another ICA fit.
+    score=pipecompare_record_summary(r,sprintf('synthetic_%d',s)); %#ok<NASGU>
+    source=struct('recording',s,'recipe',recipe,'artifactVariance',artifactVariance, ...
+        'revision',getenv('PIPECOMPARE_VALIDATION_REVISION'),'population',population,'realized',want); %#ok<NASGU>
+    save(fullfile(outDir,sprintf('scores_%d.mat',s)),'score','source','-v7');
+
     if ~isempty(C), if isempty(calib), calib = C; else, calib = [calib; C]; end, end %#ok<AGROW>
     % the fixed pipelines
     p = pipecompare.plan.Plan();
@@ -78,7 +100,7 @@ for rec = 1:nRec
     p = p.add('reref', 'mode', 'average', 'exclude', {eog});
     p = p.add('epoch'); p = p.add('baseline');
     p = p.add('reject_threshold', 'uv', 100, 'exclude', {eog});
-    [est(2, :), kept(2), label{2}] = fixed(p, c);
+    [est(2, :), kept(2), label{2}] = fixed(p, c, controlDir(searchDir,'minimal'),maxSeconds);
     q = pipecompare.plan.Plan();
     q = q.add('highpass', 'cutoff', 0.1); q = q.add('lowpass', 'cutoff', 30);
     q = q.add('badchannels', 'measure', 'kurt+prob', 'threshold', 5, 'exclude', {eog}, 'action', 'interpolate');
@@ -86,7 +108,7 @@ for rec = 1:nRec
     q = q.add('ica'); q = q.add('icremove', 'threshold', 0.8, 'classes', {{'Eye', 'Muscle'}});
     q = q.add('epoch'); q = q.add('baseline');
     q = q.add('reject_threshold', 'uv', 100, 'exclude', {eog});
-    [est(3, :), kept(3), label{3}] = fixed(q, c);
+    [est(3, :), kept(3), label{3}] = fixed(q, c, controlDir(searchDir,'common'),maxSeconds);
     for i = 1:3
         e = est(i, :) - want;
         rows(end+1, :) = {s, names{i}, label{i}, want(1), want(2), est(i, 1), est(i, 2), e(1), e(2), e(1) - e(2), kept(i), ...
@@ -120,6 +142,8 @@ if ~isempty(calib)
     lines{end+1} = sprintf(['Does the reported error tell the truth? actual / reported error (root mean squares; ', ...
         'above 1 = reported error understated), against population P3, over %d recordings:'], nDone);
     lines = [lines calibrationLines(C)];
+    lines{end+1} = ['Calibration concerns gain-corrected means (estimate/gain). Raw adopted-data means ', ...
+        'are not automatically divided by this diagnostic gain; rawError and rawConditionalError are also exported.'];
 end
 txt = strjoin(lines, newline);
 fprintf('%s\n', txt);
@@ -178,8 +202,16 @@ for k = 1:numel(want)
 end
 end
 
-function [est, kept, label] = fixed(p, c)
-r = pipecompare.PipeCompare.optimize(p, c);
+function [est, kept, label] = fixed(p, c, folder, maxSeconds)
+r=completedResult(folder);
+if isempty(r)
+    if ~isempty(folder)&&isfile(fullfile(folder,'manifest.mat'))
+        r=pipecompare.PipeCompare.resume(folder,struct('maxSeconds',maxSeconds));
+    else
+        r=pipecompare.PipeCompare.optimize(p,c,struct('checkpoint',folder,'maxSeconds',maxSeconds));
+    end
+    saveResult(folder,r);
+end
 label = r.labels{1};
 [est, kept] = estimateOf(r, 1);
 end
@@ -200,3 +232,21 @@ evalin('base', ['global ALLCOM; ALLEEG = []; [ALLEEG, EEG, CURRENTSET] = eeg_sto
     'EEG.history = BENCH_TMP.history; ALLEEG(CURRENTSET).history = BENCH_TMP.history; clear BENCH_TMP;']);
 end
 
+
+
+function folder=controlDir(searchDir,name)
+folder='';if ~isempty(searchDir),folder=fullfile(fileparts(searchDir),name);end
+end
+
+function r=completedResult(folder)
+r=[];if isempty(folder)||~isfile(fullfile(folder,'complete.mat')),return;end
+D=load(fullfile(folder,'complete.mat'),'r');r=D.r;
+r.options.checkpoint=folder;
+end
+
+function saveResult(folder,r)
+assert(r.notRun==0,'PipeCompare:Validation','A partial search cannot become a benchmark result.');
+if isempty(folder),return;end
+f=fullfile(folder,'complete.tmp.mat');save(f,'r','-v7.3');
+movefile(f,fullfile(folder,'complete.mat'),'f');
+end

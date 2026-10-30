@@ -1,4 +1,4 @@
-function [EEG, truth] = bench_synth(seed, opts)
+function [EEG, truth, sources] = bench_synth(seed, opts)
 %BENCH_SYNTH Simulated oddball recording with a known P3, for the benchmark.
 %   [EEG, truth] = bench_synth(seed, opts)
 %   Background: 24 cortical sources (smooth scalp fields, 1/f activity) on
@@ -14,6 +14,9 @@ function [EEG, truth] = bench_synth(seed, opts)
 %   uV; standards a third), lockedBlinks (share of target trials),
 %   blinkRate (per s), badChannels (count), muscleShare (of the time),
 %   artifactTrials (share).
+%   Optional third output sources separates additive generating components.
+%   It does not change the recording, truth, or RNG stream; use for audits,
+%   never as input to the operational selector.
 if nargin < 2, opts = struct(); end
 d = struct('srate', 250, 'seconds', 420, 'nPerCond', 75, 'p3', 6, 'lockedBlinks', 0.25, ...
     'blinkRate', 0.2, 'badChannels', 1, 'muscleShare', 0.05, 'artifactTrials', 0.1);
@@ -42,12 +45,21 @@ for c = 1:nch                                                            % slow 
     data(c, :) = data(c, :) + 20 * sin(2*pi*(0.01 + 0.04*rand) * t + 2*pi*rand);
 end
 data = data + (3 + 3 * rand(nch, 1)) * sin(2*pi*50*t);
+trace=nargout>2;sources=struct();
+if trace
+    sources.background=data;
+    for name={'blink','p3','movement','muscle','badChannel'},sources.(name{1})=zeros(nch,n);end
+end
 
 % random blinks (frontal)
 blinkTopo = field(at('FPZ'), 0.6);
 bw = -round(0.2*fs):round(0.2*fs); blink = exp(-0.5 * (bw / (0.05*fs)) .^ 2);
 bt = sort(randi([fs n - fs], 1, round(opts.blinkRate * opts.seconds)));
-for k = 1:numel(bt), data(:, bt(k) + bw) = data(:, bt(k) + bw) + blinkTopo' * (150 * blink); end
+for k = 1:numel(bt)
+    delta=blinkTopo' * (150 * blink);cols=bt(k)+bw;
+    data(:,cols)=data(:,cols)+delta;
+    if trace,sources.blink(:,cols)=sources.blink(:,cols)+delta;end
+end
 
 % events and the P3
 nTrials = 2 * opts.nPerCond;
@@ -64,16 +76,22 @@ for k = 1:nTrials
     truth.amp(k) = a * max(0, 1 + 0.3 * randn);
     truth.latency(k) = 0.40 + 0.04 * randn;
     wave = exp(-0.5 * ((tt/fs - truth.latency(k)) / truth.sigma) .^ 2);
-    data(:, lat(k) + tt) = data(:, lat(k) + tt) + truth.topo' * (truth.amp(k) * wave);
+    delta=truth.topo' * (truth.amp(k) * wave);cols=lat(k)+tt;
+    data(:,cols)=data(:,cols)+delta;
+    if trace,sources.p3(:,cols)=sources.p3(:,cols)+delta;end
     if strcmp(types{k}, '11') && rand < opts.lockedBlinks              % a blink in the P3 window
         truth.lockedBlink(k) = true;
         b0 = lat(k) + round((0.30 + 0.25 * rand) * fs);
-        data(:, b0 + bw) = data(:, b0 + bw) + blinkTopo' * (150 * blink);
+        delta=blinkTopo' * (150 * blink);cols=b0+bw;
+        data(:,cols)=data(:,cols)+delta;
+        if trace,sources.blink(:,cols)=sources.blink(:,cols)+delta;end
     end
     if rand < opts.artifactTrials                                       % movement: large, broad, all channels
         truth.artifact(k) = true;
         seg = round(fs * (0.1 + 0.5 * rand)) + (0:round(0.3*fs));
-        data(:, lat(k) + seg) = data(:, lat(k) + seg) + (0.5 + rand(nch, 1)) * (150 * sin(pi * (0:numel(seg)-1) / numel(seg)));
+        delta=(0.5 + rand(nch, 1)) * (150 * sin(pi * (0:numel(seg)-1) / numel(seg)));cols=lat(k)+seg;
+        data(:,cols)=data(:,cols)+delta;
+        if trace,sources.movement(:,cols)=sources.movement(:,cols)+delta;end
     end
 end
 
@@ -85,16 +103,27 @@ while m < opts.muscleShare * n
     on(s0 + (0:len-1)) = true; m = nnz(on);
 end
 side = {'T7', 'T8'};
-for s = 1:2, data = data + field(at(side{s}), 0.35)' * (emg .* on .* (0.5 + rand)); end
+for s = 1:2
+    delta=field(at(side{s}),0.35)' * (emg .* on .* (0.5 + rand));
+    data=data+delta;
+    if trace,sources.muscle=sources.muscle+delta;end
+end
 
 % bad channels: broadband noise of their own (poor contact)
 cand = find(~ismember(lab, [{'PZ', 'FPZ'} lab(eog)]));
 truth.bad = cand(randperm(numel(cand), opts.badChannels));
-for c = truth.bad, data(c, :) = data(c, :) + 30 * randn(1, n); end
+for c = truth.bad
+    delta=30*randn(1,n);data(c,:)=data(c,:)+delta;
+    if trace,sources.badChannel(c,:)=sources.badChannel(c,:)+delta;end
+end
 
 EEG = eeg_emptyset();
 EEG.setname = sprintf('bench_synth_%d', seed); EEG.srate = fs; EEG.data = single(data);
 EEG.nbchan = nch; EEG.pnts = n; EEG.trials = 1; EEG.xmin = 0; EEG.xmax = (n-1)/fs;
+if trace
+    total=sources.background+sources.blink+sources.p3+sources.movement+sources.muscle+sources.badChannel;
+    sources.rounding=double(EEG.data)-total;
+end
 EEG.chanlocs = chanlocs;
 EEG.event = struct('type', types, 'latency', num2cell(lat), 'duration', 0);
 EEG = eeg_checkset(EEG, 'eventconsistency');

@@ -1,0 +1,66 @@
+name: PR50 saved-output verification
+
+on:
+  push:
+    branches: [codex/pr50-consolidation-20261030]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: pr50-consolidation-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  saved-output-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SOURCE_HEAD: 6b26931619b8b11f630326638cdf2a4cb478e0fa
+      SOURCE_RUN: '40805638604'
+      MERGE_HEAD: 298744ab272fb038e96a981383b9428f3806544c
+      MERGE_RUN: '41053098369'
+      SHADOW_FIXTURES: consolidation_out/fixtures
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reuse completed MATLAB merge, wire-format fixtures and native proof
+        uses: actions/download-artifact@v4
+        with:
+          name: pr50-consolidation
+          path: consolidation_out
+          run-id: 41053098369
+          github-token: ${{ github.token }}
+      - name: Download original completed fragments only
+        uses: actions/download-artifact@v4
+        with:
+          pattern: shadow-seed-*
+          path: saved_fragments
+          run-id: 40805638604
+          github-token: ${{ github.token }}
+      - name: Check zero, singleton and multi-pair encodings and reject tampering
+        run: python -m unittest discover -s benchmarks -p test_shadow_summary.py -v
+      - name: Check diagnostic-evidence boundaries
+        run: python -m unittest discover -s benchmarks -p test_check_fast.py -v
+      - name: Independently verify the original source result
+        run: |
+          python benchmarks/check_shadow_selection.py saved_fragments consolidation_out/original_merge/shadow_selection_6b26931_20031_8.json consolidation_out/original_merge/shadow_selection_6b26931_20031_8.csv consolidation_out/original_merge/shadow_selection_6b26931_20031_8_summary.csv "$SOURCE_HEAD" 8
+      - name: Record source, merge and checking revisions without changing results
+        if: always()
+        env:
+          PROCESSING_SHA: ${{ github.sha }}
+          PROCESSING_RUN: ${{ github.run_id }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          report=dict(sourceAlgorithmCommit=os.environ["SOURCE_HEAD"],sourceRunId=os.environ["SOURCE_RUN"],mergeProcessingCommit=os.environ["MERGE_HEAD"],mergeRunId=os.environ["MERGE_RUN"],checkingCommit=os.environ["PROCESSING_SHA"],checkingRunId=os.environ["PROCESSING_RUN"],newScientificFits=0,scope="Reused completed original-fragment merge and MATLAB fixtures; Python verification only; no MATLAB, ICA or record search restarted")
+          Path("consolidation_out/checking_provenance.json").write_text(json.dumps(report,indent=2)+"\n")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pr50-consolidation-verified
+          path: consolidation_out
+          retention-days: 90

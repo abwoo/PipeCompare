@@ -1,0 +1,114 @@
+name: checkpointed optimization validation and guarded confirmation
+on:
+  push:
+    branches: [codex/optimization-recovery-20261025]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: checkpointed-optimization-pr50
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify data split, admission and checkpoint artifact guards
+        run: |
+          python -m unittest discover -s tests -p test_optimization_protocol.py
+          python -m unittest discover -s tests -p test_confirmation_gate.py
+          python -m unittest discover -s tests -p test_synthetic_slice.py
+      - name: Require the reviewed execution-only patch and full 2026 parity tests
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs=require('fs');
+            const expected='5e22e7534be739dea0d7a41ef4b95c92038f51fc';
+            const allowed=new Set([
+              '.github/workflows/optimization-validation.yml','.github/workflows/optimization-confirmation.yml',
+              'benchmarks/gate_optimization_confirmation.py','benchmarks/optimization_confirmation_gate.json',
+              'tests/test_confirmation_gate.py','docs/VALIDATION.md',
+              '+pipecompare/+run/Executor.m','+pipecompare/+run/IcaCheckpoint.m','+pipecompare/PipeCompare.m',
+              'pop_pipecompare.m','benchmarks/pipecompare_benchmark.m','benchmarks/pipecompare_optimization_synthetic.m',
+              'tests/test_engine.m','benchmarks/prepare_synthetic_slice.py','benchmarks/collect_synthetic_slices.py',
+              'tests/test_synthetic_slice.py','.github/workflows/optimization-synthetic-slice.yml',
+              '.github/workflows/optimization-recovery.yml']);
+            async function guard() {
+              const pr=(await github.rest.pulls.get({...context.repo,pull_number:50})).data;
+              if(pr.state!=='open'||pr.merged||pr.base.sha!=='7151821edf8a5a54c3167d7f18b66c530911b568')throw new Error('PR/base changed');
+              const here=(await github.rest.repos.getCommit({...context.repo,ref:context.sha})).data;
+              const current=(await github.rest.repos.getCommit({...context.repo,ref:pr.head.sha})).data;
+              if(here.commit.tree.sha!==current.commit.tree.sha)throw new Error('Recovery code differs from current PR');
+              const diff=(await github.rest.repos.compareCommitsWithBasehead({...context.repo,basehead:expected+'...'+context.sha})).data;
+              if(diff.status!=='ahead')throw new Error('Unexpected source ancestry');
+              const unexpected=(diff.files||[]).filter(f=>!allowed.has(f.filename));
+              if(unexpected.length)throw new Error('Scientific inputs or methods changed: '+unexpected.map(f=>f.filename));
+              return pr.head.sha;
+            }
+            const sha=await guard();
+            for(let n=0;n<160;n++) {
+              let ready=true;
+              for(const workflow of ['matlab-tests.yml','compat.yml']) {
+                const rs=await github.rest.actions.listWorkflowRuns({...context.repo,workflow_id:workflow,head_sha:sha,event:'pull_request'});
+                const r=rs.data.workflow_runs.find(r=>r.head_sha===sha);
+                if(r?.status==='completed'&&r.conclusion!=='success')throw new Error(workflow+' failed; no benchmark reuse');
+                ready=ready&&r?.status==='completed'&&r.conclusion==='success';
+              }
+              if(ready) {if(await guard()!==sha)throw new Error('PR moved');core.info('Exact-patch full CI and ICA resume parity passed');return;}
+              if(n%10===0)core.info('Waiting for full 2026 CI including native ICA checkpoint parity');
+              await new Promise(resolve=>setTimeout(resolve,30000));
+            }
+            throw new Error('Full CI did not complete in this admission window');
+  development:
+    needs: verify
+    uses: ./.github/workflows/optimization-validation.yml
+    with:
+      stage: development
+  admit:
+    needs: development
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      ready: ${{ steps.admit.outputs.ready }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Recheck PR revision before opening confirmation data
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr=(await github.rest.pulls.get({...context.repo,pull_number:50})).data;
+            const current=(await github.rest.repos.getCommit({...context.repo,ref:pr.head.sha})).data;
+            const here=(await github.rest.repos.getCommit({...context.repo,ref:context.sha})).data;
+            if(pr.state!=='open'||pr.merged||pr.base.sha!=='7151821edf8a5a54c3167d7f18b66c530911b568'||current.commit.tree.sha!==here.commit.tree.sha)
+              throw new Error('PR changed after development; confirmation stays unused');
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: development-optimization-*-summary
+          path: development_source
+      - name: Normalize development artifact directories
+        run: |
+          python - <<'PYCODE'
+          from pathlib import Path
+          for p in Path('development_source').glob('development-optimization-*-summary'):
+              p.rename(p.with_name(p.name.removeprefix('development-')))
+          PYCODE
+      - id: admit
+        name: Apply the unchanged prespecified development screen
+        run: python benchmarks/gate_optimization_confirmation.py development_source admission/admission.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: checkpointed-confirmation-admission
+          path: admission
+          retention-days: 90
+      - name: Explain a withheld confirmation
+        if: steps.admit.outputs.ready == 'false'
+        run: echo 'Development did not meet the prespecified screen. Confirmation data remain unused.'
+  confirmation:
+    needs: admit
+    if: needs.admit.outputs.ready == 'true'
+    uses: ./.github/workflows/optimization-validation.yml
+    with:
+      stage: confirmation

@@ -1964,3 +1964,75 @@ for cf = [64 1000; 160 1000; 256 2048]'
 end
 end
 
+
+
+function testIcaCheckpointPreservesNativeOutputAndRandomState(tc)
+EEG=nqc_synth(struct('seconds',60,'nPerCond',10,'artifactTrials',0));
+in=struct('type','ica','params',struct('extended',1,'fitHighpass',0,'fitClean',0), ...
+    'key','ica','slot','ica','label','ica');
+ctx=struct();d=tempname;mkdir(d);clean=onCleanup(@()rmdir(d,'s')); %#ok<NASGU>
+[~,A,ca,ia]=evalc('pipecompare.run.Steps.run(in,EEG,ctx)');nativeState=rng;
+[~,B,cb,ib]=evalc('pipecompare.run.IcaCheckpoint.run(EEG,in,ctx,d,''test-search'',@()pipecompare.run.Steps.run(in,EEG,ctx))');
+verifyEqual(tc,B,A);verifyEqual(tc,cb,ca);verifyEqual(tc,ib,ia);verifyEqual(tc,rng,nativeState);
+% runica activates legacy RNG mode; explicitly choose the disturbance generator.
+rng(913,'twister');
+[C,cc,ic]=pipecompare.run.IcaCheckpoint.run(EEG,in,ctx,d,'test-search',@()checkpointTestFailure('test:UnexpectedCompute','Must reuse'));
+verifyEqual(tc,C,A);verifyEqual(tc,cc,ca);verifyEqual(tc,ic,ia);verifyEqual(tc,rng,nativeState);
+changed=EEG;changed.data(1,1)=changed.data(1,1)+1;
+verifyError(tc,@()pipecompare.run.IcaCheckpoint.run(changed,in,ctx,d,'test-search', ...
+    @()checkpointTestFailure('test:Fresh','Changed input')),'test:Fresh');
+verifyError(tc,@()pipecompare.run.IcaCheckpoint.run(EEG,in,struct('icaSeed',1),d,'test-search', ...
+    @()checkpointTestFailure('test:Fresh','Changed seed')),'test:Fresh');
+verifyError(tc,@()pipecompare.run.IcaCheckpoint.run(EEG,in,ctx,d,'different-search', ...
+    @()checkpointTestFailure('test:Fresh','Changed identity')),'test:Fresh');
+f=dir(fullfile(d,'ica_cache','*.mat'));file=fullfile(f(1).folder,f(1).name);
+S=load(file);validState=S.rngState;S.rngState=struct('Type','invalid-generator');save(file,'-struct','S','-v7.3');
+verifyError(tc,@()pipecompare.run.IcaCheckpoint.run(EEG,in,ctx,d,'test-search', ...
+    @()checkpointTestFailure('test:UnexpectedCompute','Invalid random state must be refused')),'PipeCompare:Checkpoint');
+S.rngState=validState;S.key='corrupt';save(file,'-struct','S','-v7.3');
+verifyError(tc,@()pipecompare.run.IcaCheckpoint.run(EEG,in,ctx,d,'test-search', ...
+    @()checkpointTestFailure('test:UnexpectedCompute','Corruption must be refused')),'PipeCompare:Checkpoint');
+end
+
+function testResumeRetainsIcaSeedsAndRecommendation(tc)
+EEG=nqc_synth(struct('seconds',150,'nPerCond',30,'artifactTrials',0));nqc_setBase(EEG);
+p=pipecompare.plan.Plan();p=p.add('reref','mode','average');
+p=p.add('ica','fitHighpass',0,'fitClean',0);p=p.add('highpass','cutoff',{0.1,0.5});
+p=p.add('epoch');p=p.add('baseline');
+o=struct('icaSeeds',2,'filterCheck',false);full=pipecompare.PipeCompare.optimize(p,nqc_c(),o);
+d=tempname;clean=onCleanup(@()rmdir(d,'s')); %#ok<NASGU>
+o.checkpoint=d;o.stopAfter=1;
+verifyError(tc,@()pipecompare.PipeCompare.optimize(p,nqc_c(),o),'PipeCompare:Interrupted');
+% A worker killed during an atomic leaf write must not load the temporary file.
+fid=fopen(fullfile(d,'leaf_999999.tmp.mat'),'w');fwrite(fid,'partial');fclose(fid);
+res=pipecompare.PipeCompare.resume(d,struct('maxSeconds',Inf));
+verifyEqual(tc,res.ranking.table.objective,full.ranking.table.objective,'AbsTol',1e-10);
+verifyEqual(tc,res.ranking.recommended,full.ranking.recommended);
+verifyEqual(tc,res.icaSeeds.objective,full.icaSeeds.objective,'AbsTol',1e-10);
+verifyEqual(tc,res.icaSeeds.recommended,full.icaSeeds.recommended);
+verifyEqual(tc,res.icaSeeds.seeds,[1 2]);
+% A late retry must reuse both independently seeded decompositions too.
+[txt,again]=evalc('pipecompare.PipeCompare.resume(d)');
+verifyTrue(tc,contains(txt,'Reused exact ICA checkpoint (seed 1)'));
+verifyTrue(tc,contains(txt,'Reused exact ICA checkpoint (seed 2)'));
+verifyEqual(tc,again.icaSeeds.objective,full.icaSeeds.objective,'AbsTol',1e-10);
+verifyEqual(tc,again.ranking.recommended,full.ranking.recommended);
+end
+
+function testTimeSliceRequiresCheckpointAndCanResume(tc)
+EEG=nqc_synth(struct('seconds',60,'nPerCond',12));nqc_setBase(EEG);
+p=pipecompare.plan.Plan();p=p.add('epoch');p=p.add('baseline');
+verifyError(tc,@()pipecompare.PipeCompare.optimize(p,nqc_c(),struct('maxSeconds',1)),'PipeCompare:Options');
+d=tempname;clean=onCleanup(@()rmdir(d,'s')); %#ok<NASGU>
+verifyError(tc,@()pipecompare.PipeCompare.optimize(p,nqc_c(), ...
+    struct('checkpoint',d,'maxSeconds',realmin,'filterCheck',false)),'PipeCompare:Interrupted');
+verifyTrue(tc,isfile(fullfile(d,'manifest.mat')));
+verifyError(tc,@()pipecompare.PipeCompare.resume(d,struct('icaSeeds',0)),'PipeCompare:Options');
+r=pipecompare.PipeCompare.resume(d,struct('maxSeconds',Inf));
+verifyEqual(tc,r.notRun,0);verifyTrue(tc,all(strcmp({r.cands.status},'ok')));
+end
+
+function [E,coms,info]=checkpointTestFailure(identifier,message) %#ok<STOUT>
+% Match the three-output compute interface before raising the intended sentinel.
+error(identifier,'%s',message);
+end

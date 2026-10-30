@@ -48,9 +48,9 @@ classdef Rank
     %      trials, by urevent, for every candidate). A candidate is "not
     %      distinguished from the best" unless the data show it is worse
     %      than some other candidate, with intervals simultaneous over all
-    %      candidate pairs: the probability that ANY candidate is wrongly
-    %      declared worse stays <= ~5% for any number of candidates (alpha
-    %      = 0.02 chosen by simulation for 2-24 candidates, 20-100 trials,
+    %      candidate pairs, conditional on the fitted candidates. A roughly
+    %      5% family-wise rate was seen in the tested simulations (alpha
+    %      = 0.02 chosen for 2-24 candidates, 20-100 trials,
     %      unequal condition sizes, correlated candidates; see
     %      test_statistics). This is the bootstrap max-statistic of White
     %      (2000) and Romano & Wolf (2005); the set kept is a model
@@ -129,7 +129,7 @@ classdef Rank
                 'maxAmplitudeError', 0.10, 'maxLatencyShiftMs', 10, 'maxArtifactPct', 0.05, ...
                 'minWaveformCorr', 0.95, 'minTopoCorr', 0.90, ...
                 'objective', 'composite', 'nBoot', 1999, 'nBootPeakOuter', 999, 'nBootPeakInner', 100, ...
-                'nBootPeak', 1000, 'alpha', 0.02, 'seed', 1, 'equivalenceMargin', 0.05, 'nSplits', 20);
+                'nBootPeak', 1000, 'alpha', 0.02, 'seed', 1, 'equivalenceMargin', 0.05, 'nSplits', 20, 'upgradeBaseline', [], 'protectReferenceCleanup', true);
         end
 
         function R = run(cands, ref, opts, levels)
@@ -147,6 +147,7 @@ classdef Rank
             stratum = repmat({''}, n, 1);
             primary = nan(n, 1); minRet = nan(n, 1); minKept = nan(n, 1); interp = nan(n, 1);
             ampErr = nan(n, 1); latSh = nan(n, 1); artPct = nan(n, 1); wCorr = nan(n, 1); tCorr = nan(n, 1);
+            associationRisk=nan(n,nO);artifactSE=nan(n,nO);
             objAgg = nan(n, nO); noise = nan(n, 1); bias = nan(n, 1); eyeB = nan(n, nO); spreads = nan(n, nO);
             for i = 1:n
                 c = cands(i);
@@ -165,7 +166,10 @@ classdef Rank
                 objAgg(i, :) = [m.objectives.agg] ./ g;
                 [primary(i), noise(i), bias(i)] = primaryPoint(m, objName, ref, g, sp);
                 for k = 1:nO
-                    eb = pipecompare.utils.fieldOr(m.objectives(k), 'eyeBias', 0);
+                    [~,~,~,sensitivity]=pipecompare.eval.Rank.conditionErrors(m.objectives(k),g(k),sp(k));
+                    associationRisk(i,k)=sqrt(mean(sensitivity.associationError.^2));
+                    artifactSE(i,k)=max(sensitivity.artifactBiasSE);
+                    eb = pipecompare.utils.fieldOr(m.objectives(k), 'eyeBias', NaN);
                     if all(isfinite(eb))
                         [~, at] = max(abs(eb)); eyeB(i, k) = eb(at);   % the condition where blinks add most
                     end
@@ -181,8 +185,16 @@ classdef Rank
                 assessedUse = 1:nO;
                 if ~strcmp(objName,'composite'), assessedUse = find(strcmp(ref.objectives,objName)); end
                 for k = assessedUse
+                    % Eye bias is only applicable to scalar objectives
+                    % (Measure sets eyeBiasApplicable false for peak and
+                    % other non-scalar kinds, where it is NaN, not 0).
+                    % A non-applicable objective must not be rejected for
+                    % an unassessed bias, and must not pass as if assessed:
+                    % its table eyeBias is NaN and its ranking bias is
+                    % shape-only (see biasOf).
+                    applicable = pipecompare.utils.fieldOr(m.objectives(k),'eyeBiasApplicable',true);
                     assessed = pipecompare.utils.fieldOr(m.objectives(k),'eyeBiasAssessed',true);
-                    if any(~assessed)
+                    if applicable && any(~assessed)
                         why{end+1} = 'artifact bias unassessed: no artifact-free comparison trials'; %#ok<AGROW>
                         break;
                     end
@@ -205,15 +217,33 @@ classdef Rank
             lo = nan(n, 1); hi = nan(n, 1); hiKept = nan(n, 1); notDist = false(n, 1); equiv = false(n, 1);
             recommended = []; best = [];
             byStratum = struct('stratum', {}, 'best', {}, 'recommended', {}, 'set', {}, 'crossfit', {}, 'stability', {}, ...
-                'factorial', {});
+                'factorial', {}, 'bootstrapCompleteShare', {}, 'bootstrapUnavailableShare', {}, 'upgradeGuard', {}, ...
+                'guardDisabled', {}, 'guardSuperseded', {}, 'bootstrapRepairUnavailableShare', {});
             chosen = nan(n, 1); shrunk = nan(n, 1);
             strata = unique(stratum(strcmp(status, 'feasible')), 'stable');
+            if ~isempty(opts.upgradeBaseline)
+                validateattributes(opts.upgradeBaseline,{'numeric'},{'scalar','integer','positive','<=',n});
+                assert(numel(strata)==1 && strcmp(status{opts.upgradeBaseline},'feasible'), ...
+                    'PipeCompare:Baseline','The upgrade baseline must be feasible in the single comparison stratum.');
+            end
+            bestSetUndefined = false;
             for s = 1:numel(strata)
                 feas = find(strcmp(status, 'feasible') & strcmp(stratum, strata{s}));
                 boot = pipecompare.eval.Rank.bootstrap(cands(feas), ref, opts, {objName});
                 pts = primary(feas);
                 [~, ib] = min(pts);
                 [keep, l, h, hEq, crit] = bestSet(pts(:), boot{1}, ib, opts.alpha);
+                if isinf(crit)
+                    bestSetUndefined = true;
+                    % Round 8 gap: bestSet is undefined when the critical
+                    % value is infinite (incomplete bootstrap support);
+                    % selection then falls back to point estimates. This
+                    % note only, it does not change keep/pick.
+                    note='bestSet undefined: critical value is infinite (incomplete bootstrap support); selection fell back to point estimates, do not read the kept set as a confidence set';
+                    for q=feas(:)'
+                        pieces={notes{q},note};notes{q}=strjoin(pieces(~cellfun(@isempty,pieces)),'; ');
+                    end
+                end
                 lo(feas) = l; hi(feas) = h; notDist(feas(keep)) = true;
                 % equivalent: the whole interval within the margin of the best
                 hEq(~keep) = NaN; hiKept(feas) = hEq;
@@ -225,11 +255,61 @@ classdef Rank
                 th = pipecompare.eval.Rank.shrink(F, pts(:)); shrunk(feas) = th;
                 biased = double(bias > pipecompare.eval.Rank.BiasShare * noise);
                 rec = feas(choose(keep, th, biased(feas), equiv(feas), minRet(feas), ampStep(ampErr(feas))));
+                base=[];guard=[];pick=find(feas==rec);
+                guardDisabled=~opts.protectReferenceCleanup;
+                guardSuperseded=~isempty(opts.upgradeBaseline);
+                [repaired,needsRepair]=pipecompare.eval.Rank.referenceProtection(cands(feas));
+                if guardDisabled,repaired(:)=false;needsRepair(:)=false;end
+                if guardSuperseded
+                    base=find(feas==opts.upgradeBaseline);
+                    [pick,guard]=pipecompare.eval.Rank.guardUpgrade(pts,pick,base,max(crit,0));
+                    guard.origin='explicit-baseline';
+                else
+                    [pick,guard]=pipecompare.eval.Rank.guardReference(pts,th,biased(feas),repaired,needsRepair,pick,max(crit,0));
+                end
+                if ~isempty(guard)
+                    guard.baseline=feas(guard.baseline);guard.proposed=feas(guard.proposed);
+                    guard.artifactVariance=pipecompare.utils.fieldOr(ref,'artifactVariance','pooled');
+                end
+                rec=feas(pick);
+                if guardDisabled
+                    note='reference cleanup guard disabled (protectReferenceCleanup=false); the recommendation is unguarded';
+                    pieces={notes{rec},note};notes{rec}=strjoin(pieces(~cellfun(@isempty,pieces)),'; ');
+                end
+                % Round 8 A2: guard conclusions that are not 'disabled' or
+                % 'superseded' were previously log-only. Surface the two
+                % misleading cases in the result table; pick is unchanged.
+                if ~isempty(guard) && strcmp(guard.decision,'unassessed')
+                    note='reference cleanup guard unassessed; the proposal was kept by default, not by a guard pass';
+                    pieces={notes{rec},note};notes{rec}=strjoin(pieces(~cellfun(@isempty,pieces)),'; ');
+                end
+                if ~isempty(guard) && strcmp(guard.decision,'retain-baseline')
+                    note='reference cleanup guard retained the baseline instead of the proposal';
+                    pieces={notes{rec},note};notes{rec}=strjoin(pieces(~cellfun(@isempty,pieces)),'; ');
+                end
+                if guardSuperseded
+                    note='reference cleanup guard superseded by an explicit upgradeBaseline';
+                    pieces={notes{rec},note};notes{rec}=strjoin(pieces(~cellfun(@isempty,pieces)),'; ');
+                    if ~isempty(guard) && strcmp(guard.decision,'baseline-already-selected')
+                        note='guard idle warning: upgradeBaseline equals the proposed candidate, so the guard did not change the choice';
+                        pieces={notes{rec},note};notes{rec}=strjoin(pieces(~cellfun(@isempty,pieces)),'; ');
+                    end
+                end
                 cf = pipecompare.eval.Rank.crossfit(cands(feas), ref, opts, objName, pts(ib), F);
-                f = selectionFrequency(boot{1}, crit, minRet(feas), ampStep(ampErr(feas)), biased(feas), equiv(feas), F);
+                if ~isempty(cf),cf.upgradeGuardApplied=false;end
+                [f, unavailableShare, repairUnavailableShare] = selectionFrequency(boot{1}, crit, minRet(feas), ampStep(ampErr(feas)), biased(feas), equiv(feas), F,base,repaired,needsRepair);
+                completeShare=mean(all(isfinite(boot{1}),1));
+                if completeShare<1
+                    for q=feas(:)'
+                        note=sprintf('paired bootstrap incomplete in %.1f%% of draws; incomplete maxima are unbounded; covariance fits require complete paired support',100*(1-completeShare));
+                        pieces={notes{q},note};notes{q}=strjoin(pieces(~cellfun(@isempty,pieces)),'; ');
+                    end
+                end
                 chosen(feas) = f;
                 byStratum(end+1) = struct('stratum', strata{s}, 'best', feas(ib), 'recommended', rec, 'set', t, ...
-                    'crossfit', cf, 'stability', f(feas == rec), 'factorial', F); %#ok<AGROW>
+                    'crossfit', cf, 'stability', f(feas == rec), 'factorial', F, ...
+                    'bootstrapCompleteShare',completeShare,'bootstrapUnavailableShare',unavailableShare,'upgradeGuard',guard, ...
+                    'guardDisabled',guardDisabled,'guardSuperseded',guardSuperseded,'bootstrapRepairUnavailableShare',repairUnavailableShare); %#ok<AGROW>
             end
             if isscalar(byStratum)
                 recommended = byStratum.recommended; best = byStratum.best;
@@ -242,13 +322,87 @@ classdef Rank
                 'chosenShare','minRetention','minTrials','interpolated','ampError', ...
                 'latencyShiftMs','artifactPct','waveformCorr','topoCorr','reason','note'});
             for k = 1:nO
+                T.(matlab.lang.makeValidName(['associationRisk_' ref.objectives{k}]))=associationRisk(:,k);
+                T.(matlab.lang.makeValidName(['artifactBiasSE_' ref.objectives{k}]))=artifactSE(:,k);
                 T.(matlab.lang.makeValidName(['sme_' ref.objectives{k}])) = objAgg(:, k);   % gain-corrected
                 T.(matlab.lang.makeValidName(['gain_' ref.objectives{k}])) = gains(:, k);
                 T.(matlab.lang.makeValidName(['eyeBias_' ref.objectives{k}])) = eyeB(:, k);   % in the measure's unit
                 T.(matlab.lang.makeValidName(['shapeSpread_' ref.objectives{k}])) = spreads(:, k);
             end
-            R = struct('table', T, 'whyList', {whyList}, 'order', order, 'best', best, 'recommended', recommended, ...
-                'byStratum', byStratum, 'objective', objName, 'options', opts, 'units', {ref.units});
+            % Round 8 gap: bestSetUndefined is a report flag only. The
+            % keep-all behaviour itself is NOT changed in this bundle
+            % (changing it would change pick; see the strict prototype
+            % in benchmarks/bestset_strict_prototype.m, which is a
+            % separate arm, not wired into Rank.run).
+            R = struct('table', T, 'whyList', {whyList}, 'order', order, 'best', best, 'recommended', recommended, 'bestSetUndefined', bestSetUndefined, ...
+                'byStratum', byStratum, 'objective', objName, 'options', opts, 'units', {ref.units}, ...
+                'validationScope','conditional-on-fitted-candidates','fullyHeldOut',false);
+        end
+
+        function [repaired, needsRepair] = referenceProtection(cands)
+            % Catalog keys identify interpolation BEFORE average reference.
+            % Native commands and other reference definitions are not inferred.
+            n=numel(cands);repaired=false(n,1);needsRepair=false(n,1);
+            for k=1:n
+                key=pipecompare.utils.fieldOr(cands(k),'key','');
+                parts=strsplit(char(key),' > ');
+                av=find(startsWith(parts,'reref(')&contains(parts,'mode=average'),1);
+                if isempty(av),continue;end
+                needsRepair(k)=true;
+                repair=find(startsWith(parts,'badchannels(')&contains(parts,'action=interpolate'));
+                repaired(k)=any(repair<av);
+            end
+        end
+
+        function [pick, guard] = guardReference(pts, th, biased, repaired, needsRepair, proposed, critical)
+            % Skipping channel repair before average reference can distribute
+            % one faulty channel across the montage. Compare that skip with
+            % an eligible repaired candidate before accepting a tiny gain.
+            pick=proposed;guard=[];
+            if ~needsRepair(proposed)||repaired(proposed),return;end
+            eligible=repaired(:)&isfinite(pts(:))&isfinite(th(:));
+            if ~any(eligible),return;end
+            eligible=eligible & pts(:)-min(pts(eligible))<=critical;
+            unbiased=eligible&~logical(biased(:));
+            if any(unbiased),eligible=unbiased;end
+            ids=find(eligible);[~,at]=min(th(ids));base=ids(at);
+            [pick,guard]=pipecompare.eval.Rank.guardUpgrade(pts,proposed,base,critical);
+            guard.origin='average-reference-cleanup';
+        end
+
+        function [pick, guard] = guardUpgrade(pts, proposed, baseline, critical)
+            % The proposal is maintained unless the baseline is shown
+            % significantly better: only the reverse simultaneous
+            % paired-bootstrap bound below zero replaces it. Indistinguishable
+            % evidence, and missing evidence, both maintain the proposal;
+            % they are told apart by decision ('maintain' vs 'unassessed').
+            % critical must cover ALL candidate pairs (bestSet), including
+            % selection. This controls fitted-score promotion, not unknown
+            % true error. lowerDifference is the reverse bound; critical and
+            % ptsDifference are recorded for audit. artifactVariance is
+            % filled in by the caller (Rank.run) where the run's variance
+            % mode is known.
+            validateattributes(pts,{'numeric'},{'vector','real','nonempty'});
+            validateattributes(proposed,{'numeric'},{'scalar','integer','positive','<=',numel(pts)});
+            validateattributes(baseline,{'numeric'},{'scalar','integer','positive','<=',numel(pts)});
+            validateattributes(critical,{'numeric'},{'scalar','real','nonnegative','nonnan'});
+            pick=proposed;upper=Inf;lower=Inf;decision='unassessed';
+            if proposed==baseline
+                upper=0;lower=0;decision='baseline-already-selected';
+            elseif all(isfinite(pts([proposed baseline]))) && isfinite(critical)
+                upper=pts(proposed)-pts(baseline)+critical;
+                lower=pts(baseline)-pts(proposed)+critical;
+                if upper<0
+                    decision='maintain';
+                elseif lower<0
+                    pick=baseline;decision='retain-baseline';
+                else
+                    decision='maintain';
+                end
+            end
+            guard=struct('baseline',baseline,'proposed',proposed,'upperDifference',upper, ...
+                'lowerDifference',lower,'critical',critical,'ptsDifference',pts(proposed)-pts(baseline), ...
+                'decision',decision,'scope','conditional-on-fitted-score; not a guarantee of true error');
         end
 
         function why = signalReasons(sg, opts)
@@ -357,7 +511,7 @@ classdef Rank
             chosen = ib; nEq = 1;
             for i = seq(:)'
                 d = pts(i) - pts(ib);
-                dev = (Bq(i, :) - Bq(ib, :)) - d; dev = dev(isfinite(dev));
+                dev = (Bq(i, :) - Bq(ib, :)) - d; dev(~isfinite(dev))=Inf;
                 if ~isfinite(d) || isempty(dev) || ~(d + upperQuantile(dev, alpha) <= margin * pts(ib)), break; end
                 chosen = i; nEq = nEq + 1;
             end
@@ -377,12 +531,17 @@ classdef Rank
             name = resolveObjective(obj, ref);
         end
 
-        function [total, noise, bias] = conditionErrors(o, gain, spread)
+        function [total, noise, bias, sensitivity] = conditionErrors(o, gain, spread)
             % The same per-condition error used by primaryPoint. Benchmark
             % calibration must include both artifact and shape bias.
             noise = o.sme / gain;
             bias = biasOf(o, gain, spread);
             total = sqrt(noise .^ 2 + bias .^ 2);
+            association=pipecompare.utils.fieldOr(o,'eyeBias',nan(size(o.estimate)));
+            associationError=sqrt(noise.^2+((abs(association)+abs(o.estimate)*spread)/gain).^2);
+            se=pipecompare.utils.fieldOr(o,'eyeBiasSE',nan(size(o.estimate)))/gain;
+            sensitivity=struct('associationError',associationError,'artifactBiasSE',se, ...
+                'scope','Association sensitivity, not causal bias or a calibrated absolute error bound');
         end
 
         function cf = crossfit(cands, ref, opts, objName, apparent, F)
@@ -442,10 +601,19 @@ classdef Rank
                 end
                 vAA(~isfinite(vAA)) = NaN; vBB(~isfinite(vBB)) = NaN;
                 if all(isnan(vAA)) || all(isnan(vBB)), continue; end
-                [~, ia] = min(pipecompare.eval.Rank.shrink(F, vAA(:))); [~, ib] = min(pipecompare.eval.Rank.shrink(F, vBB(:)));
+                % Round 8 A1: min() propagates NaN, so a never-assessed
+                % candidate could be chosen as the half-sample best.
+                % Non-finite shrunk values are Inf for the argmin only;
+                % the scored values below stay the original halves.
+                sA = pipecompare.eval.Rank.shrink(F, vAA(:)); sA(~isfinite(sA)) = Inf;
+                sB = pipecompare.eval.Rank.shrink(F, vBB(:)); sB(~isfinite(sB)) = Inf;
+                if all(isinf(sA)) || all(isinf(sB)), continue; end
+                [~, ia] = min(sA); [~, ib] = min(sB);
                 honest = [honest vAB(ia) vBA(ib)]; inSample = [inSample vAA(ia) vBB(ib)]; %#ok<AGROW>
             end
-            ok = isfinite(honest);
+            % Round 8 A1: an honest value with a NaN in-sample value must
+            % not poison halfInSample through mean(NaN).
+            ok = isfinite(honest) & isfinite(inSample);
             if ~any(ok), return; end
             h = mean(honest(ok));
             cf = struct('apparent', apparent, 'honest', h, 'overstatement', h / apparent - 1, ...
@@ -475,13 +643,21 @@ classdef Rank
             % (Efron & Morris, 1973; empirical Bayes): the interactions
             % the data show are kept, the rest is taken for noise. F: the
             % pipelines in the model (use), H, s, df; [] when fewer than 4
-            % pipelines are in it or df < 3 (nothing to borrow).
+            % pipelines are in it, df < 3, fewer than 20 complete paired
+            % draws, or paired covariance is unassessed. The covariance
+            % uses the complete draws only (Sig below), so a few incomplete
+            % draws no longer veto the model outright: the old "every draw
+            % complete" gate refused shrinkage exactly when the data were
+            % messy, which let a single NaN fall through to an unshrunk
+            % choice. The 20-complete-draw floor keeps the statistical
+            % requirement (a covariance over 4+ pipelines needs enough
+            % draws) without the veto.
             F = [];
             K = numel(pts);
             if numel(levels) ~= K, return; end
             use = find(~cellfun(@isempty, levels(:)'));
             ok = all(isfinite(Bq(use, :)), 1);
-            if numel(use) < 4 || nnz(ok) < 20 || ~all(isfinite(pts(use))), return; end
+            if numel(use) < 4 || size(Bq,2) < 20 || sum(ok) < 20 || ~all(isfinite(pts(use))), return; end
             slots = {};
             for i = use, slots = [slots levels{i}(:, 1)']; end %#ok<AGROW>
             slots = unique(slots, 'stable');
@@ -507,14 +683,26 @@ classdef Rank
         function th = shrink(F, v)
             % The objectives v (K x 1) through the factorial model F
             % (factorialModel): H v + s (I - H) v for the pipelines in it,
-            % v itself for the others, and all of v when F is [] or a value
-            % in the model is not finite.
+            % v itself for the others, and all of v when F is []. A value
+            % that is not finite is never shrunk and never poisons the
+            % others: only the finite entries are shrunk (through the
+            % finite sub-block of H, which is the full projection when
+            % every entry is finite), and the non-finite entries keep NaN.
+            % The old whole-vector veto returned v unchanged when any
+            % model value was NaN, so one unassessed candidate silently
+            % disabled shrinkage for all the others.
             th = v;
             if isempty(F), return; end
             x = v(F.use);
-            if ~all(isfinite(x)), return; end
-            fit = F.H * x;
-            th(F.use) = fit + F.s * (x - fit);
+            finite = isfinite(x);
+            if ~any(finite), return; end
+            if all(finite)
+                fit = F.H * x;
+                th(F.use) = fit + F.s * (x - fit);
+            else
+                fit = F.H(finite, finite) * x(finite);
+                th(F.use(finite)) = fit + F.s * (x(finite) - fit);
+            end
         end
 
         function T = marginal(R, leaves, searched)
@@ -606,8 +794,8 @@ classdef Rank
 
         function print(R, labels)
             T = R.table; o = R.options;
-            pipecompare.utils.log(['Ranking by %s total error (noise: SME / signal gain, and bias: what blinks add and what the filters do to other signal shapes; lower = more accurate). diff = difference from the best, ', ...
-                '%.0f%% interval simultaneous over all candidates; "nd" = not distinguished from the best by these data ', ...
+            pipecompare.utils.log(['Ranking by %s estimated total error (noise: SME / signal gain, and bias: artifact association and signal-shape sensitivity; lower = smaller fitted-model error). diff = difference from the best, ', ...
+                '%.0f%% conditional interval simultaneous over the fitted candidates; "nd" = not distinguished from the best by these data ', ...
                 '(not equivalence); "eq" = equivalent: the whole interval within %.0f%% of the best.'], R.objective, ...
                 100 * (1 - o.alpha), 100 * o.equivalenceMargin);
             fprintf('   %-4s %-9s %9s %7s %19s %3s %6s %6s %6s %5s  %s\n', 'id', 'status', 'objective', 'bias', 'diff vs best [CI]', 'nd', 'minRet', 'interp', 'ampErr', 'art', 'pipeline');
@@ -631,8 +819,19 @@ classdef Rank
             for s = 1:numel(R.byStratum)
                 b = R.byStratum(s);
                 lab = ''; if ~isempty(b.stratum), lab = sprintf(' [stratum %s]', b.stratum); end
+                if isfield(b,'upgradeGuard')&&~isempty(b.upgradeGuard)
+                    g=b.upgradeGuard;
+                    pipecompare.utils.log('Recommended (*)%s: candidate %d after the upgrade guard; best objective: candidate %d.',lab,b.recommended,b.best);
+                    pipecompare.utils.log('Upgrade guard (%s): %s; proposed %d, baseline %d, simultaneous upper score difference %.4g.', ...
+                        g.origin,g.decision,g.proposed,g.baseline,g.upperDifference);
+                else
                 pipecompare.utils.log(['Recommended (*)%s: candidate %d (fewest trials lost, then least distortion, among the %d ', ...
                     'not distinguished from the best); best objective: candidate %d.'], lab, b.recommended, numel(b.set), b.best);
+                end
+                if isfield(b,'bootstrapCompleteShare')&&isfinite(b.bootstrapCompleteShare)&&b.bootstrapCompleteShare<1
+                    pipecompare.utils.log('Paired bootstrap: %.1f%% complete draws; %.1f%% had no assessed recommendation. Incomplete maxima contribute unbounded uncertainty.', ...
+                        100*b.bootstrapCompleteShare,100*b.bootstrapUnavailableShare);
+                end
                 if isfinite(b.stability)
                     pipecompare.utils.log('Stability: in resamples of the trials, candidate %d is recommended in %.0f%% of them.', ...
                         b.recommended, 100 * b.stability);
@@ -697,7 +896,13 @@ function b = biasOf(o, g, spread, eyeSq)
 % replaces it, e.g. a bootstrap resample's) plus what the filters would
 % change if the signal had another shape (|mean| x spread,
 % Injection.shapeSpreads), both divided by the gain g.
-if nargin < 4, eyeSq = pipecompare.utils.fieldOr(o, 'eyeBiasSq', zeros(size(o.estimate))); end
+if nargin < 4
+    eyeSq = pipecompare.utils.fieldOr(o, 'eyeBiasSq', zeros(size(o.estimate)));
+    % For a non-applicable objective the blink bias is unknown, not 0:
+    % the ranking bias is shape-only, by explicit exemption, not by
+    % silently treating an unknown bias as zero.
+    if ~pipecompare.utils.fieldOr(o, 'eyeBiasApplicable', true), eyeSq(~isfinite(eyeSq)) = 0; end
+end
 est = o.estimate; est(~isfinite(est)) = 0;
 b = (sqrt(eyeSq) + abs(est) * spread) / g;
 end
@@ -740,15 +945,17 @@ keep(ib) = true;
 % happens to be underestimated (simulation: 40% false "worse" at 30
 % trials and 24 candidates). Raw differences keep the error rate bounded
 % at the cost of power for pairs that differ little.
-B = size(Bq, 2); maxD = -inf(1, B);
+B = size(Bq, 2); maxD = -inf(1, B); complete=all(isfinite(Bq),1);
 Dhat = pts - pts';                             % K x K: i minus j
 for i = 1:K
     D = Bq(i, :) - Bq;                         % K x B: candidate i minus each j
     D(~isfinite(D)) = NaN;
     maxD = max(maxD, max(D - Dhat(i, :)', [], 1, 'omitnan'));
 end
-z = maxD(isfinite(maxD));
-if isempty(z), c = Inf; else, c = upperQuantile(z, alpha); end
+% Preserve all B draws: an undefined family maximum is unbounded.
+% Dropping that draw, or only its unavailable pairs, truncates the tail.
+maxD(~complete)=Inf;
+if B==0, c=Inf; else, c=upperQuantile(maxD,alpha); end
 worse = Dhat > c;
 keep = keep | ~any(worse, 2);
 lo = Dhat(:, ib) - c; hi = Dhat(:, ib) + c;
@@ -762,8 +969,8 @@ for i = k(:)'
     D = Bq(i, :) - Bq(k, :); D(~isfinite(D)) = NaN;
     maxK = max(maxK, max(D - Dhat(i, k)', [], 1, 'omitnan'));
 end
-z = maxK(isfinite(maxK));
-if isempty(z), cK = 0; else, cK = max(upperQuantile(z, alpha), 0); end
+maxK(~all(isfinite(Bq(k,:)),1))=Inf;
+if B==0, cK=Inf; else, cK=max(upperQuantile(maxK,alpha),0); end
 hiEq = Dhat(:, ib) + cK; hiEq(ib) = 0; hiEq(~keep) = Inf;
 end
 
@@ -777,31 +984,53 @@ function k = choose(keep, th, biased, eqv, ret, amp)
 % best), the unbiased ones (all when none is); among them the one with the
 % lowest shrunk objective th, and with it those shown equivalent to the
 % best (eqv); of these, the highest minimum retention, the smallest
-% amplitude error (to AmpStep), the lowest shrunk objective.
+% amplitude error (to AmpStep), the lowest shrunk objective. A candidate
+% whose shrunk objective is not finite was not assessed and is excluded
+% before the minimum: min() propagates NaN and would select it. (Only
+% when no kept candidate has a finite objective at all is the filter
+% skipped, preserving the old degenerate behaviour rather than returning
+% no choice.)
 U = find(keep(:) & ~biased(:));
 if isempty(U), U = find(keep(:)); end
+finite = U(isfinite(th(U)));
+if ~isempty(finite), U = finite; end
 [~, j] = min(th(U));
 E = unique([U(eqv(U)); U(j)]);
 [~, o] = sortrows(round([-ret(E), amp(E), th(E)], 10));
 k = E(o(1));
 end
 
-function f = selectionFrequency(Bq, c, ret, amp, biased, eqv, F)
+function [f, unavailable, repairUnavailable] = selectionFrequency(Bq, c, ret, amp, biased, eqv, F, baseline, repaired, needsRepair)
 % The share of the bootstrap resamples (columns of Bq, K x B) in which
 % each of K candidates is recommended: those within c of the lowest
 % objective of the resample, then the rule of step 5 (choose) on the
 % resample's objectives shrunk with the same model F; which ones are
-% equivalent to the best (eqv) is that of all trials.
-K = size(Bq, 1); cnt = zeros(K, 1); used = 0;
+% equivalent to the best (eqv) is that of all trials. The frequency is
+% conditional on the full-sample critical value c: every resample is
+% judged against the same c, not a per-resample one. unavailable counts
+% the resamples with no usable choice at all (no finite objective, or the
+% explicit baseline not finite); repairUnavailable counts separately the
+% resamples skipped because the chosen candidate needed repair but no
+% repaired candidate was finite in that resample. The three shares
+% (sum(f), unavailable, repairUnavailable) sum to 1, so a skipped
+% resample is never silently folded into the generic unavailable share.
+K = size(Bq, 1); cnt = zeros(K, 1); used = 0; repairSkipped = 0;
 for b = 1:size(Bq, 2)
     v = Bq(:, b); ok = isfinite(v);
-    if ~any(ok), continue; end
+    if ~any(ok) || (~isempty(baseline) && ~ok(baseline)), continue; end
     th = pipecompare.eval.Rank.shrink(F, v);
     k = choose(ok & v - min(v(ok)) <= c, th, biased, eqv, ret, amp);
+    if ~isempty(baseline)
+        k=pipecompare.eval.Rank.guardUpgrade(v,k,baseline,max(c,0));
+    else
+        if needsRepair(k)&&~repaired(k)&&any(repaired)&&~any(repaired&ok),repairSkipped=repairSkipped+1;continue;end
+        k=pipecompare.eval.Rank.guardReference(v,th,biased,repaired,needsRepair,k,max(c,0));
+    end
     cnt(k) = cnt(k) + 1; used = used + 1;
 end
-f = cnt / max(used, 1);
-if used == 0, f(:) = NaN; end
+B=size(Bq,2);f=cnt/max(B,1);unavailable=(B-used-repairSkipped)/max(B,1);repairUnavailable=repairSkipped/max(B,1);
+if used==0,f(:)=NaN;end
+if B==0,unavailable=NaN;repairUnavailable=NaN;end
 end
 
 function v = upperQuantile(z, alpha)
@@ -875,7 +1104,14 @@ for k = 1:numel(cands)
             if strcmp(objs(o).kind, 'scalar') && numel(blink) >= o && ~isempty(blink{o})
                 K = W{c};
                 if isfield(objs(o), 'w') && ~isempty(objs(o).w), wt = objs(o).w{c}; wt(isnan(wt)) = 0; K = K .* wt; end
-                [~, eq] = pipecompare.eval.Measure.eyeBias(objs(o).X{c}(:, 1), blink{o}{c}, K);
+                % Artifact-variance mode: the objective's own mode when set,
+                % else the run's mode (ref.artifactVariance, set by
+                % Measure.reference from the run options), else pooled, the
+                % Measure default. An explicit legacy-total mode on the
+                % objective is preserved; only the missing-field fallback
+                % changed (it used to be legacy-total).
+                [~, eq] = pipecompare.eval.Measure.eyeBias(objs(o).X{c}(:, 1), blink{o}{c}, K, W{c}, ...
+                    pipecompare.utils.fieldOr(objs(o),'eyeBiasSEMode',pipecompare.utils.fieldOr(ref,'artifactVariance','pooled')));
             end
             oc = struct('estimate', objs(o).estimate(c));
             b2 = b2 + biasOf(oc, g(o), sp(o), eq) .^ 2;
@@ -957,7 +1193,11 @@ for j = 1:numel(use), shape(j, :) = biasOf(struct('estimate', objs(j).estimate),
 blink = pipecompare.utils.fieldOr(ref, 'blink', {});
 bl = {};
 if numel(blink) >= max(use) && all(~cellfun(@isempty, blink(use))), bl = blink(use); end
-in = struct('options', {opt}, 'ok', logical(cv.ok), 'w', {w}, 'shape', shape, 'blink', {bl});
+% Same fallback chain as perObjective: objective mode, else the run's
+% ref.artifactVariance, else pooled (Measure default). An explicit
+% legacy-total mode on the objective is preserved.
+modes=arrayfun(@(j)pipecompare.utils.fieldOr(objs(j),'eyeBiasSEMode',pipecompare.utils.fieldOr(ref,'artifactVariance','pooled')),use,'UniformOutput',false);
+in = struct('options', {opt}, 'ok', logical(cv.ok), 'w', {w}, 'shape', shape, 'blink', {bl},'biasVarianceMode',{modes});
 end
 
 function [vH, vO] = nestedHalf(in, H, O, scH, scO, ref, opts)
@@ -1035,7 +1275,7 @@ function b = halfBias(in, x, o, q, K)
 % weights K (a column per mean): what the blinks among those trials add
 % (Measure.eyeBias; x is already divided by the gain) plus the shape part.
 eq = zeros(1, size(K, 2));
-if ~isempty(in.blink), [~, eq] = pipecompare.eval.Measure.eyeBias(x, in.blink{o}{q}, K); end
+if ~isempty(in.blink), [~, eq] = pipecompare.eval.Measure.eyeBias(x, in.blink{o}{q}, K,ones(size(K)),in.biasVarianceMode{o}); end
 b = sqrt(eq) + in.shape(o, q);
 end
 

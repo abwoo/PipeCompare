@@ -1,0 +1,149 @@
+name: micro-search-slice-diagnostic
+
+# Round 10 fast mode, diagnostic ONLY. This workflow is NOT a
+# held-out shadow run and must never be merged into a paired mean.
+#
+# What it runs: ONE design seed (40101-40104, default 40101), ONE
+# arm (Balanced, the slow arm, by default), ONE bench_synth record
+# (1 stratum by construction), production family, with a
+# non-empty checkpoint directory and a finite 40-minute slice.
+# Job budget: 60 minutes total; the MATLAB step is capped at
+# 40 minutes, at which point the search slices, uploads its
+# checkpoint artifacts, and writes a fragment marked partialSearch
+# (or a completed fragment if it finishes inside the slice).
+# The fragment is labelled slice-diagnostic with
+# designSeedDiagnostic=true and fullyHeldOut=false, and the
+# held-out merge (shadow-selection.yml) and the Python checker
+# both reject it. Do NOT add this workflow's fragments to any
+# shadow run JSON, CSV, or paired statistic.
+#
+# What it does NOT run: a reduced family, a reduced trial subset,
+# icaSeeds=1, refineCutoffs off, or eogCheck off. Those overrides
+# are NOT threaded through pop_pipecompare at head 6035b50 (its
+# documented option list does not include them, and
+# Presets.searchOptions() hardcodes refineCutoffs=true,
+# icaSeeds=2, eogCheck=true). The frozen reduced recipe is
+# validated by validate_fast_config (executionReady=false) and
+# its execution is an explicit unfinished item in MANIFEST.md.
+# Describing this workflow's output as a reduced-family micro
+# result would be mislabelling; it is a slice-diagnostic run.
+#
+# Trigger: workflow_dispatch ONLY. No pull_request trigger, so a
+# fast push can never launch or cancel this job, and this job
+# can never be mistaken for a PR gate. No concurrency
+# cancel-in-progress: a fast iteration must finish (or slice)
+# before the next fast push, unless the user explicitly orders
+# a cancellation.
+
+on:
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: 'Design seed for fast diagnosis only (40101-40104; never a held-out seed)'
+        default: '40101'
+      arm:
+        description: 'One arm only (balanced is the slow arm; standard for the fast control)'
+        default: 'balanced'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  micro:
+    name: Micro slice-diagnostic seed ${{ inputs.seed }} ${{ inputs.arm }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      DISPLAY: ":99"
+      MICRO_HEAD_SHA: ${{ github.sha }}
+      MICRO_RUN_ID: ${{ github.run_id }}
+      PIPECOMPARE_EEGLAB_VERSION: "2026.0.0"
+    steps:
+      - name: Validate fast inputs (seconds, no search)
+        run: |
+          python3 - <<'EOF'
+          import os
+          seed = int(os.environ.get("SEED", "40101"))
+          arm = os.environ.get("ARM", "balanced")
+          assert seed in (40101, 40102, 40103, 40104), f"micro seed {seed} is not a design seed 40101-40104"
+          assert arm in ("standard", "balanced"), f"micro arm {arm} must be one arm, not 'all'"
+          print(f"micro slice-diagnostic: seed={seed} arm={arm} (design seed only, never held-out)")
+          EOF
+        env:
+          SEED: ${{ inputs.seed }}
+          ARM: ${{ inputs.arm }}
+
+      - name: Checkout PipeCompare
+        uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+          ref: ${{ github.sha }}
+
+      - name: Checkout EEGLAB
+        run: git clone --depth 1 --branch 2026.0.0 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
+
+      - name: Record EEGLAB SHA
+        run: |
+          git -C eeglab rev-parse HEAD > eeglab_sha.txt
+          echo "EEGLAB_SHA=$(cat eeglab_sha.txt)" >> "$GITHUB_ENV"
+          cat eeglab_sha.txt
+
+      - name: Bound MATLAB dependency downloads
+        if: runner.os == 'Linux'
+        run: bash PipeCompare/.github/scripts/prepare-matlab.sh
+
+      - name: Start a virtual display
+        timeout-minutes: 10
+        run: bash PipeCompare/.github/scripts/start-display.sh
+
+      - name: Set up MATLAB
+        uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+          products: Signal_Processing_Toolbox
+
+      - name: Run the micro slice-diagnostic search
+        timeout-minutes: 40
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd, 'eeglab')); eeglab nogui;
+            cd PipeCompare; addpath(pwd); addpath(fullfile(pwd, 'benchmarks'));
+            mkdir('micro_out'); mkdir('micro_ckpt');
+            pipecompare_shadow_selection(fullfile(pwd, 'micro_out'), str2double(getenv('MICRO_SEED')), 1, 'mode', 'micro', 'arm', getenv('MICRO_ARM'), 'headSha', getenv('MICRO_HEAD_SHA'), 'workflowRunId', getenv('MICRO_RUN_ID'), 'checkpointdir', fullfile(pwd, 'micro_ckpt'), 'maxseconds', 2400, 'sliceseconds', 2400, 'nstrata', 1, 'icaseeds', 1, 'refinecutoffs', false, 'eogcheck', false, 'reducedfamily', 'slice-diagnostic rule text only: production family, reduction not wired (see MANIFEST)', 'reducedtrials', 'slice-diagnostic rule text only: no trial subset applied (see MANIFEST)', 'slicediagnostic', true);
+        env:
+          MICRO_SEED: ${{ inputs.seed }}
+          MICRO_ARM: ${{ inputs.arm }}
+
+      - name: Keep the micro fragment and slice checkpoint
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: micro-seed-${{ inputs.seed }}-${{ inputs.arm }}
+          path: |
+            PipeCompare/micro_out
+            PipeCompare/micro_ckpt
+
+      - name: Screen the micro fragment immediately (diagnostic only)
+        if: always()
+        run: |
+          python3 - <<'EOF'
+          # Immediate screening, fast-loop rule: a finished (or
+          # sliced) micro fragment is screened at once, not held.
+          # This step only reads the fragment and reports its
+          # labels; it never computes a paired statistic and never
+          # merges the fragment into any held-out run.
+          import json, glob, sys
+          files = sorted(glob.glob("PipeCompare/micro_out/*.json"))
+          if not files:
+              print("MICRO: no fragment written (search may have failed before writing); screen the checkpoint artifacts, do not invent a result.")
+              sys.exit(0)
+          for f in files:
+              d = json.load(open(f))
+              fm = d.get("fastMode") or {}
+              print(f"MICRO: seed={d.get('seed')} fastMode={fm} labels={d.get('labels')} timing={d.get('timing')}")
+              assert fm.get("designSeedDiagnostic") is True, "micro fragment must be design-diagnostic"
+              assert (d.get("labels") or {}).get("fullyHeldOut") is not True, "micro fragment must not claim fullyHeldOut"
+          print("MICRO: screened as diagnostic only; a paired verdict requires a held-out run, never this fragment.")
+          EOF

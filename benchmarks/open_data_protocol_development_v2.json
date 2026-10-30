@@ -1,0 +1,387 @@
+{
+  "version": 2,
+  "physionet": {
+    "version": "1.0.0",
+    "doi": "10.13026/C28G6P",
+    "license": "ODC-By-1.0",
+    "files": [
+      {
+        "subject": 21,
+        "path": "S021/S021R01.edf",
+        "sha256": "983781fb39c3a747051a04f23484164de485b97ba43a7fd63fd8fe3d7f6f6f3c"
+      },
+      {
+        "subject": 22,
+        "path": "S022/S022R01.edf",
+        "sha256": "496fc1ca74a265ea0f888b9334ac8b16168ab201dfec3eb7d932e68a5348edc5"
+      },
+      {
+        "subject": 23,
+        "path": "S023/S023R01.edf",
+        "sha256": "3dc49252e5969854b3c0b9126058e3a9f28efcddd61a6f570702ee3043fec0fb"
+      },
+      {
+        "subject": 24,
+        "path": "S024/S024R01.edf",
+        "sha256": "abd9b141d8e2853e30a126a891929bf99f22661e27f571f02d5f6a415b40841a"
+      },
+      {
+        "subject": 25,
+        "path": "S025/S025R01.edf",
+        "sha256": "d630db7ef42ec83068197a587f93bd71e218e3d592e190e79111b414633d7fed"
+      },
+      {
+        "subject": 26,
+        "path": "S026/S026R01.edf",
+        "sha256": "2c4c52f3afd7dc4742bc1b009744da1172bb9c4f45546acee2fef230931d411b"
+      },
+      {
+        "subject": 27,
+        "path": "S027/S027R01.edf",
+        "sha256": "16ae12914a9c301b652d64f1d6337e6e31edbc4f64f9c222c3670dd7157ecf21"
+      },
+      {
+        "subject": 28,
+        "path": "S028/S028R01.edf",
+        "sha256": "7aefa2fd7d92490654beb7deb417dd5e04c9d7c924716c16a48ee3d73ad6c3ce"
+      },
+      {
+        "subject": 29,
+        "path": "S029/S029R01.edf",
+        "sha256": "48641d0db6e810c96273d8c26d52510132ae503badf74471558b7c12306265b2"
+      },
+      {
+        "subject": 30,
+        "path": "S030/S030R01.edf",
+        "sha256": "3b0b3d390a9d15b30f95230729a24d5b8a2a55b22ae6ab9ee0c18653068d22e8"
+      },
+      {
+        "subject": 31,
+        "path": "S031/S031R01.edf",
+        "sha256": "55d1e8e8145b8eb6778468b55020662275d152d34f33e18c2893b70605175fa3"
+      },
+      {
+        "subject": 32,
+        "path": "S032/S032R01.edf",
+        "sha256": "ba99cf38dc94b4408469708227736b388eab4cee0a0fb27ecba353ac4348757e"
+      },
+      {
+        "subject": 33,
+        "path": "S033/S033R01.edf",
+        "sha256": "5801c97826b681eddd76641707c479385742b0fa35e5fae0935a81fd139fc646"
+      },
+      {
+        "subject": 34,
+        "path": "S034/S034R01.edf",
+        "sha256": "62814a71a5926f51efe322e6f959b0c6a7b18da7603474a4daa3de3cd4ac2718"
+      },
+      {
+        "subject": 35,
+        "path": "S035/S035R01.edf",
+        "sha256": "c3f65f266df7240a795efc209424b75cd86a30823f63795b51a62deb095f4700"
+      },
+      {
+        "subject": 36,
+        "path": "S036/S036R01.edf",
+        "sha256": "dbdda796236e1262d7dd1758d7b4c80762b1865047b8bd2b28d59d273fc4f789"
+      },
+      {
+        "subject": 37,
+        "path": "S037/S037R01.edf",
+        "sha256": "51182f52a9316783ef7d393bc1354efcac916524dfa826b3519b132bf516f7db"
+      },
+      {
+        "subject": 38,
+        "path": "S038/S038R01.edf",
+        "sha256": "cf352ddee891d1f3f6c6aa3fb4e947ae0c89b9dcb2edd0cb2c75defa5c5eb2e1"
+      },
+      {
+        "subject": 39,
+        "path": "S039/S039R01.edf",
+        "sha256": "b1c5ca3e506c3dc0d7dc855f3908b5d4ac3b1839e9fac8e7dd316eaaa50f953e"
+      },
+      {
+        "subject": 40,
+        "path": "S040/S040R01.edf",
+        "sha256": "45423b0cfc992bee8cede102265968d424d3731a6a7f2c8fb4a714f4ba3dfe61"
+      },
+      {
+        "subject": 41,
+        "path": "S041/S041R01.edf",
+        "sha256": "5fec76892825c885cb231c16424e497fa7b0bc5d255f15117c2f896da85a27bb"
+      },
+      {
+        "subject": 42,
+        "path": "S042/S042R01.edf",
+        "sha256": "34f1adbcb0155953eb68874d9a23cc1a8d7ce57a507bc6ceea9189b410d38439"
+      },
+      {
+        "subject": 43,
+        "path": "S043/S043R01.edf",
+        "sha256": "49151f1f618da69d7de8bea138e21c0d1f7f9833bdc8b23a9a98c95dbf0120db"
+      },
+      {
+        "subject": 44,
+        "path": "S044/S044R01.edf",
+        "sha256": "ca0199eeca73ce7b30843e2a06baacca5cfcdc4750cd01a1e237af6feec5dccf"
+      },
+      {
+        "subject": 45,
+        "path": "S045/S045R01.edf",
+        "sha256": "99ed18a81e6d86970dcef27b3bf1ad6d4adf01477b4560aa5e198673de2992bf"
+      },
+      {
+        "subject": 46,
+        "path": "S046/S046R01.edf",
+        "sha256": "49b18f6779e3fdb549c80551379d76ab5fa7f9faa429e171bf4cd38f121ae5d7"
+      },
+      {
+        "subject": 47,
+        "path": "S047/S047R01.edf",
+        "sha256": "e9e5061be6fea706fdbf03bbc9d0d8de48476d036553a06ff0117c98b60303c2"
+      },
+      {
+        "subject": 48,
+        "path": "S048/S048R01.edf",
+        "sha256": "c614f7a42eee90e494006d410917f21c7cc14e04f6cf86e0728437c636286171"
+      },
+      {
+        "subject": 49,
+        "path": "S049/S049R01.edf",
+        "sha256": "bdfcb91b7c914a621617d59cd6f132c9f3229f64f22084e57904232e84c2eaf9"
+      },
+      {
+        "subject": 50,
+        "path": "S050/S050R01.edf",
+        "sha256": "8407057efedd6e133b5e7b13caba82c90654d2697288d35b27b7fc33aeb4f522"
+      }
+    ]
+  },
+  "blink": {
+    "source": "https://github.com/meagmohit/BLINK",
+    "mirror_commit": "3dd875ec5c532f87b1a409fc2d22640787b3397b",
+    "archive_sha256": "af615bd11dfdede0ab40621177736dc009ed72beb9d7419947180dda72092d72",
+    "development_subjects": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "test_subjects": [
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19
+    ],
+    "matching_margin_seconds": 0.1,
+    "license": "Freely available for research use with citation; see original authors README"
+  },
+  "erp_core": {
+    "dataset": "nm000132",
+    "version": "v1.1.1",
+    "doi": "10.82901/nemar.nm000132",
+    "license": "CC-BY-4.0",
+    "files": [
+      {
+        "path": "sub-011/eeg/sub-011_task-P3_eeg.fdt",
+        "size": 49741824,
+        "checksum_algorithm": "sha256",
+        "checksum": "666676be3b98d78ebae3f5daf1b84d9113c457241eddb583a62fc63d429560c0",
+        "bytes_url": "https://data.nemar.org/nm000132/v1.1.1/sub-011/eeg/sub-011_task-P3_eeg.fdt",
+        "url": "https://data.nemar.org/nm000132/v1.1.1/sub-011/eeg/sub-011_task-P3_eeg.fdt"
+      },
+      {
+        "path": "sub-011/eeg/sub-011_task-P3_eeg.set",
+        "size": 917610,
+        "checksum_algorithm": "sha256",
+        "checksum": "bedd41af304748f7326afa74965e2df0291a566f9469a858dde305c204e4e5a2",
+        "bytes_url": "https://data.nemar.org/nm000132/v1.1.1/sub-011/eeg/sub-011_task-P3_eeg.set",
+        "url": "https://data.nemar.org/nm000132/v1.1.1/sub-011/eeg/sub-011_task-P3_eeg.set"
+      },
+      {
+        "path": "sub-012/eeg/sub-012_task-P3_eeg.fdt",
+        "size": 45551616,
+        "checksum_algorithm": "sha256",
+        "checksum": "fdd47026b47fa2226c47ce29dd53b3a384875fbd3e1c782a79345a79a06c99c2",
+        "bytes_url": "https://data.nemar.org/nm000132/v1.1.1/sub-012/eeg/sub-012_task-P3_eeg.fdt",
+        "url": "https://data.nemar.org/nm000132/v1.1.1/sub-012/eeg/sub-012_task-P3_eeg.fdt"
+      },
+      {
+        "path": "sub-012/eeg/sub-012_task-P3_eeg.set",
+        "size": 837939,
+        "checksum_algorithm": "sha256",
+        "checksum": "837ca8191877e5f5f9796d1c0f286f53ca9c40cd53f18bf6207b2db045c9bb02",
+        "bytes_url": "https://data.nemar.org/nm000132/v1.1.1/sub-012/eeg/sub-012_task-P3_eeg.set",
+        "url": "https://data.nemar.org/nm000132/v1.1.1/sub-012/eeg/sub-012_task-P3_eeg.set"
+      },
+      {
+        "path": "sub-013/eeg/sub-013_task-P3_eeg.fdt",
+        "size": 50958336,
+        "checksum_algorithm": "sha256",
+        "checksum": "d696395320938dbe9ccd964a1a347bc534c27406765434a4c1216164f2993917",
+        "bytes_url": "https://data.nemar.org/nm000132/v1.1.1/sub-013/eeg/sub-013_task-P3_eeg.fdt",
+        "url": "https://data.nemar.org/nm000132/v1.1.1/sub-013/eeg/sub-013_task-P3_eeg.fdt"
+      },
+      {
+        "path": "sub-013/eeg/sub-013_task-P3_eeg.set",
+        "size": 941131,
+        "checksum_algorithm": "sha256",
+        "checksum": "754faf760b6d2769ff6e1a29d59e23a99db62d537dfcc329e0e4c96b4e4fd739",
+        "bytes_url": "https://data.nemar.org/nm000132/v1.1.1/sub-013/eeg/sub-013_task-P3_eeg.set",
+        "url": "https://data.nemar.org/nm000132/v1.1.1/sub-013/eeg/sub-013_task-P3_eeg.set"
+      },
+      {
+        "path": "sub-014/eeg/sub-014_task-P3_eeg.fdt",
+        "size": 45821952,
+        "checksum_algorithm": "sha256",
+        "checksum": "6b2c56387c5eb7aa552d1e03347a8eec23ac9ee3160e4c02c6d0a6b75b61ee92",
+        "bytes_url": "https://data.nemar.org/nm000132/v1.1.1/sub-014/eeg/sub-014_task-P3_eeg.fdt",
+        "url": "https://data.nemar.org/nm000132/v1.1.1/sub-014/eeg/sub-014_task-P3_eeg.fdt"
+      },
+      {
+        "path": "sub-014/eeg/sub-014_task-P3_eeg.set",
+        "size": 843196,
+        "checksum_algorithm": "sha256",
+        "checksum": "4dd995b3e3e5bfa30586f6560aed33a668116767982b9f9d47c555aa9797bc63",
+        "bytes_url": "https://data.nemar.org/nm000132/v1.1.1/sub-014/eeg/sub-014_task-P3_eeg.set",
+        "url": "https://data.nemar.org/nm000132/v1.1.1/sub-014/eeg/sub-014_task-P3_eeg.set"
+      },
+      {
+        "path": "sub-015/eeg/sub-015_task-P3_eeg.fdt",
+        "size": 49201152,
+        "checksum_algorithm": "sha256",
+        "checksum": "db29ba51256044deadaa3ec74073078719767c092e3b19bcadcd1bf9183f9f4f",
+        "bytes_url": "https://data.nemar.org/nm000132/v1.1.1/sub-015/eeg/sub-015_task-P3_eeg.fdt",
+        "url": "https://data.nemar.org/nm000132/v1.1.1/sub-015/eeg/sub-015_task-P3_eeg.fdt"
+      },
+      {
+        "path": "sub-015/eeg/sub-015_task-P3_eeg.set",
+        "size": 907586,
+        "checksum_algorithm": "sha256",
+        "checksum": "9338f76191b3deb6fe91e61f1d0de2beea3c63a8bf0840631416dd5df763e3be",
+        "bytes_url": "https://data.nemar.org/nm000132/v1.1.1/sub-015/eeg/sub-015_task-P3_eeg.set",
+        "url": "https://data.nemar.org/nm000132/v1.1.1/sub-015/eeg/sub-015_task-P3_eeg.set"
+      },
+      {
+        "path": "sub-016/eeg/sub-016_task-P3_eeg.fdt",
+        "size": 56094720,
+        "checksum_algorithm": "sha256",
+        "checksum": "377730850243cf5deb0958c88f91a31c68c375ab593a7118b852b15ea00f07d9",
+        "bytes_url": "https://data.nemar.org/nm000132/v1.1.1/sub-016/eeg/sub-016_task-P3_eeg.fdt",
+        "url": "https://data.nemar.org/nm000132/v1.1.1/sub-016/eeg/sub-016_task-P3_eeg.fdt"
+      },
+      {
+        "path": "sub-016/eeg/sub-016_task-P3_eeg.set",
+        "size": 1038571,
+        "checksum_algorithm": "sha256",
+        "checksum": "70c2386ee7760d8bbc23b7d0b43a7f446158bfd69fc21e50302afd5abbf96269",
+        "bytes_url": "https://data.nemar.org/nm000132/v1.1.1/sub-016/eeg/sub-016_task-P3_eeg.set",
+        "url": "https://data.nemar.org/nm000132/v1.1.1/sub-016/eeg/sub-016_task-P3_eeg.set"
+      }
+    ]
+  },
+  "simulation": {
+    "first_seed": 20001,
+    "recordings": 30
+  },
+  "scope": "Frozen thresholds; no tuning on evaluation results. Revisions after inspection consume this validation set. Real background is not certified artifact-free neural truth.",
+  "real_background_erp": {
+    "first_seed": 90021,
+    "participants": 30,
+    "blink_prevalence": [
+      0,
+      0.3,
+      0.7,
+      0.95,
+      1
+    ],
+    "family": "Full simple Standard search, independently refitted in each new recording; defaults unchanged",
+    "target": "Known injected P3 population and realized-trial signal, raw and gain-corrected; source background is zero-mean under randomized global sign and circular shift",
+    "neural_blink_association": "Trial amplitude multiplied by 1.3 on injected blink trials; the truth includes this association",
+    "background_scale_uv": 8
+  },
+  "group_independent_test": {
+    "training_subjects": [
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30
+    ],
+    "test_subjects": [
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50
+    ],
+    "scope": "Training split fixed before inspecting group losses; intervals conditional on the fitted training prior."
+  },
+  "known_spectrum": {
+    "seed": 120001,
+    "independent_segments_per_case": 600,
+    "backgrounds": [
+      "white",
+      "pink"
+    ],
+    "seconds": [
+      2,
+      4,
+      8
+    ],
+    "bands": [
+      [
+        8,
+        12
+      ],
+      [
+        10,
+        10.5
+      ]
+    ],
+    "peaks": [
+      "none",
+      "nearest-grid center",
+      "edge",
+      "outside"
+    ],
+    "target": "Unsmoothed bin-averaged one-sided PSD; log and smoothing bias reported without retuning."
+  },
+  "calibration_precision": {
+    "relative_rms_ratio_half_width": 0.1,
+    "minimum_records": 30,
+    "scope": "Pilot precision only, distinct from calibration agreement and stability across settings."
+  }
+}
