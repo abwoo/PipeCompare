@@ -34,5 +34,5 @@ jobs:
           command: |
             disp(version); addpath(fullfile(pwd, 'eeglab')); eeglab nogui;
             cd PipeCompare; addpath(pwd); addpath(fullfile(pwd, 'tests'));
-            r = run_all({'test_simple', 'test_main', 'test_eeglab', 'test_signal', 'test_engine'});
+            r = run_all({'test_simple', 'test_main', 'test_eeglab', 'test_signal', 'test_engine', 'test_checkpoint_delivery'});
             assert(~any([r.Failed]), 'PipeCompare:CI', '%d test(s) failed', sum([r.Failed]));

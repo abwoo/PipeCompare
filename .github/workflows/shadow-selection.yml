@@ -1,54 +1,10 @@
 name: shadow-selection
 
-# Variant A shadow selection (fitted-family, held-out seeds): run the
-# Standard, guarded Balanced, and unguarded Balanced arms on fresh
-# synthetic seeds, then merge the per-seed fragments into one run-level
-# JSON + CSV and verify them with an independent Python checker.
-#
-# Trigger policy (deliberate, do not widen without a design note):
-# - pull_request, path-filtered to the four shadow files below. A
-#   docs/METHODS.md-only change must NOT launch hours-long ICA jobs.
-# - workflow_dispatch for manual runs (default: first seed 20031, 8 seeds).
-# - No push trigger and no branch pin: unlike
-#   pr50-component-audit.yml (a one-off diagnosis pinned to a codex
-#   branch), this workflow is a standing gate and must run on any PR.
-#
-# Round 6 execution (supersedes the Round 5 per-seed job below in
-# spirit; statistics, seeds, arm definitions and frozen criteria are
-# unchanged): each matrix job runs ONE SEARCH for one seed, not both
-# searches. Round 5 ran one Standard search plus one Balanced search
-# per seed job and 7 of 8 seeds exceeded the 330-minute step timeout,
-# producing no fragment. A single search is therefore given the
-# GitHub-hosted maximum: job timeout 360 minutes, MATLAB step capped
-# at 350 so the artifact upload still has room. Raising 330 to 360
-# alone was rejected (only +30 minutes while a seed was still
-# searching at 330 with an unknown remainder); shrinking the search
-# scope was rejected (it would change the arm definitions). If a
-# single search still exceeds 360 minutes, the next step is search
-# slicing or checkpointing, not another timeout raise.
-#
-# Contract fix in the same round: contractMatch in the shadow script
-# used cellfun on a struct array and therefore returned false on
-# every seed, making the Standard arm unavailable even when both
-# searches succeeded; it now uses arrayfun.
-#
-# Partial runs: the collect job runs with 'if: always()' even when
-# search jobs fail, and the merge step publishes a run-level output
-# for the seeds actually present (run 'seeds' = present seeds,
-# 'nSeedsPlanned' = planned seeds), so a partial run is checked and
-# published instead of being skipped like Round 5's Merge fragments.
-#
-# Checkout pin: both MATLAB jobs check out the prep job's head SHA
-# explicitly (not the pull_request merge commit), so the commit recorded
-# in provenance is exactly the code that ran.
+# Full scientific searches are explicit only. Ordinary PR edits must not
+# restart 16 expensive searches. Use pr50-consolidation.yml for saved-output
+# checks and shadow-checkpoint.yml for a resumable single search.
 
 on:
-  pull_request:
-    paths:
-      - benchmarks/pipecompare_shadow_selection.m
-      - benchmarks/check_shadow_selection.py
-      - tests/test_shadow_selection.m
-      - .github/workflows/shadow-selection.yml
   workflow_dispatch:
     inputs:
       first_seed:
@@ -67,7 +23,7 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 
 jobs:
   prep:

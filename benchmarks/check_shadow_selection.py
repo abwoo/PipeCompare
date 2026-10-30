@@ -22,6 +22,7 @@ Usage:
 Exit 0 on PASS, 1 on any FAIL (all failures are printed).
 """
 
+import copy
 import csv
 import json
 import math
@@ -82,6 +83,11 @@ def num(x):
     return float(x)
 
 
+def normalized_pick(value):
+    """Both JSON null and MATLAB [] mean no recommendation, never pick zero."""
+    return None if value is None or value == [] else value
+
+
 def close(a, b, tol=1e-9):
     """NaN-aware closeness: both NaN counts as equal."""
     if is_nan(a) and is_nan(b):
@@ -126,7 +132,37 @@ def parse_csv_num(text):
     return float(text)
 
 
+
+def matlab_array(value):
+    """Accept MATLAB jsonencode's empty, singleton and vector representations."""
+    if value is None:
+        return []
+    return value if isinstance(value, list) else [value]
+
+
+def normalize_run_arrays(run):
+    """Normalize only schema-defined array fields; preserve values/provenance."""
+    run = copy.deepcopy(run)
+    for field in ("seeds", "perSeed", "unavailable"):
+        if field in run:
+            run[field] = matlab_array(run[field])
+    for entry in run.get("perSeed", []):
+        if isinstance(entry, dict) and "arms" in entry:
+            entry["arms"] = matlab_array(entry["arms"])
+            for arm in entry["arms"]:
+                if isinstance(arm, dict) and "pick" in arm:
+                    arm["pick"] = normalized_pick(arm["pick"])
+    for pair in run.get("pairedDifferences", {}).values():
+        for field in ("seeds", "gainCorrected", "raw"):
+            if field in pair:
+                pair[field] = matlab_array(pair[field])
+    for ci in run.get("recordBootstrapCI95", {}).values():
+        if "replicates" in ci:
+            ci["replicates"] = matlab_array(ci["replicates"])
+    return run
+
 def main():
+    FAILURES.clear()
     if len(sys.argv) < 5:
         print("usage: check_shadow_selection.py <fragments_dir> <final_json> "
               "<per_seed_csv> <summary_csv> [expected_head_sha] [planned]")
@@ -138,7 +174,7 @@ def main():
     # compared it to the present count, which is tautological).
     expected_planned = int(sys.argv[6]) if len(sys.argv) > 6 else None
 
-    run = json.loads(final_json.read_text())
+    run = normalize_run_arrays(json.loads(final_json.read_text()))
     # Round 6 arm fragments: shadow_selection_seed_<seed>_standard.json
     # and shadow_selection_seed_<seed>_balanced.json combine into one
     # per-seed fragment. Complete per-seed fragments
@@ -150,6 +186,10 @@ def main():
     arm_parts = {}
     for path in sorted(frag_dir.rglob("shadow_selection_seed_*.json")):
         frag = json.loads(path.read_text())
+        frag["arms"] = matlab_array(frag.get("arms", []))
+        for arm in frag["arms"]:
+            if isinstance(arm, dict) and "pick" in arm:
+                arm["pick"] = normalized_pick(arm["pick"])
         name = path.name
         # Round 8 B1: filename seed must agree with content seed.
         import re as _re
@@ -268,8 +308,8 @@ def main():
 
     # ---- provenance ----
     prov = run["provenance"]
-    if prov.get("inputArtifactRunId") is not None:
-        fail("provenance.inputArtifactRunId must be null for fresh seeds")
+    if prov.get("inputArtifactRunId") not in (None, []):
+        fail("provenance.inputArtifactRunId must be null or an empty array for fresh seeds")
     if expected_head is not None:
         if prov.get("commit") != expected_head:
             fail(f"provenance.commit {prov.get('commit')} != expected {expected_head}")
@@ -294,7 +334,7 @@ def main():
         frag = frags.get(entry["seed"])
         if frag is None:
             continue
-        frag_arms = {a["name"]: a for a in frag["arms"]}
+        frag_arms = {a["name"]: a for a in matlab_array(frag["arms"])}
         for arm in want_recipes:
             fa, ra = frag_arms.get(arm), arms.get(arm)
             if fa is None or ra is None:
@@ -403,7 +443,7 @@ def main():
         if "pick" not in row or "selectedKey" not in row:
             fail("per-seed CSV missing pick/selectedKey columns")
         else:
-            got_pick = got.get("pick")
+            got_pick = normalized_pick(got.get("pick"))
             csv_pick = row["pick"]
             if (got_pick is None and csv_pick not in ("", "None")) or \
                (got_pick is not None and csv_pick != str(got_pick)):
