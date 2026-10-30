@@ -33,6 +33,12 @@ class WireFormatTests(unittest.TestCase):
         self.assertEqual(normalized["pairedDifferences"]["p"]["raw"], [1.25])
         self.assertEqual(normalized["perSeed"][0]["arms"], [{"name": "standard"}])
 
+    def test_missing_pick_encodings_preserve_numeric_ids(self):
+        self.assertIsNone(check.normalized_pick(None))
+        self.assertIsNone(check.normalized_pick([]))
+        self.assertEqual(check.normalized_pick(1), 1)
+        self.assertEqual(check.normalized_pick(0), 0)
+
     def test_empty_arrays_remain_empty(self):
         raw = {"seeds": [], "perSeed": [], "pairedDifferences": {"p": {"seeds": [], "gainCorrected": [], "raw": []}}}
         self.assertEqual(check.normalize_run_arrays(raw), raw)

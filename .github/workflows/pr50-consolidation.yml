@@ -1,4 +1,4 @@
-name: PR50 consolidation and saved-output verification
+name: PR50 saved-output verification
 
 on:
   push:
@@ -14,74 +14,39 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  affected-checks:
+  saved-output-checks:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 10
     env:
       SOURCE_HEAD: 6b26931619b8b11f630326638cdf2a4cb478e0fa
       SOURCE_RUN: '40805638604'
-      DISPLAY: ':99'
+      MERGE_HEAD: 298744ab272fb038e96a981383b9428f3806544c
+      MERGE_RUN: '41053098369'
+      SHADOW_FIXTURES: consolidation_out/fixtures
     steps:
       - uses: actions/checkout@v4
+      - name: Reuse completed MATLAB merge, wire-format fixtures and native proof
+        uses: actions/download-artifact@v4
         with:
-          path: PipeCompare
-      - name: Download completed original fragments only
+          name: pr50-consolidation
+          path: consolidation_out
+          run-id: 41053098369
+          github-token: ${{ github.token }}
+      - name: Download original completed fragments only
         uses: actions/download-artifact@v4
         with:
           pattern: shadow-seed-*
-          path: PipeCompare/saved_fragments
+          path: saved_fragments
           run-id: 40805638604
           github-token: ${{ github.token }}
-      - name: Checkout EEGLAB 2026
-        run: git clone --depth 1 --branch 2026.0.0 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
-      - name: Record EEG implementation identity
-        run: echo "EEGLAB_SHA=$(git -C eeglab rev-parse HEAD)" >> "$GITHUB_ENV"
-      - name: Bound dependency downloads
-        run: bash PipeCompare/.github/scripts/prepare-matlab.sh
-      - name: Start display for native EEGLAB tests
-        run: bash PipeCompare/.github/scripts/start-display.sh
-      - uses: matlab-actions/setup-matlab@v2
-        with:
-          release: R2026a
-          products: Signal_Processing_Toolbox
-      - name: Remaining native checkpoint proof and original-fragment merge
-        timeout-minutes: 30
-        uses: matlab-actions/run-command@v2
-        with:
-          command: |
-            addpath(fullfile(pwd,'eeglab')); eeglab nogui;
-            cd PipeCompare; addpath(pwd); addpath(fullfile(pwd,'tests')); addpath(fullfile(pwd,'benchmarks'));
-            mkdir('consolidation_out'); diary(fullfile('consolidation_out','matlab.log'));
-            suite = testsuite(fullfile('tests','test_checkpoint_delivery.m'));
-            names = string({suite.Name}); selected = endsWith(names,'/testSliceResumeMatchesNativeSearchAndReusesSavedWork');
-            assert(nnz(selected)==1); r = run(suite(selected));
-            assert(all([r.Passed]),'The remaining native checkpoint proof must pass');
-            fprintf('CONSOLIDATION_TOTAL=%d PASSED=%d FAILED=%d SKIPPED=%d\n',numel(r),nnz([r.Passed]),nnz([r.Failed]),nnz([r.Incomplete]));
-            diary off;
-      - name: Merge original fragments and generate wire-format fixtures only
-        if: always()
-        uses: matlab-actions/run-command@v2
-        with:
-          command: |
-            addpath(fullfile(pwd,'eeglab')); eeglab nogui;
-            cd PipeCompare; addpath(pwd); addpath(fullfile(pwd,'benchmarks'));
-            if ~isfolder('consolidation_out'),mkdir('consolidation_out');end
-            pipecompare_shadow_summary_fixtures(fullfile(pwd,'consolidation_out','fixtures'));
-            out = pipecompare_shadow_selection(fullfile(pwd,'consolidation_out','original_merge'),20031,8, ...
-              'mode','merge','fragmentsDir',fullfile(pwd,'saved_fragments'), ...
-              'headSha',getenv('SOURCE_HEAD'),'workflowRunId',getenv('SOURCE_RUN'));
-            saved = jsondecode(fileread(out.runJson));
-            assert(saved.coverage.standard==8 && saved.coverage.balancedGuarded==1 && saved.coverage.paired_guardedMinusStandard==1);
-
-      - name: Independent Python wire-format regression and original-result check
-        if: always()
-        env:
-          SHADOW_FIXTURES: PipeCompare/consolidation_out/fixtures
+      - name: Check zero, singleton and multi-pair encodings and reject tampering
+        run: python -m unittest discover -s benchmarks -p test_shadow_summary.py -v
+      - name: Check diagnostic-evidence boundaries
+        run: python -m unittest discover -s benchmarks -p test_check_fast.py -v
+      - name: Independently verify the original source result
         run: |
-          python -m unittest discover -s PipeCompare/benchmarks -p test_shadow_summary.py -v
-          python -m unittest discover -s PipeCompare/benchmarks -p test_check_fast.py -v
-          python PipeCompare/benchmarks/check_shadow_selection.py PipeCompare/saved_fragments PipeCompare/consolidation_out/original_merge/shadow_selection_6b26931_20031_8.json PipeCompare/consolidation_out/original_merge/shadow_selection_6b26931_20031_8.csv PipeCompare/consolidation_out/original_merge/shadow_selection_6b26931_20031_8_summary.csv "$SOURCE_HEAD" 8
-      - name: Record distinct source and processing revisions
+          python benchmarks/check_shadow_selection.py saved_fragments consolidation_out/original_merge/shadow_selection_6b26931_20031_8.json consolidation_out/original_merge/shadow_selection_6b26931_20031_8.csv consolidation_out/original_merge/shadow_selection_6b26931_20031_8_summary.csv "$SOURCE_HEAD" 8
+      - name: Record source, merge and checking revisions without changing results
         if: always()
         env:
           PROCESSING_SHA: ${{ github.sha }}
@@ -90,13 +55,12 @@ jobs:
           python - <<'PY'
           import json, os
           from pathlib import Path
-          dest=Path("PipeCompare/consolidation_out"); dest.mkdir(exist_ok=True)
-          report=dict(sourceAlgorithmCommit=os.environ["SOURCE_HEAD"],sourceRunId=os.environ["SOURCE_RUN"],processingCommit=os.environ["PROCESSING_SHA"],processingRunId=os.environ["PROCESSING_RUN"],newScientificFits=0,scope="Original-fragment aggregation only; separate small native checkpoint infrastructure proof; no new record-level validation")
-          (dest/"reaggregation_provenance.json").write_text(json.dumps(report,indent=2)+"\n")
+          report=dict(sourceAlgorithmCommit=os.environ["SOURCE_HEAD"],sourceRunId=os.environ["SOURCE_RUN"],mergeProcessingCommit=os.environ["MERGE_HEAD"],mergeRunId=os.environ["MERGE_RUN"],checkingCommit=os.environ["PROCESSING_SHA"],checkingRunId=os.environ["PROCESSING_RUN"],newScientificFits=0,scope="Reused completed original-fragment merge and MATLAB fixtures; Python verification only; no MATLAB, ICA or record search restarted")
+          Path("consolidation_out/checking_provenance.json").write_text(json.dumps(report,indent=2)+"\n")
           PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: pr50-consolidation
-          path: PipeCompare/consolidation_out
+          name: pr50-consolidation-verified
+          path: consolidation_out
           retention-days: 90

@@ -83,6 +83,11 @@ def num(x):
     return float(x)
 
 
+def normalized_pick(value):
+    """Both JSON null and MATLAB [] mean no recommendation, never pick zero."""
+    return None if value is None or value == [] else value
+
+
 def close(a, b, tol=1e-9):
     """NaN-aware closeness: both NaN counts as equal."""
     if is_nan(a) and is_nan(b):
@@ -431,7 +436,7 @@ def main():
         if "pick" not in row or "selectedKey" not in row:
             fail("per-seed CSV missing pick/selectedKey columns")
         else:
-            got_pick = got.get("pick")
+            got_pick = normalized_pick(got.get("pick"))
             csv_pick = row["pick"]
             if (got_pick is None and csv_pick not in ("", "None")) or \
                (got_pick is not None and csv_pick != str(got_pick)):
