@@ -49,7 +49,7 @@ end
 assert(ischar(outDir) && ~isempty(outDir), 'PipeCompare:Shadow', 'outDir must be a non-empty path.');
 assert(isscalar(firstSeed) && firstSeed == floor(firstSeed) && firstSeed > 0, 'PipeCompare:Shadow', 'firstSeed must be a positive integer.');
 assert(isscalar(nSeeds) && nSeeds == floor(nSeeds) && nSeeds >= 1 && nSeeds <= 30, 'PipeCompare:Shadow', 'nSeeds must be an integer in 1..30.');
-assert(ismember(mode, {'search', 'merge', 'test', 'resume', 'slice', 'micro', 'resume-fast'}), 'PipeCompare:Shadow', 'mode must be search, merge, test, resume, micro or resume-fast.');
+assert(ismember(mode, {'search', 'merge', 'test', 'resume', 'slice', 'micro', 'resume-fast'}), 'PipeCompare:Shadow', 'mode must be search, merge, test, slice, resume, micro or resume-fast.');
 % Checkpointed full-family executions remain separate from unsliced evidence.
 if ismember(mode, {'slice','resume'})
     assert(nSeeds == 1 && ismember(armMode, {'standard','balanced'}), 'PipeCompare:Shadow', 'A slice runs one seed and one search.');
@@ -65,10 +65,8 @@ end
 % Round 10 fast modes. Both validate BEFORE any search, so a bad
 % fast recipe fails in seconds, never after hours of searching.
 if strcmp(mode, 'micro')
-    % A full shadow search must never carry a checkpoint directory:
-    % checkpointed full runs would silently become sliced runs.
-    % Micro is the only mode that may use one, and only for a
-    % single design seed and a single arm.
+    % A diagnostic slice runs one design seed and one search.
+    % Scientific slice/resume executions use separate explicit modes.
     assert(nSeeds == 1, 'PipeCompare:Shadow', 'micro mode requires exactly 1 seed.');
     assert(ismember(armMode, {'standard', 'balanced'}), 'PipeCompare:Shadow', 'micro mode requires one arm (standard or balanced), not ''all''.');
     assert(isscalar(firstSeed) && ismember(firstSeed, 40101:40104), 'PipeCompare:Shadow', 'micro mode accepts design seeds 40101-40104 only; a design seed is diagnostic, never held-out evidence.');
@@ -468,6 +466,7 @@ try
         r = [];
     end
 catch ME
+    if strcmp(ME.identifier,'PipeCompare:Slice') || startsWith(ME.identifier,'PipeCompare:Checkpoint'), rethrow(ME); end
     if strcmp(ME.identifier, 'PipeCompare:Interrupted')
         err = 'slice interrupted (partialSearch)';
     else

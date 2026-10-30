@@ -16,17 +16,20 @@ assert(~isempty(which('eeg_getversion')), 'PipeCompare:Slice', 'EEGLAB must be l
 passport.eeglabVersion = eeg_getversion();
 assert(~isfield(passport, 'checkpointDir'), 'PipeCompare:Slice', 'Passport must be portable across workers.');
 if ~isfolder(folder), mkdir(folder); end
-meta = fullfile(folder, 'checkpoint_passport.mat');
+meta = fullfile(folder, 'checkpoint_passport.json');
 manifest = fullfile(folder, 'manifest.mat');
 if isfile(meta)
-    prior = load(meta, 'passport');
-    assert(isequaln(prior.passport, passport), 'PipeCompare:Slice', ...
+    prior = jsondecode(fileread(meta));
+    assert(isequaln(prior, passport), 'PipeCompare:Slice', ...
         'Checkpoint passport mismatch: code, seed, arm, variance and toolchain must match.');
 elseif strcmp(mode, 'resume') || isfile(manifest)
-    error('PipeCompare:Slice', 'Refusing an unbound checkpoint: checkpoint_passport.mat is missing.');
+    error('PipeCompare:Slice', 'Refusing an unbound checkpoint: checkpoint_passport.json is missing.');
 else
-    tmp = fullfile(folder, 'checkpoint_passport.tmp.mat');
-    save(tmp, 'passport'); movefile(tmp, meta, 'f');
+    fid = fopen([meta '.tmp'],'w');
+    assert(fid >= 0,'PipeCompare:Slice','Cannot write checkpoint passport.');
+    clean = onCleanup(@()fclose(fid));
+    fprintf(fid,'%s\n',jsonencode(passport)); clear clean;
+    movefile([meta '.tmp'],meta,'f');
 end
 if strcmp(mode, 'resume')
     assert(isfile(manifest), 'PipeCompare:Slice', 'Resume requires manifest.mat.');

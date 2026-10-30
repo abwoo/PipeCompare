@@ -57,14 +57,24 @@ jobs:
             assert(nnz(selected)==1); r = run(suite(selected));
             assert(all([r.Passed]),'The remaining native checkpoint proof must pass');
             fprintf('CONSOLIDATION_TOTAL=%d PASSED=%d FAILED=%d SKIPPED=%d\n',numel(r),nnz([r.Passed]),nnz([r.Failed]),nnz([r.Incomplete]));
+            diary off;
+      - name: Merge original fragments and generate wire-format fixtures only
+        if: always()
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab')); eeglab nogui;
+            cd PipeCompare; addpath(pwd); addpath(fullfile(pwd,'benchmarks'));
+            if ~isfolder('consolidation_out'),mkdir('consolidation_out');end
             pipecompare_shadow_summary_fixtures(fullfile(pwd,'consolidation_out','fixtures'));
             out = pipecompare_shadow_selection(fullfile(pwd,'consolidation_out','original_merge'),20031,8, ...
               'mode','merge','fragmentsDir',fullfile(pwd,'saved_fragments'), ...
               'headSha',getenv('SOURCE_HEAD'),'workflowRunId',getenv('SOURCE_RUN'));
             saved = jsondecode(fileread(out.runJson));
             assert(saved.coverage.standard==8 && saved.coverage.balancedGuarded==1 && saved.coverage.paired_guardedMinusStandard==1);
-            diary off;
+
       - name: Independent Python wire-format regression and original-result check
+        if: always()
         env:
           SHADOW_FIXTURES: PipeCompare/consolidation_out/fixtures
         run: |
