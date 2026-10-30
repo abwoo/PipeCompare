@@ -149,6 +149,9 @@ def normalize_run_arrays(run):
     for entry in run.get("perSeed", []):
         if isinstance(entry, dict) and "arms" in entry:
             entry["arms"] = matlab_array(entry["arms"])
+            for arm in entry["arms"]:
+                if isinstance(arm, dict) and "pick" in arm:
+                    arm["pick"] = normalized_pick(arm["pick"])
     for pair in run.get("pairedDifferences", {}).values():
         for field in ("seeds", "gainCorrected", "raw"):
             if field in pair:
@@ -183,6 +186,10 @@ def main():
     arm_parts = {}
     for path in sorted(frag_dir.rglob("shadow_selection_seed_*.json")):
         frag = json.loads(path.read_text())
+        frag["arms"] = matlab_array(frag.get("arms", []))
+        for arm in frag["arms"]:
+            if isinstance(arm, dict) and "pick" in arm:
+                arm["pick"] = normalized_pick(arm["pick"])
         name = path.name
         # Round 8 B1: filename seed must agree with content seed.
         import re as _re

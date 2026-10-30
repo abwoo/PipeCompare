@@ -39,6 +39,12 @@ class WireFormatTests(unittest.TestCase):
         self.assertEqual(check.normalized_pick(1), 1)
         self.assertEqual(check.normalized_pick(0), 0)
 
+    def test_merged_missing_arm_pick_is_canonical_without_mutating_input(self):
+        raw = {"perSeed": {"seed": 20031, "arms": {"name": "balancedGuarded", "pick": []}}}
+        normalized = check.normalize_run_arrays(raw)
+        self.assertIsNone(normalized["perSeed"][0]["arms"][0]["pick"])
+        self.assertEqual(raw["perSeed"]["arms"]["pick"], [])
+
     def test_empty_arrays_remain_empty(self):
         raw = {"seeds": [], "perSeed": [], "pairedDifferences": {"p": {"seeds": [], "gainCorrected": [], "raw": []}}}
         self.assertEqual(check.normalize_run_arrays(raw), raw)
