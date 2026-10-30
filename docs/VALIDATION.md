@@ -1,5 +1,9 @@
 # Validation scope and remaining experiments
 
+Current rule, source revisions and execution status are indexed in
+[PR50 status and evidence](PR50_STATUS.md). Historical results below apply
+to their named runs; they do not automatically validate later code.
+
 The 0.9.5 first benchmark covered four simulated recordings. Its actual/reported RMS-error ratio
 of 1.21 was exploratory. Candidate pipelines and conditions from one recording are correlated
 rows; their count is not the number of independent observations. That first ratio must not be
@@ -356,3 +360,19 @@ pass and the PR's code has not changed. Stage-specific artifacts prevent
 confirmation from overwriting development. Successful execution is separate
 from stable calibration, improved accuracy, and external generalization.
 
+
+### Fitted-family shadow summary
+
+The frozen arithmetic rule for the variant-A shadow summary is: paired
+gain-corrected population-target MSE difference (guarded Balanced minus
+Standard) must have point estimate <= 0 and record-bootstrap 95% upper bound
+<= +5% of the paired Standard mean. A lower bound above +5% is labelled failed;
+other non-passing finite results are not-established; no paired seeds is failed.
+The interval uses 10,000 record resamples, RNG seed 1, and the stated linear
+percentile rule. This restates the existing implementation; it changes no
+criterion, arm definition or numerical value.
+
+A single pair gives a degenerate resampling interval and cannot establish a
+population claim. Coverage and unavailable arms must accompany every summary.
+The conditional fitted-family criterion is separate from the original
+development admission screen and cannot open independent confirmation.

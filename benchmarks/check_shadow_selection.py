@@ -22,6 +22,7 @@ Usage:
 Exit 0 on PASS, 1 on any FAIL (all failures are printed).
 """
 
+import copy
 import csv
 import json
 import math
@@ -126,7 +127,34 @@ def parse_csv_num(text):
     return float(text)
 
 
+
+def matlab_array(value):
+    """Accept MATLAB jsonencode's empty, singleton and vector representations."""
+    if value is None:
+        return []
+    return value if isinstance(value, list) else [value]
+
+
+def normalize_run_arrays(run):
+    """Normalize only schema-defined array fields; preserve values/provenance."""
+    run = copy.deepcopy(run)
+    for field in ("seeds", "perSeed", "unavailable"):
+        if field in run:
+            run[field] = matlab_array(run[field])
+    for entry in run.get("perSeed", []):
+        if isinstance(entry, dict) and "arms" in entry:
+            entry["arms"] = matlab_array(entry["arms"])
+    for pair in run.get("pairedDifferences", {}).values():
+        for field in ("seeds", "gainCorrected", "raw"):
+            if field in pair:
+                pair[field] = matlab_array(pair[field])
+    for ci in run.get("recordBootstrapCI95", {}).values():
+        if "replicates" in ci:
+            ci["replicates"] = matlab_array(ci["replicates"])
+    return run
+
 def main():
+    FAILURES.clear()
     if len(sys.argv) < 5:
         print("usage: check_shadow_selection.py <fragments_dir> <final_json> "
               "<per_seed_csv> <summary_csv> [expected_head_sha] [planned]")
@@ -138,7 +166,7 @@ def main():
     # compared it to the present count, which is tautological).
     expected_planned = int(sys.argv[6]) if len(sys.argv) > 6 else None
 
-    run = json.loads(final_json.read_text())
+    run = normalize_run_arrays(json.loads(final_json.read_text()))
     # Round 6 arm fragments: shadow_selection_seed_<seed>_standard.json
     # and shadow_selection_seed_<seed>_balanced.json combine into one
     # per-seed fragment. Complete per-seed fragments
@@ -294,7 +322,7 @@ def main():
         frag = frags.get(entry["seed"])
         if frag is None:
             continue
-        frag_arms = {a["name"]: a for a in frag["arms"]}
+        frag_arms = {a["name"]: a for a in matlab_array(frag["arms"])}
         for arm in want_recipes:
             fa, ra = frag_arms.get(arm), arms.get(arm)
             if fa is None or ra is None:

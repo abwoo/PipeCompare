@@ -1,182 +1,12 @@
 function out = pipecompare_shadow_selection(outDir, firstSeed, nSeeds, varargin)
-%PIPECOMPARE_SHADOW_SELECTION Held-out shadow comparison, fitted-family variant A.
+% Fresh-record fitted-family comparison and saved-output aggregation.
+% search: unsliced full-family search; merge: original unsliced fragments.
+% slice/resume: one full-family checkpointed search, explicitly labelled as
+% a separate execution and excluded from the original unsliced paired mean.
+% micro: design-seed diagnosis only. test: known fake candidate statistics.
+% The current rule and revision-specific evidence are in docs/PR50_STATUS.md.
+% No mode changes Rank, fits on confirmation seeds, or promotes a result.
 %
-% For each fresh synthetic seed, run two searches (Standard and Balanced)
-% and compare three arms on the SAME held-out seed:
-%   standard         Standard recipe, artifactVariance legacy-total,
-%                    production guard (protectReferenceCleanup = true).
-%   balancedGuarded  Balanced recipe, artifactVariance pooled,
-%                    production guard (protectReferenceCleanup = true).
-%   balancedUnguarded Balanced recipe, artifactVariance pooled, guard
-%                    disabled (protectReferenceCleanup = false), decided
-%                    on the SAME fitted Balanced family as balancedGuarded.
-%
-% Variant A fits each family ONCE per seed. The guarded pick is the
-% Balanced search's stored production recommendation. The unguarded pick
-% comes from re-running pipecompare.eval.Rank.run on the same fitted
-% candidates, reference and options, with only protectReferenceCleanup
-% flipped to false. Rank.bootstrap is seeded from opts.seed, and the
-% ranking options are taken verbatim from the stored ranking, so the
-% guarded re-run must reproduce the stored recommendation exactly; if it
-% does not, the script errors instead of silently reporting drifted
-% decisions. No EEG, ICA or candidate is refitted per arm.
-%
-% Labels (variant A; see docs/METHODS.md shadow section for the full
-% definitions):
-%   fullyHeldOut = true: every seed is fresh: seed >= 20031, not in the
-%       design set 40101-40104, not in the locked confirmation range
-%       41001-41030. The script asserts this; the workflow prep job
-%       asserts it again before any job starts.
-%   preprocessingRefitted = false: guarded and unguarded decisions share
-%       one fitted Balanced family; nothing is refitted per arm.
-%   adaptiveLeavesIncluded = false: adaptive leaves are NOT re-derived
-%       per arm. If the single search run generated adaptive candidates,
-%       they sit in the shared family for BOTH decisions; a per-arm
-%       adaptive-leaf effect is NOT measured here. That is variant B.
-%       A variant A verdict is therefore conditional and cannot close
-%       P0-5 (see frozenCriteria).
-%
-% Modes (Name-Value 'mode'):
-%   'search' (default): run fresh searches. Writes one per-seed fragment
-%       JSON per seed immediately after that seed finishes, and, when
-%       nSeeds > 1, the run-level JSON + CSV described below. A matrix
-%       job runs one seed (nSeeds = 1) and writes only its fragment; a
-%       collect job merges fragments with mode 'merge'.
-%   'search' with Name-Value 'arm': run only one search for the seed.
-%       'arm', 'standard' runs only the Standard search and writes
-%       shadow_selection_seed_<seed>_standard.json; 'arm', 'balanced'
-%       runs only the Balanced search and writes
-%       shadow_selection_seed_<seed>_balanced.json (both Balanced arms,
-%       derived from that one fitted family). 'arm', 'all' (default) is
-%       the original two-search runSeed path. The CI workflow uses the
-%       per-search arms (see Round 6 amendment below); the per-seed
-%       path is kept for local runs and backward compatibility.
-%   'merge': read fragment JSONs from 'fragmentsDir' and write the
-%       run-level JSON + CSV. Accepts complete per-seed fragments
-%       (shadow_selection_seed_<seed>.json) and/or per-search arm
-%       fragments (shadow_selection_seed_<seed>_standard.json and
-%       shadow_selection_seed_<seed>_balanced.json). Arm fragments for
-%       one seed are combined into one per-seed entry; a missing arm
-%       is unavailable with reason 'arm fragment missing'. If both arm
-%       fragments are present but their contract fingerprints differ,
-%       the Standard arm is unavailable with reason 'contract mismatch
-%       with Balanced search' (the original contractMatch semantics).
-%       A seed with no fragment at all is absent from the run output;
-%       the run JSON's 'seeds' field lists only the seeds actually
-%       present, while 'nSeedsPlanned' records the planned count, so a
-%       partial run can still be published and checked instead of
-%       being discarded. The collect job must therefore run even when
-%       search jobs fail (workflow 'if: always()').
-%   'test': unit-test hook. No EEG, no search: the caller supplies
-%       'testArms' (see below) and the script runs only the arm-MSE,
-%       pairing, bootstrap, negative-control and output code. The CI
-%       workflow never sets this mode.
-%
-% Round 6 amendment (2026-10-28, supersedes the execution description
-% below; statistics, seeds, arm definitions and frozen criteria are
-% UNCHANGED). Round 5 (head 23f3010) failed for two independent
-% reasons: (a) one matrix job ran both searches for a seed and 7 of 8
-% seeds exceeded the 330-minute step timeout, so no fragment was
-% produced; (b) contractMatch used cellfun on a struct array
-% (c.conditions), which MATLAB rejects with 'Input expected to be a
-% cell array, was struct instead', and its try/catch swallowed the
-% error and returned false every time, so the Standard arm was
-% unavailable on every seed even when both searches succeeded (the
-% only completed seed, 20033, shows exactly that reason). Round 6
-% fixes (b) by using arrayfun in contractMatch, and fixes (a) by
-% splitting each seed into two independent matrix jobs (Standard-only
-% and Balanced-only, each with a 360-minute job timeout and a
-% 350-minute step timeout, fragment upload with 'if: always()').
-% Raising 330 to 360 alone was rejected: it adds only 30 minutes
-% while seed 20031 was still searching at 330 minutes with an unknown
-% remainder. Shrinking the search scope was rejected: it would change
-% the arm definitions and break comparability with production search.
-% The Round 5 run is void as paired evidence for the new run: its
-% 20033 fragment is diagnostic only and is never counted in the new
-% run's paired evidence set. If a single search still exceeds
-% 360 minutes, GitHub-hosted runners offer no higher job timeout, so
-% the next step is search slicing or checkpointing, not another
-% timeout raise.
-%
-% Round 10 fast mode (diagnostic only, never held-out evidence).
-% Modes 'micro' and 'resume-fast' are fast-loop modes, not full
-% shadow modes. 'micro' runs ONE design seed (40101-40104) and ONE
-% arm, with a non-empty checkpoint directory, finite maxSeconds
-% <= 2400 and sliceSeconds == 2400; its fragment is labelled
-% slice-diagnostic (production family in this package: the reduced
-% family / trial subset / icaSeeds / refineCutoffs / eogCheck
-% overrides are NOT threaded through pop_pipecompare at this head,
-% see benchmarks/fast_mode_spec.md, and validate_fast_config
-% returns executionReady=false for that reduced recipe).
-% 'resume-fast' only validates a slice manifest with the strict
-% resume guard; it does NOT call Executor.resume and does NOT
-% write a held-out fragment. Full mode 'resume' remains an error,
-% unchanged. Micro/sliced fragments are rejected by merge (below)
-% and by benchmarks/check_shadow_selection.py: they must never
-% enter a paired mean, a coverage count, or a verdict.
-%
-% Unavailable semantics (same mode as benchmarks/diagnose_paired_regression.py):
-% a seed arm with no recommendation, no finite estimate, or an ambiguous
-% target is assessable = false and is excluded from every pair that needs
-% it; it is listed in 'unavailable' with a reason, never silently folded
-% into a mean. A paired comparison uses only seeds assessable in BOTH
-% arms (the intersection). If a pair has no paired seeds, its verdict is
-% 'failed' (incomplete output), not 'not-established'.
-%
-% Negative control: when the guarded and unguarded picks are identical,
-% their MSE difference must be exactly 0 (same pick, same family, same
-% truth). A non-zero difference means the scoring code is broken, so the
-% script errors instead of reporting it.
-%
-% Selected MSE definitions (per condition, then averaged):
-%   gain-corrected (primary): mean((estimate/gain(1) - populationTruth).^2)
-%   raw (secondary):          mean((estimate - populationTruth).^2)
-% where estimate = cands(pick).m.objectives(1).estimate and gain comes
-% from cands(pick).signal.gain (default 1). objectives(1) is the P3
-% measure objective of these single-measure searches; if a candidate
-% carries anything other than exactly one objective, the arm is
-% unavailable ('multiple objectives; target ambiguous').
-% populationTruth is the population P3 from bench_synth truth, computed
-% with the same formula as pipecompare_benchmark.m populationP3 (copied
-% below, logic unchanged). The Standard and Balanced contracts must agree
-% on the first component (roi, window), baseline and condition events;
-% otherwise the Standard arm is unavailable ('contract mismatch').
-%
-% Frozen criteria (three-layer-validation-plan.md section 3.1, quoted in
-% the output JSON under frozenCriteria): non-inferiority means the paired
-% gain-corrected mean difference (guarded Balanced minus Standard) has
-% point estimate <= 0 AND the 95% record-bootstrap interval upper bound
-% <= +5% of the Standard mean. Point <= 0 with the upper bound above +5%,
-% or point > 0 with the interval covering 0, is NOT ESTABLISHED (not a
-% failure). Interval lower bound above +5% is FAILED. Variant A verdicts
-% are conditional (adaptiveLeavesIncluded = false).
-%
-% Bootstrap: 10000 resamples of the paired seeds, MATLAB rng seeded with
-% 1 in the statistics phase (after all searches, so it cannot disturb
-% search randomness), percentile interval by linear interpolation (the
-% same rule as MATLAB prctile's default, implemented here so the script
-% needs no Statistics Toolbox). The bootstrap replicates are stored in
-% the JSON so an independent checker can recompute the interval exactly
-% without re-running any random draw.
-%
-% Checkpoints: none. Like the benchmark matrix pattern (one record per
-% job, job timeout as the bound), searches run without checkpoint dirs,
-% so no checkpoint identity question arises in variant A. (Whether a
-% guard switch changes ICA checkpoint identity matters only for variant
-% B, which runs two searches per seed; it must be settled there.)
-%
-% Workflow defaults (see .github/workflows/shadow-selection.yml):
-% first_seed 20031, 8 seeds, MATLAB R2026a + EEGLAB 2026.0.0. Round 5
-% used one per-seed job (340 minutes, MATLAB step 330 minutes). Round 6
-% uses one per-search job (360 minutes, MATLAB step 350 minutes):
-% Standard-only and Balanced-only jobs per seed, each uploading its
-% arm fragment with 'if: always()'.
-%
-% This script never changes production ranking code: it only calls the
-% production search (pop_pipecompare) and the production ranker
-% (Rank.run). It never writes to the confirmation ranges and never
-% touches the gate or legacy artifacts.
-
 % ---- argument parsing (manual Name-Value pairs, no toolbox needed) ----
 if nargin < 2 || isempty(firstSeed), firstSeed = 20031; end
 if nargin < 3 || isempty(nSeeds), nSeeds = 8; end
@@ -219,15 +49,18 @@ end
 assert(ischar(outDir) && ~isempty(outDir), 'PipeCompare:Shadow', 'outDir must be a non-empty path.');
 assert(isscalar(firstSeed) && firstSeed == floor(firstSeed) && firstSeed > 0, 'PipeCompare:Shadow', 'firstSeed must be a positive integer.');
 assert(isscalar(nSeeds) && nSeeds == floor(nSeeds) && nSeeds >= 1 && nSeeds <= 30, 'PipeCompare:Shadow', 'nSeeds must be an integer in 1..30.');
-assert(ismember(mode, {'search', 'merge', 'test', 'resume', 'micro', 'resume-fast'}), 'PipeCompare:Shadow', 'mode must be search, merge, test, resume, micro or resume-fast.');
-% Round 8 slicing: 'resume' is a design-level mode. It is NOT a silent
-% continuation of a timed-out search: the caller must pass a checkpoint
-% directory created by a sliced run, and Executor.resume re-derives
-% adaptive leaves (see Executor.resume comments). Until a sliced run
-% is proven in MATLAB, resume must not be used to complete Round 6
-% evidence; see round8-complete/MANIFEST.md.
-if strcmp(mode, 'resume')
-    error('PipeCompare:Shadow', 'Resume mode is design-only in Round 8: checkpoint slicing has not yet been proven in MATLAB, so it must not complete held-out evidence.');
+assert(ismember(mode, {'search', 'merge', 'test', 'resume', 'slice', 'micro', 'resume-fast'}), 'PipeCompare:Shadow', 'mode must be search, merge, test, resume, micro or resume-fast.');
+% Checkpointed full-family executions remain separate from unsliced evidence.
+if ismember(mode, {'slice','resume'})
+    assert(nSeeds == 1 && ismember(armMode, {'standard','balanced'}), 'PipeCompare:Shadow', 'A slice runs one seed and one search.');
+    assert(~isempty(checkpointDir) && isfinite(maxSeconds) && maxSeconds > 0 && maxSeconds <= 18000, ...
+        'PipeCompare:Shadow', 'A slice requires a checkpoint directory and finite budget <= 18000 seconds.');
+    assert(~isempty(getenv('EEGLAB_SHA')), 'PipeCompare:Shadow', 'EEGLAB_SHA is required for checkpoint identity.');
+    if strcmp(mode, 'resume')
+        assert(isfile(fullfile(checkpointDir,'manifest.mat')), 'PipeCompare:Shadow', 'Resume requires an existing checkpoint.');
+    else
+        assert(~isfile(fullfile(checkpointDir,'manifest.mat')), 'PipeCompare:Shadow', 'Existing checkpoint requires resume mode.');
+    end
 end
 % Round 10 fast modes. Both validate BEFORE any search, so a bad
 % fast recipe fails in seconds, never after hours of searching.
@@ -331,6 +164,16 @@ elseif strcmp(armMode, 'standard') || strcmp(armMode, 'balanced')
         % A slice-diagnostic fragment is never a held-out fragment:
         % its labels must not claim fullyHeldOut.
         armFrag.labels.fullyHeldOut = false;
+    elseif ismember(mode, {'slice','resume'})
+        fastMode = struct('mode','sliced-validation','partialSearch',false, ...
+            'slicedValidation',true,'designSeedDiagnostic',false,'resume',strcmp(mode,'resume'));
+        if strcmp(armMode,'standard')
+            armFrag = runArmStandard(s,maxSeconds,headSha,workflowRunId,eeglabVersion,checkpointDir,fastMode);
+        else
+            armFrag = runArmBalanced(s,maxSeconds,headSha,workflowRunId,eeglabVersion,checkpointDir,fastMode);
+        end
+        armFrag.labels.fullyHeldOut = false;
+        armFrag.execution = 'checkpointed-full-family; separate execution, excluded from unsliced paired means';
     elseif strcmp(armMode, 'standard')
         armFrag = runArmStandard(s, maxSeconds, headSha, workflowRunId, eeglabVersion);
     else
@@ -509,7 +352,7 @@ if nargin < 7 || isempty(fastMode), fastMode = struct('mode', 'full', 'partialSe
 % and condition events, which are exactly the inputs to populationP3).
 [EEG, truth] = bench_synth(seed);
 setBase(EEG);
-[rStd, stdErr, stdTiming] = runSearch(EEG, seed, 'standard', 'legacy-total', maxSeconds, checkpointDir);
+[rStd, stdErr, stdTiming] = runSearch(EEG, seed, 'standard', 'legacy-total', maxSeconds, checkpointDir, headSha, fastMode);
 stdArm = emptyArm('standard');
 fp = struct();
 if ~isempty(stdErr)
@@ -535,7 +378,7 @@ if nargin < 7 || isempty(fastMode), fastMode = struct('mode', 'full', 'partialSe
 % one fitted family, plus the contract fingerprint for the merge step.
 [EEG, truth] = bench_synth(seed);
 setBase(EEG);
-[rBal, balErr, balTiming] = runSearch(EEG, seed, 'balanced', 'pooled', maxSeconds, checkpointDir);
+[rBal, balErr, balTiming] = runSearch(EEG, seed, 'balanced', 'pooled', maxSeconds, checkpointDir, headSha, fastMode);
 fp = struct();
 if ~isempty(balErr) || isempty(rBal)
     truthVec = [];
@@ -591,27 +434,32 @@ frag = struct('seed', seed, 'arms', arms, 'guardChanged', guardChanged, ...
     'inputArtifactRunId', [], 'inputArtifactNote', 'fresh synthetic seeds; no frozen input artifact'));
 end
 
-function [r, err, timing] = runSearch(EEG, seed, recipe, varianceMode, maxSeconds, checkpointDir)
+function [r, err, timing] = runSearch(EEG, seed, recipe, varianceMode, maxSeconds, checkpointDir, headSha, fastMode)
 if nargin < 6 || isempty(checkpointDir), checkpointDir = ''; end
-% One production search, no checkpoints (benchmark matrix pattern).
-% Round 9 timing: timing.wallSeconds is the tic/toc wall time of this
-% one search only. It is NOT a sum over candidates: candidates share
-% tree prefixes, so summing candidate seconds would double-count the
-% shared work. The per-type summary is likewise a median/max across
-% candidates, never a sum, and never a wall time.
-% Round 8 slicing (design-only, see above): a sliced run would pass a
-% checkpoint directory and a finite maxSeconds here instead of ''/Inf,
-% with parallel=false (Executor asserts time slices require serial
-% prefix sharing). That change is NOT wired in this bundle because
-% Executor.resume re-derives adaptive leaves and has not been proven
-% in MATLAB for the shadow arms.
-% Any exception makes only the affected recipe unavailable for this seed.
+if nargin < 7, headSha = ''; end
+if nargin < 8, fastMode = struct(); end
+% Full scientific definitions are unchanged; a finite budget uses the
+% checkpoint helper. Cooperative interruption saves completed leaves/ICA.
+% The budget is checked between operations, not inside an individual fit.
+% A failed/partial search never supplies a scientific recommendation.
 r = []; err = ''; timing = timingEmpty(NaN);
 t0 = tic;
 try
-    [~, ~, r] = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'11', '31'}, ...
-        'recipe', recipe, 'artifactvariance', varianceMode, 'reference', 'average', ...
-        'show', 'off', 'checkpoint', checkpointDir, 'maxseconds', maxSeconds);
+    if isempty(checkpointDir)
+        r = initialSearch(EEG, recipe, varianceMode, checkpointDir, maxSeconds);
+    else
+        passport = struct('commit',headSha,'seed',seed,'arm',recipe, ...
+            'artifactVariance',varianceMode,'eeglabSha',getenv('EEGLAB_SHA'));
+        sliceMode = 'start';
+        if isfield(fastMode,'resume') && fastMode.resume, sliceMode = 'resume'; end
+        [r, sliceState] = pipecompare_checkpoint_search(checkpointDir, passport, ...
+            @()initialSearch(EEG,recipe,varianceMode,checkpointDir,maxSeconds), maxSeconds, sliceMode);
+        if ~sliceState.complete
+            err = 'slice interrupted (partialSearch)';
+            timing = timingEmpty(toc(t0));
+            return;
+        end
+    end
     if ~isfield(r, 'notRun') || r.notRun > 0
         err = 'partial search';
         r = [];
@@ -636,6 +484,12 @@ else
     % summarise, and inventing one from a partial family would mislead.
     timing = timingEmpty(wall);
 end
+end
+
+function r = initialSearch(EEG, recipe, varianceMode, checkpointDir, maxSeconds)
+[~, ~, r] = pop_pipecompare(EEG, 'measure', 'P3', 'events', {'11','31'}, ...
+    'recipe',recipe,'artifactvariance',varianceMode,'reference','average', ...
+    'show','off','checkpoint',checkpointDir,'maxseconds',maxSeconds);
 end
 
 function t = timingEmpty(wall)
@@ -1146,13 +1000,13 @@ run = struct('commit', headSha, 'seeds', seeds, 'firstSeed', firstSeed, 'nSeedsP
     'labelDefinitions', struct('fullyHeldOut', 'every seed is fresh (seed >= 20031, not in design 40101-40104, not in locked confirmation 41001-41030)', ...
     'preprocessingRefitted', 'guarded and unguarded decisions share one fitted Balanced family; nothing is refitted per arm', ...
     'adaptiveLeavesIncluded', 'adaptive leaves are NOT re-derived per arm; candidates generated during the single search run sit in the shared family for both decisions, and a per-arm adaptive-leaf effect is NOT measured here (that is variant B)'), ...
-    'frozenCriteria', struct('text', ['Non-inferiority (frozen, three-layer-validation-plan.md section 3.1): the paired gain-corrected ', ...
+    'frozenCriteria', struct('text', ['Non-inferiority (frozen, docs/VALIDATION.md fitted-family shadow summary): the paired gain-corrected ', ...
     'population-target selected MSE difference (guarded Balanced minus Standard) has point estimate <= 0 AND the 95% ', ...
     'record-bootstrap interval upper bound <= +5% of the Standard mean. Point <= 0 with the upper bound above +5%, or ', ...
     'point > 0 with the interval covering 0, is NOT ESTABLISHED (not a failure). Interval lower bound above +5% is ', ...
     'FAILED. No paired seeds or incomplete output is FAILED. Variant A verdicts are conditional ', ...
     '(adaptiveLeavesIncluded = false) and cannot close P0-5.'], 'toleranceFraction', 0.05, ...
-    'source', 'three-layer-validation-plan.md section 3.1'), ...
+    'source', 'docs/VALIDATION.md fitted-family shadow summary'), ...
     'primaryVerdict', stats.verdicts.guardedMinusStandard.verdict, ...
     'verdicts', stats.verdicts);
 writeJson(jsonPath, run);

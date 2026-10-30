@@ -34,7 +34,7 @@ function cfg = validate_fast_config(cfg)
 % run: one design seed, one arm, production family, checkpoint +
 % 40-minute slice, labelled slice-diagnostic, never held-out.
 % Reduced-family execution is an explicit unfinished item (see
-% MANIFEST.md); it needs Presets threading plus pre-registration
+% docs/PR50_STATUS.md); it needs Presets threading plus pre-registration
 % of the reduction rule before any reduced-family run is claimed.
 if ~isstruct(cfg)
     error('PipeCompare:FastMode', 'fast config must be a struct.');

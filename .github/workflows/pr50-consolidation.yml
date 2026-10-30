@@ -1,0 +1,90 @@
+name: PR50 consolidation and saved-output verification
+
+on:
+  push:
+    branches: [codex/pr50-consolidation-20261030]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: pr50-consolidation-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  affected-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SOURCE_HEAD: 6b26931619b8b11f630326638cdf2a4cb478e0fa
+      SOURCE_RUN: '40805638604'
+      DISPLAY: ':99'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+      - name: Download completed original fragments only
+        uses: actions/download-artifact@v4
+        with:
+          pattern: shadow-seed-*
+          path: PipeCompare/saved_fragments
+          run-id: 40805638604
+          github-token: ${{ github.token }}
+      - name: Checkout EEGLAB 2026
+        run: git clone --depth 1 --branch 2026.0.0 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
+      - name: Record EEG implementation identity
+        run: echo "EEGLAB_SHA=$(git -C eeglab rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Bound dependency downloads
+        run: bash PipeCompare/.github/scripts/prepare-matlab.sh
+      - name: Start display for native EEGLAB tests
+        run: bash PipeCompare/.github/scripts/start-display.sh
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+          products: Signal_Processing_Toolbox
+      - name: Affected contracts, native checkpoint proof and original-fragment merge
+        timeout-minutes: 30
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab')); eeglab nogui;
+            cd PipeCompare; addpath(pwd); addpath(fullfile(pwd,'tests')); addpath(fullfile(pwd,'benchmarks'));
+            mkdir('consolidation_out'); diary(fullfile('consolidation_out','matlab.log'));
+            r = run_all({'test_methodology','test_algorithm_regressions','test_shadow_selection','test_checkpoint_delivery'});
+            assert(all([r.Passed]),'All affected cases must pass without skips');
+            fprintf('CONSOLIDATION_TOTAL=%d PASSED=%d FAILED=%d SKIPPED=%d\n',numel(r),nnz([r.Passed]),nnz([r.Failed]),nnz([r.Incomplete]));
+            pipecompare_shadow_summary_fixtures(fullfile(pwd,'consolidation_out','fixtures'));
+            out = pipecompare_shadow_selection(fullfile(pwd,'consolidation_out','original_merge'),20031,8, ...
+              'mode','merge','fragmentsDir',fullfile(pwd,'saved_fragments'), ...
+              'headSha',getenv('SOURCE_HEAD'),'workflowRunId',getenv('SOURCE_RUN'));
+            saved = jsondecode(fileread(out.runJson));
+            assert(saved.coverage.standard==8 && saved.coverage.balancedGuarded==1 && saved.coverage.paired_guardedMinusStandard==1);
+            diary off;
+      - name: Independent Python wire-format regression and original-result check
+        env:
+          SHADOW_FIXTURES: PipeCompare/consolidation_out/fixtures
+        run: |
+          python -m unittest discover -s PipeCompare/benchmarks -p test_shadow_summary.py -v
+          python -m unittest discover -s PipeCompare/benchmarks -p test_check_fast.py -v
+          python PipeCompare/benchmarks/check_shadow_selection.py PipeCompare/saved_fragments PipeCompare/consolidation_out/original_merge/shadow_selection_6b26931_20031_8.json PipeCompare/consolidation_out/original_merge/shadow_selection_6b26931_20031_8.csv PipeCompare/consolidation_out/original_merge/shadow_selection_6b26931_20031_8_summary.csv "$SOURCE_HEAD" 8
+      - name: Record distinct source and processing revisions
+        if: always()
+        env:
+          PROCESSING_SHA: ${{ github.sha }}
+          PROCESSING_RUN: ${{ github.run_id }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          dest=Path("PipeCompare/consolidation_out"); dest.mkdir(exist_ok=True)
+          report=dict(sourceAlgorithmCommit=os.environ["SOURCE_HEAD"],sourceRunId=os.environ["SOURCE_RUN"],processingCommit=os.environ["PROCESSING_SHA"],processingRunId=os.environ["PROCESSING_RUN"],newScientificFits=0,scope="Original-fragment aggregation only; separate small native checkpoint infrastructure proof; no new record-level validation")
+          (dest/"reaggregation_provenance.json").write_text(json.dumps(report,indent=2)+"\n")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pr50-consolidation
+          path: PipeCompare/consolidation_out
+          retention-days: 90

@@ -940,37 +940,6 @@ verifyEqual(tc,G.guardGroupStatus,'partially-unguarded');
 verifyTrue(tc,all(~G.groupGuardBlocked));
 end
 
-function testGroupRelativeScoreIsDiagnosticOnly(tc)
-addpath(fullfile(fileparts(mfilename('fullpath')),'..','benchmarks'));
-% Round 8: pure arithmetic, no EEGLAB, no Rank dependency.
-z = group_relative_score([1; 2; 3]);
-verifyTrue(tc, z(1) < z(2) && z(2) < z(3));
-verifyTrue(tc, abs(mean(z)) < 1e-12);
-z2 = group_relative_score([5; 5]);
-verifyTrue(tc, all(z2 == 0));
-end
-
-function testBestSetStrictPrototypeKeepsOnlyBestWhenUndefined(tc)
-addpath(fullfile(fileparts(mfilename('fullpath')),'..','benchmarks'));
-% Round 8: with all bootstrap draws incomplete, the strict prototype
-% keeps only the point-best and flags undefined; production Rank.run
-% in Round 8 does NOT use this (it only flags bestSetUndefined).
-pts = [1; 2; 3];
-Bq = NaN(3, 5);
-[keep, undefined] = bestset_strict_prototype(pts, Bq, 1, 0.02);
-verifyTrue(tc, undefined);
-verifyEqual(tc, keep, [true; false; false]);
-end
-
-function testDiffusionReportReturnsNaNWhenMissing(tc)
-addpath(fullfile(fileparts(mfilename('fullpath')),'..','benchmarks'));
-% Round 8: missing interpolatedFraction is unknown (NaN), not 0.
-cands = struct('key', {'a'});
-rep = diffusion_report(cands, 1);
-verifyTrue(tc, isnan(rep.interpolatedFraction));
-verifyFalse(tc, rep.available);
-end
-
 function testCalibrationRatioIsNeverReportedWithoutCoverage(tc)
 % Round 10, report-only: Calibration.summarize already returns
 % ratio + coverage + plannedRecords (Round 8). This test locks

@@ -1,0 +1,108 @@
+name: Single shadow search with checkpoint recovery
+
+on:
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: 'One predeclared development seed (20031-20060)'
+        default: '20031'
+      arm:
+        type: choice
+        options: [standard, balanced]
+        default: balanced
+      source_run:
+        description: 'Empty to start; exact same-code checkpoint workflow run ID to resume'
+        default: ''
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: shadow-checkpoint-${{ github.ref }}-${{ inputs.seed }}-${{ inputs.arm }}
+  cancel-in-progress: false
+
+jobs:
+  slice:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      DISPLAY: ':99'
+      SHADOW_HEAD_SHA: ${{ github.sha }}
+      SHADOW_SEED: ${{ inputs.seed }}
+      SHADOW_ARM: ${{ inputs.arm }}
+      SOURCE_RUN: ${{ inputs.source_run }}
+      SHADOW_RUN_ID: ${{ github.run_id }}
+      PIPECOMPARE_EEGLAB_VERSION: '2026.0.0'
+    steps:
+      - name: Validate request and source execution before downloading
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const seed=Number(process.env.SHADOW_SEED);
+            if(!Number.isInteger(seed)||seed<20031||seed>20060) throw new Error('Seed must be in 20031-20060');
+            if(!['standard','balanced'].includes(process.env.SHADOW_ARM)) throw new Error('Invalid arm');
+            if(process.env.SOURCE_RUN) {
+              const id=Number(process.env.SOURCE_RUN);
+              if(!Number.isSafeInteger(id)||id<=0) throw new Error('Invalid source run');
+              const {data:r}=await github.rest.actions.getWorkflowRun({...context.repo,run_id:id});
+              if(r.head_sha!==process.env.SHADOW_HEAD_SHA) throw new Error('Resume requires exact same code SHA');
+              if(r.path!=='.github/workflows/shadow-checkpoint.yml') throw new Error('Source is not the checkpoint workflow');
+              core.exportVariable('SLICE_MODE','resume');
+            } else core.exportVariable('SLICE_MODE','slice');
+      - uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+          ref: ${{ github.sha }}
+      - name: Restore the requested seed/arm checkpoint
+        if: inputs.source_run != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: shadow-checkpoint-${{ inputs.seed }}-${{ inputs.arm }}
+          path: PipeCompare/shadow_checkpoint
+          run-id: ${{ inputs.source_run }}
+          github-token: ${{ github.token }}
+      - name: Checkout EEGLAB 2026
+        run: git clone --depth 1 --branch 2026.0.0 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
+      - name: Record EEG implementation identity
+        run: echo "EEGLAB_SHA=$(git -C eeglab rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Bound dependency downloads
+        run: bash PipeCompare/.github/scripts/prepare-matlab.sh
+      - name: Start display
+        run: bash PipeCompare/.github/scripts/start-display.sh
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+          products: Signal_Processing_Toolbox
+      - name: Start or continue exactly one full-family search
+        timeout-minutes: 45
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab')); eeglab nogui;
+            cd PipeCompare; addpath(pwd); addpath(fullfile(pwd,'benchmarks'));
+            dest=fullfile(pwd,'shadow_checkpoint'); if ~isfolder(dest),mkdir(dest);end
+            pipecompare_shadow_selection(fullfile(dest,'output'),str2double(getenv('SHADOW_SEED')),1, ...
+              'mode',getenv('SLICE_MODE'),'arm',getenv('SHADOW_ARM'), ...
+              'headSha',getenv('SHADOW_HEAD_SHA'),'workflowRunId',getenv('SHADOW_RUN_ID'), ...
+              'checkpointDir',fullfile(dest,'checkpoint'),'maxSeconds',1800);
+      - name: Expose completion and preserved progress
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path("PipeCompare/shadow_checkpoint/checkpoint")
+          f=root/"slice_progress.json"
+          print(f.read_text() if f.exists() else "No progress state: inspect the failed setup/search step.")
+          print("Completed leaf files:",len(list(root.glob("leaf_*.mat"))))
+          print("Saved ICA files:",len(list((root/"ica_cache").glob("*.mat"))))
+          print("These fragments never supplement the old unsliced paired mean.")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shadow-checkpoint-${{ inputs.seed }}-${{ inputs.arm }}
+          path: PipeCompare/shadow_checkpoint
+          retention-days: 90
+          if-no-files-found: warn

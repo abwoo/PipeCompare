@@ -1314,18 +1314,17 @@ validate the soft-thresholded bias proxy, or establish better EEG recovery.
 The pooled default and explicit legacy-total control remain reproducible.
 A change to the default requires paired whole-procedure validation.
 
-`Rank.run(..., struct('upgradeBaseline', baselineId), ...)` optionally
-protects a designated candidate in the same recording and comparison
-stratum. The baseline must be feasible. A proposed replacement is accepted
-only when its score difference plus the simultaneous all-pairs bootstrap
-critical value is strictly negative. Otherwise the baseline is retained.
-The same guard is used in conditional bootstrap selection frequencies.
-An incomplete family can yield an infinite bound and cannot justify an
-upgrade. Cross-fit diagnostics remain those of the underlying unguarded
-score selector and explicitly carry `upgradeGuardApplied=false`.
-This guards promotion on the fitted score; it is not a guarantee about
-unknown true MSE or independent generalization. Declare the baseline
-without consulting ground truth. The option is deliberately explicit.
+The current `upgradeBaseline` and reference-cleanup guards use the same
+conditional comparison: keep the proposed recommendation unless the baseline
+has a strictly negative reverse simultaneous bound,
+`score_baseline - score_proposed + critical < 0`. Indistinguishable evidence
+keeps the proposal (`maintain`); missing evidence also keeps it, but is labelled
+`unassessed`. A baseline must be feasible. This is the behavior introduced at
+`d908041ff5aa5f8c62cf111e5b75eae397d2f950`, and remains unchanged in the
+consolidation. It differs from the earlier conservative guard audited at
+`b27b4351846a8f53b7472e80529b2f86cf8a60cd`. That earlier replay cannot certify
+the current rule. Cross-fit diagnostics remain conditional on the fitted
+preprocessing and do not establish independent whole-procedure validity.
 
 Synthetic benchmarks now preserve compact per-trial score archives outside
 disposable EEG/ICA checkpoints. These contain candidate statistics, factor
@@ -1345,34 +1344,24 @@ is descriptive (the recommendation rule also uses shrinkage and equivalence),
 and supplies no justification for changing the default or opening confirmation.
 
 
-### Protect channel repair before average reference
+### Reference-cleanup comparison: current rule and historical evidence
 
-The default ranking decision now guards the specific choice to skip a
-feasible channel-interpolation candidate before an average-reference step.
-A noisy channel in the reference can contaminate every measured electrode.
-A small fitted-score advantage is insufficient evidence to remove that
-protection. Among eligible repaired candidates, the rule retains candidates
-within the simultaneous critical distance of the best repaired score,
-prefers the existing low-bias class, and chooses the lowest shrunk score.
-It then requires the proposed skip's all-pairs upper difference bound to
-be below zero. An already repaired recommendation is unchanged; an
-ineligible repair is never adopted. The same rule is applied in bootstrap
-selection frequencies. `protectReferenceCleanup=false` reproduces the
-unguarded decision for diagnostic controls.
+The default guard compares a proposal that skips feasible channel interpolation
+before average reference with an eligible repaired candidate. It selects that
+comparator from repaired candidates within the simultaneous critical distance
+of the best repaired score, preferring the existing low-bias class and then
+the smallest shrunk score. The current guard replaces the proposal only when
+that comparator is significantly better under the reverse bound above.
+An already repaired proposal is unchanged and an ineligible repair is never
+adopted. The same rule is used in bootstrap selection frequencies.
+`protectReferenceCleanup=false` disables the diagnostic comparison;
+an explicit `upgradeBaseline` takes precedence. Native/custom reference
+commands are not inferred.
 
-This uses catalog-defined average reference and interpolation before that
-reference, with no ground truth in selection. Other references and native
-commands are not inferred. Optional ICA and EOG branches remain available.
-The existing candidate family is retained, so cached fits and bootstrap
-statistics can test this decision change without fitting ICA again.
-It is a conservative decision rule under the current fitted score, not a
-proof that the channel detector or true MSE is correct. Development
-protocol version 4 rejects imports of frozen Balanced recommendations
-computed without this rule; unchanged explicit legacy Standard controls
-retain their provenance checks.
-
-The explicit `upgradeBaseline` option takes precedence over this automatic
-reference-cleanup guard.
+The following figures are **historical fixed-family diagnostics of the earlier
+guard**, from algorithm revision `b27b4351846a8f53b7472e80529b2f86cf8a60cd`.
+They are retained to explain the investigation. They are not current-version
+recommendations or evidence that the current rule improves MSE.
 
 Targeted verification: [run 40458110149](https://github.com/abwoo/PipeCompare/actions/runs/40458110149)
 passed six MATLAB decision/stability tests and 27 Python reuse/protocol tests.
@@ -1407,7 +1396,11 @@ independent generalization remain outside this fixed-candidate replay.
 Confirmation remains unopened.
 
 
-### Source-resolved diagnosis of the remaining selection error
+### Historical source-resolved diagnosis (fixed fitted operators)
+
+Audit algorithm: `87f8e2680f1af817cfecad1456c4c6881c9540dc`; recorded evidence:
+`7d487769b206436393a8bf06fb019bb73cb700ac`. These source budgets describe
+those cached operators, independently of any later ranking-rule changes.
 
 [Run 40460170075](https://github.com/abwoo/PipeCompare/actions/runs/40460170075)
 adds optional source tracing to the simulator and replays the stored
@@ -1471,297 +1464,34 @@ cohort. It makes future objective-model changes testable against signal
 loss, selection effects and residual nuisance separately.
 
 
-### Shadow selection (held-out, fitted-family variant A)
+### Fitted-family shadow selection and checkpointed execution
 
-Variant A evaluates the production selector on fresh synthetic seeds
-without touching production ranking, guard defaults, or search recipes.
-It is the first of two shadow variants: variant A isolates the decision
-rule on one fitted candidate family per seed; variant B (not yet built)
-re-runs the full search per arm, including adaptive leaves, and is the
-only variant whose output can close the fresh-evidence item for the
-four-record descriptive MSE. Variant A output must never be reported as
-variant B output.
+An unsliced shadow comparison fits one Balanced candidate family per fresh
+recording and applies guarded/unguarded decisions to that same family.
+Its Standard control uses the explicitly frozen legacy-total variance mode.
+This is a fitted-family comparison: preprocessing and downstream adaptive
+candidates are not independently refitted for each decision arm. The
+`fullyHeldOut` field in old fragments denotes fresh record identities only;
+it does not mean the procedure is out-of-fold. Repeated inspection of the
+same fresh seeds makes them development evidence for subsequent changes.
 
-Method. For each held-out seed, the script
-`benchmarks/pipecompare_shadow_selection.m` runs two searches: one
-Standard search (`artifactVariance` legacy-total) and one Balanced
-search (`artifactVariance` pooled). The guarded Balanced pick is the
-stored production recommendation of the Balanced search. The unguarded
-Balanced pick is a re-execution of `Rank.run` on the same fitted
-Balanced family with only `protectReferenceCleanup` switched from true
-to false; the re-execution must reproduce the stored recommendation
-exactly, otherwise the script fails instead of reporting drifted
-decisions. If the stored search carries an explicit `upgradeBaseline`,
-both Balanced arms are unavailable for that seed, because the guard path
-is then `guardUpgrade` rather than `guardReference` and a protect=false
-re-run would not be a genuine unguarded decision. No checkpoint is
-written: each matrix job runs one seed, so the per-seed fragment is the
-crash-safe unit, and the run-level files are produced by merging
-fragments, never by re-running searches.
+Heavy searches are started explicitly. Ordinary pull-request updates do not
+start the sixteen-search shadow matrix. Saved fragments may be re-aggregated
+without fitting EEG. The independent Python checker accepts MATLAB's empty,
+singleton and vector JSON encodings only for fields declared as arrays.
+It preserves numerical values, missingness, source commits and planned counts.
 
-Each arm's selected MSE is computed against the population P3 truth of
-the Balanced contract. The primary measure is gain-corrected:
-mean((estimate / gain - population)^2) over the truth vector. The raw
-selected MSE, mean((estimate - population)^2), is reported alongside it
-as a secondary measure. The Standard contract must agree with the
-Balanced contract on the first component's region, window, baseline and
-condition events, otherwise the Standard arm is unavailable for that
-seed (the two arms would not be comparable). A failed or partial search
-makes only its own arm unavailable; a seed is never silently skipped.
+`pipecompare_checkpoint_search` and the shadow `slice`/`resume` modes save
+completed candidate files and ICA caches, bind them to seed, arm, code revision,
+variance and MATLAB/EEGLAB identity, and use strict Executor resume.
+A progress JSON is written before computation and after cooperative interruption.
+Completed results are cached for retries. Individual long operations may exceed
+the cooperative slice budget; a runner hard kill still preserves files written
+before it, and artifact upload must be allowed time afterward.
 
-Pairing and statistics. Paired differences are computed per seed and
-averaged only over seeds assessable in both arms of the pair
-(`guardedMinusStandard` and `guardedMinusUnguarded`); single-arm-only
-seeds are listed under `unavailable` and never folded into a mean.
-The record-bootstrap 95% interval resamples paired seeds with
-replacement (10000 draws, seed 1), and the stored replicates let an
-independent checker recompute the interval exactly. The negative
-control is enforced inside the script: when the guarded and unguarded
-picks coincide, both MSE differences must be below 1e-12, otherwise the
-run fails as a pipeline bug rather than reporting a result.
-
-Labels. The three labels are defined as follows and are stored verbatim
-in every output file. `fullyHeldOut` means every seed is fresh (at or
-above 20031, not in the design set 40101-40104, not in the locked
-confirmation set 41001-41030). `preprocessingRefitted` is false because
-the guarded and unguarded decisions share one fitted Balanced family;
-neither arm re-fits EEG, ICA, or candidates. `adaptiveLeavesIncluded`
-is false because adaptive leaves are not re-derived per arm; both
-decisions share the single search's family. Note the precise reading:
-a single search with the default search options may itself generate
-adaptive candidates, and those candidates are then common to both
-decisions. What variant A does not measure is the per-arm adaptive-leaf
-effect; that is variant B's question.
-
-Frozen criteria. The decision rule is frozen in the three-layer
-validation plan, section 3.1, and quoted in each output file under
-`frozenCriteria`. The primary verdict concerns `guardedMinusStandard`:
-established when the paired mean difference is at most 0 and the 95%
-interval upper bound is at most 5% of the Standard mean; failed when
-the interval lower bound exceeds that 5% tolerance (or when there are
-no paired seeds at all); otherwise not-established, which triggers the
-pre-registered expansion of the held-out set rather than any change of
-rule, threshold, or partition. A variant A "established" verdict is
-conditional only: it does not close the fresh-evidence item, and it says
-nothing about calibration, which is a separate step with its own gate.
-Calibration conclusions drawn from variant A numbers are labelled as
-being on an unverified error scale until the calibration step passes.
-
-Output and verification. Run-level files are
-`benchmarks/results/shadow_selection_<head7>_<firstSeed>_<nSeeds>.json`
-and the matching `.csv` plus `_summary.csv`; per-seed fragments are
-`shadow_selection_seed_<seed>.json`. Every output carries the evidence
-passport: script path, input artifact run id (null for fresh seeds, as
-no frozen input artifact is used), output path, commit SHA, guard
-switches and variance modes, and MATLAB/EEGLAB versions. The workflow
-`.github/workflows/shadow-selection.yml` merges fragments and then runs
-`benchmarks/check_shadow_selection.py`, which recomputes paired
-differences, means, bootstrap intervals, coverage counts, and verdicts
-from the fragments and CSVs and fails on any mismatch with the run
-JSON; it also checks field completeness and label constants. The
-workflow runs on pull requests touching only the shadow files, plus
-manual dispatch (defaults: first seed 20031, 8 seeds), on MATLAB R2026a
-with EEGLAB 2026.0.0, with a 340-minute per-seed job timeout matching
-the benchmark per-record anchor. The confirmation seeds 41001-41030 and
-participants 81-109 stay locked throughout and are never used as shadow
-seeds.
-
-### Round 6 amendment (2026-10-28): split-arm execution and contractMatch fix
-
-This amendment supersedes only the execution description in the
-shadow-selection section above; statistics, seeds, arm definitions,
-labels, and frozen criteria are unchanged. Round 5 (head 23f3010)
-failed for two independent reasons. First, one matrix job ran both
-searches for a seed and 7 of 8 seeds exceeded the 330-minute step
-timeout, producing no fragment at all. Second, `contractMatch` used
-`cellfun` on a struct array (`c.conditions`), which MATLAB rejects,
-and its `try/catch` swallowed the error and returned false on every
-call, so the Standard arm was unavailable on every seed even when
-both searches succeeded; the only completed Round 5 seed (20033)
-shows exactly the reason "contract mismatch with Balanced search",
-with no pick and no MSE for the Standard arm, while the two Balanced
-arms shared pick 6 and identical MSEs.
-
-Round 6 fixes both. `contractMatch` now uses `arrayfun`, the correct
-iterator for a struct array. Execution is split by search: each seed
-gets two independent matrix jobs, Standard-only and Balanced-only
-(each with a 360-minute job timeout and a 350-minute MATLAB step
-timeout, fragment upload with `if: always()`). The Balanced-only job
-derives both Balanced arms from its single fitted family, exactly as
-before; the Standard-only job computes its MSE against its own
-contract's population truth, and the merge step keeps the Standard
-arm assessable only when its contract fingerprint (first-component
-roi and window, baseline, condition events) matches the Balanced
-fingerprint, so a kept Standard MSE is on the same truth vector as
-before. Raising 330 to 360 alone was rejected (only +30 minutes
-while seed 20031 was still searching at 330 with an unknown
-remainder); shrinking the search scope was rejected (it would change
-the arm definitions and break comparability with production search).
-
-Partial runs are now published, not skipped: the collect job runs
-with `if: always()` even when search jobs fail, the merge step
-combines arm fragments into per-seed entries (a missing arm is
-unavailable with reason "arm fragment missing", a fingerprint
-mismatch makes the Standard arm unavailable with reason "contract
-mismatch with Balanced search"), and the run JSON lists only the
-seeds actually present while `nSeedsPlanned` records the planned
-count. The independent checker was updated to read arm fragments
-and to verify the fingerprint condition. The Round 5 run is void as
-paired evidence for the new run: its 20033 fragment is diagnostic
-only and is never counted in the new run's paired evidence set. If
-a single search still exceeds 360 minutes, GitHub-hosted runners
-offer no higher job timeout, so the next step is search slicing or
-checkpointing, not another timeout raise.
-
-## Round 8 complete bundle (append-only note, to be appended to docs/METHODS.md at push time)
-
-Round 8 is a single bundle by user direction (2026-10-28), not split
-into rounds 8/9/10. The user accepted that a bundled failure cannot
-be attributed to one item without segmenting by file/module; that
-acceptance is NOT acceptance of fabricated evidence. New arms never
-replace Standard or balancedGuarded; every new arm needs its own
-paired-MSE, survival, wall-time and pick-stability gates on held-out
-seeds before it can be called better.
-
-Included as implemented code (MATLAB/Python, CI is first MATLAB
-verification; cloud has no MATLAB):
-- Round 7 test fix: eyeBias_P3mean (was eyeBias_obj1).
-- A1-A7, bestSetUndefined flag (report-only), calibration coverage
-  and summarizeByStratum (report-only), strict checkpoint (opt-in
-  only), Executor per-step seconds, shadow tools B1 (planned,
-  filename seed, duplicate, guard-reproduction/negative-control to
-  unavailable, negative gain, CSV pick/selectedKey), workflow
-  max-parallel 10->16, dispatch seed_list, EEGLAB SHA provenance.
-- Diffusion report and calibration-gate report (report-only helpers).
-
-Included as prototype/design ONLY, not production, not wired:
-- Successive halving, surrogate screen (Python prototype),
-  group-relative score (MATLAB pure helper, diagnostic only),
-  bestSet strict keep-only-best (separate arm prototype),
-  variant B (M3-first design record, MATLAB validation required),
-  checkpoint slicing resume (guarded design-only error in shadow
-  script), LLM-assisted log review (local template prototype, no
-  LLM call, no external API). DeepSeek/Kimi weights are NOT embedded
-  and are NOT called; the bundled LLM content is these transferable
-  techniques, with frozen rules and gates, not model weights.
-
-Not implemented in this bundle (explicit gaps):
-- CI cache activation: EEGLAB SHA is now recorded, but cache
-  activation is deferred until setup time is measured; a cache keyed
-  without the SHA could drift from 2026.0.0.
-- matlab-tests suite split: NOT split. Round 7 tests ran ~3 minutes
-  plus setup; splitting would multiply setup cost per suite. Keep
-  one job until setup time is measured and shown to be smaller than
-  the parallel gain.
-- Shadow merge-mode MATLAB tests for filename/duplicate/CSV-pick:
-  the checker enforces them in CI collect; MATLAB merge tests for
-  those paths are a follow-up, not claimed here.
-- Crossfit finite-guard fake-candidate test: guard is implemented,
-  a dedicated fake-candidate test is a follow-up.
-
-One-hour round boundary (user requirement):
-- A matlab-tests-only code-fix round CAN fit in 1 hour: Round 7
-  tests took ~3 minutes plus MATLAB/EEGLAB setup, well under 1 hour.
-- An 8-seed shadow validation round CANNOT fit in 1 hour: a single
-  search took 31-305 minutes, and 4 Balanced seeds timed out at
-  350 minutes. Shadow validation must therefore be split by
-  single-seed smoke, Executor dryRun, or 1-hour checkpoint slices,
-  and the long validation must run via workflow_dispatch in the
-  background, which is NOT cancelled by a later PR push (unlike
-  pull_request shadow runs, which are cancel-in-progress).
-- Trigger rule to write into round design: production files
-  (+pipecompare/, pop_pipecompare.m) do NOT trigger shadow;
-  shadow files (shadow script, checker, shadow tests, shadow
-  workflow) DO trigger shadow. A production-only bundle therefore
-  needs only matlab-tests, not a full shadow re-run.
-## Round 9 (append-only note, to be appended to docs/METHODS.md at push time)
-
-Round 9 is a test-and-timing round only: no production ranking, pick,
-MSE, or search-family change. It is pushed only after the Round 8
-runs (compatibility and shadow-selection) have all completed, because
-pushing earlier would cancel the in-progress Round 8 shadow run.
-- Column-name fix: the Round 8 test asserted R.table.eyeBias_P3mean,
-  but CI proved that column does not exist. Rank.m builds the column
-  with matlab.lang.makeValidName(['eyeBias_' ref.objectives{k}]) and
-  the default ReplacementStyle is 'underscore', so 'eyeBias_P3.mean'
-  becomes eyeBias_P3_mean. The Round 9 test derives the column with
-  makeValidName in the test itself (no third guess) and keeps one
-  hard-coded eyeBias_P3_mean assertion as the dot-to-underscore
-  control.
-- Shadow fragment timing wiring (report-only): runSearch returns
-  timing.wallSeconds (tic/toc, never a sum over candidates) plus a
-  per-step-type median/max summary; failed searches report wall time
-  with stepSecondsAvailable=false. Old fragments without timing are
-  still accepted. The per-seed runSeed path is NOT wired (two
-  searches per seed, one wallSeconds would be ambiguous).
-- Shadow merge MATLAB tests x3 (filename-seed mismatch, duplicate
-  seed-arm, merge-mode CSV pick/selectedKey agreement) and one
-  crossfit finite-guard test (Round 8 A1).
-- B3 zero-weight fake-candidate test: weighted scalar smeBoot
-  s0==0 -> Inf with s0>0 draw kept at its formula value (5 in the
-  constructed case); weighted peak estimate and nested peak smeBoot
-  exclude zero-weight draws instead of poisoning the candidate;
-  all-positive-weight controls stay finite / at the weighted mean.
-  This test is local and unvalidated until CI runs it in MATLAB.
-
-Still NOT done (explicit gaps, do not claim otherwise):
-- Checkpoint slicing resume (design-only, Executor.resume re-derives
-  adaptive leaves, not MATLAB-proven for shadow arms); CI cache
-  activation (evaluated as not worth it at Round 8 setup times:
-  shadow median setup ~89 s vs searches of 31-305 min); matlab-tests
-  suite split (evaluated as not worth it: setup ~77 s per job);
-- Successive halving / surrogate / variant B shadow-arm wiring
-  (prototype/design only); diffusion-report and calibration-gate
-  report wiring into shadow JSON (helpers exist, wiring is a
-  follow-up); A2/A3/A5/A6 assertion tests (guard note, single-
-  recording label, gain log, duplicate-trial warning) were suggested
-  in the A-group review but were not written in Round 8 or Round 9.
-
-
-## Round 10 fast mode (diagnostic only, never held-out evidence)
-
-Fast mode is a loop, not a verdict. A fast run fits in 1 hour:
-seconds-level fake-candidate tests, minutes-level offline replay,
-and a 1-hour slice-diagnostic micro search. After a fast run
-finishes (complete or sliced), it is screened immediately and
-the next fix is prepared at once; the loop does not wait for
-morning or for a user message.
-
-Fast tests and micro searches use the existing 4000-series
-sample data (design seeds 40101-40104) to FIND problems. A
-design seed is never held-out evidence: a result on a design
-seed must never be reported as a held-out verdict, never
-merged into a paired mean, and never used to self-certify a
-fix. The final conclusion still requires held-out evidence
-under the frozen criteria.
-
-The micro job in this round is a slice-diagnostic run: one
-design seed, one arm, production family, non-empty checkpoint,
-40-minute slice, fragment marked partialSearch when sliced.
-It is NOT a reduced-family micro result. The reduced family,
-reduced trial subset, icaSeeds=1, refineCutoffs off and
-eogCheck off are frozen as a recipe and validated as a config,
-but their execution is not wired through pop_pipecompare at
-this head (its option list does not include them, and
-Presets.searchOptions() hardcodes the production values), so
-validate_fast_config returns executionReady=false for that
-recipe. Threading those overrides is a later, pre-registered
-step, not a silent part of this round.
-
-Slicing means a timeout no longer loses evidence: every slice
-uploads its checkpoint artifacts and writes a readable
-fragment, even a partial one. A resume is guarded strictly
-(versions pinned, artifactVariance asserted, never defaulted),
-and even a passing guard is not an exact resume, because
-Executor.resume re-derives adaptive leaves beyond the
-manifest. Sliced results are labelled sliced validation runs
-and are never merged into a previous paired mean.
-
-Variant B has no arm in this round. Its gate is closed by
-default and only opens on a recorded 1-seed guard on/off
-validation (bypass-pop_pipecompare-optimize or production
-pass-through, plan reuse verified). Three runs of
-pop_pipecompare and a variant A replay relabelled as
-variant B are explicitly rejected: they give identical arms
-and a zero difference, which is false evidence. Production
-Standard/Balanced definitions are unchanged.
+A checkpointed execution is labelled separately. Its partial or completed
+fragments are excluded from the original unsliced paired mean. Adaptive leaves
+beyond the original manifest may be re-derived; exact whole-procedure replay
+and independent confirmation are not claimed. Missing old checkpoints cannot
+be reconstructed from final arm JSON alone. The operational procedure is in
+[PR50 status and evidence](PR50_STATUS.md).
