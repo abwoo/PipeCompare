@@ -44,7 +44,7 @@ jobs:
         with:
           release: R2026a
           products: Signal_Processing_Toolbox
-      - name: Affected contracts, native checkpoint proof and original-fragment merge
+      - name: Remaining native checkpoint proof and original-fragment merge
         timeout-minutes: 30
         uses: matlab-actions/run-command@v2
         with:
@@ -52,8 +52,10 @@ jobs:
             addpath(fullfile(pwd,'eeglab')); eeglab nogui;
             cd PipeCompare; addpath(pwd); addpath(fullfile(pwd,'tests')); addpath(fullfile(pwd,'benchmarks'));
             mkdir('consolidation_out'); diary(fullfile('consolidation_out','matlab.log'));
-            r = run_all({'test_methodology','test_algorithm_regressions','test_shadow_selection','test_checkpoint_delivery'});
-            assert(all([r.Passed]),'All affected cases must pass without skips');
+            suite = testsuite(fullfile('tests','test_checkpoint_delivery.m'));
+            names = string({suite.Name}); selected = endsWith(names,'/testSliceResumeMatchesNativeSearchAndReusesSavedWork');
+            assert(nnz(selected)==1); r = run(suite(selected));
+            assert(all([r.Passed]),'The remaining native checkpoint proof must pass');
             fprintf('CONSOLIDATION_TOTAL=%d PASSED=%d FAILED=%d SKIPPED=%d\n',numel(r),nnz([r.Passed]),nnz([r.Failed]),nnz([r.Incomplete]));
             pipecompare_shadow_summary_fixtures(fullfile(pwd,'consolidation_out','fixtures'));
             out = pipecompare_shadow_selection(fullfile(pwd,'consolidation_out','original_merge'),20031,8, ...

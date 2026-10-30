@@ -34,6 +34,7 @@ jobs:
       SOURCE_RUN: ${{ inputs.source_run }}
       SHADOW_RUN_ID: ${{ github.run_id }}
       PIPECOMPARE_EEGLAB_VERSION: '2026.0.0'
+      PIPECOMPARE_NATIVE_BACKEND_REPORT: ${{ github.workspace }}/validation_backend/backend.json
     steps:
       - name: Validate request and source execution before downloading
         uses: actions/github-script@v7
@@ -62,18 +63,10 @@ jobs:
           path: PipeCompare/shadow_checkpoint
           run-id: ${{ inputs.source_run }}
           github-token: ${{ github.token }}
-      - name: Checkout EEGLAB 2026
-        run: git clone --depth 1 --branch 2026.0.0 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
+      - name: Set up pinned MATLAB, EEGLAB and verified native CPU backend
+        uses: ./PipeCompare/.github/actions/setup-2026
       - name: Record EEG implementation identity
         run: echo "EEGLAB_SHA=$(git -C eeglab rev-parse HEAD)" >> "$GITHUB_ENV"
-      - name: Bound dependency downloads
-        run: bash PipeCompare/.github/scripts/prepare-matlab.sh
-      - name: Start display
-        run: bash PipeCompare/.github/scripts/start-display.sh
-      - uses: matlab-actions/setup-matlab@v2
-        with:
-          release: R2026a
-          products: Signal_Processing_Toolbox
       - name: Start or continue exactly one full-family search
         timeout-minutes: 45
         uses: matlab-actions/run-command@v2

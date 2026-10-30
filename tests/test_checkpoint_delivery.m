@@ -8,7 +8,7 @@ addpath(here); addpath(fullfile(here,'..')); addpath(fullfile(here,'..','benchma
 end
 
 function testSliceResumeMatchesNativeSearchAndReusesSavedWork(tc)
-EEG = nqc_synth(struct('seconds',60,'nPerCond',10,'artifactTrials',0));
+EEG = nqc_synth(struct('seconds',150,'nPerCond',30,'artifactTrials',0));
 nqc_setBase(EEG);
 p = pipecompare.plan.Plan(); p = p.add('reref','mode','average');
 p = p.add('ica','fitHighpass',0,'fitClean',0);
@@ -17,12 +17,13 @@ opts = struct('icaSeeds',0,'filterCheck',false,'nBoot',99,'nSplits',0, ...
     'artifactVariance','pooled','maxSeconds',600);
 folder = tempname; mkdir(folder); cleanup = onCleanup(@()rmdir(folder,'s')); %#ok<NASGU>
 fullOpts = opts; fullOpts.maxSeconds = Inf;
-full = pipecompare.PipeCompare.optimize(p,nqc_c(),fullOpts);
+full = pipecompare.PipeCompare.optimize(p,checkpointContract(),fullOpts);
+verifyNotEmpty(tc,full.ranking.recommended);
 opts.checkpoint = folder; opts.stopAfter = 1;
 passport = struct('commit','checkpoint-proof','seed',40101,'arm','balanced', ...
     'artifactVariance','pooled','eeglabSha','fixed-test-eeglab');
 [partial, state] = pipecompare_checkpoint_search(folder,passport, ...
-    @()pipecompare.PipeCompare.optimize(p,nqc_c(),opts),600,'start');
+    @()pipecompare.PipeCompare.optimize(p,checkpointContract(),opts),600,'start');
 verifyEmpty(tc,partial); verifyEqual(tc,state.status,'partial');
 leaves = dir(fullfile(folder,'leaf_*.mat')); verifyEqual(tc,numel(leaves),1);
 savedLeaf = readBytes(fullfile(leaves(1).folder,leaves(1).name));
@@ -66,4 +67,10 @@ end
 
 function r = mustNotStart() %#ok<STOUT>
 error('test:UnexpectedCompute','Resume must not start a new search.');
+end
+
+function c = checkpointContract()
+c = pipecompare.eval.Contract('conditions', {'t', {'11'}; 's', {'31'}}, ...
+    'epoch',[-0.2 1],'baseline',[-0.2 0], ...
+    'components',{'P3',[0.3 0.5],{'Pz','P3','P4'}});
 end

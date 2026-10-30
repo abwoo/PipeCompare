@@ -296,8 +296,8 @@ def main():
 
     # ---- provenance ----
     prov = run["provenance"]
-    if prov.get("inputArtifactRunId") is not None:
-        fail("provenance.inputArtifactRunId must be null for fresh seeds")
+    if prov.get("inputArtifactRunId") not in (None, []):
+        fail("provenance.inputArtifactRunId must be null or an empty array for fresh seeds")
     if expected_head is not None:
         if prov.get("commit") != expected_head:
             fail(f"provenance.commit {prov.get('commit')} != expected {expected_head}")
