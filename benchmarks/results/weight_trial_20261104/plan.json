@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "baseline_commit": "7151821edf8a5a54c3167d7f18b66c530911b568",
+  "parent_evidence": "6aa8708893324023c74481c7f2e0c2200d020216",
+  "variant_rank_sha256": "63fdd436f21c1b58b8f07a8a09590b7b6d540e352e77596d5242f09d7b39cc41",
+  "change": "Separate analytic weights from frequency counts in eyeBias variance and effective group sizes. Retain overall variance and BiasZ=2. Keep original factorial shrinkage.",
+  "primary": "Mean participant paired gain-corrected population-target MSE variant minus baseline.",
+  "retain_rule": "All 10 pairs complete, original replay matches committed record MSE to 1e-7, fixed controls and truth agree within each pair, unchanged search options, native/export replay pass, variant mean primary MSE strictly lower and mean raw MSE not higher. Otherwise restore original. No iterative parameter search.",
+  "scope": "Exploratory development on previously examined participants; no independent confirmation or general superiority claim.",
+  "raw_guardrail": true,
+  "variant_measure_sha256": "0b53210911c0bf06e997821c637a7d3e395bccce93677bb31c83818c79cc17eb"
+}
