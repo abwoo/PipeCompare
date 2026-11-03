@@ -1,0 +1,44 @@
+name: Paired analytic-weight correction
+on:
+  push:
+    branches: [codex/pr51-weight-trial-20261103]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  first:
+    uses: ./.github/workflows/weight-trial-record.yml
+    with:
+      subject: 1
+  remaining:
+    needs: first
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        subject: [2,3,4,5,6,7,8,9,10]
+    uses: ./.github/workflows/weight-trial-record.yml
+    with:
+      subject: ${{ matrix.subject }}
+  collect:
+    if: always()
+    needs: [first,remaining]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy==2.2.6
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ranking-pair-*
+          path: fragments
+      - run: python benchmarks/compare_weight_trial.py fragments ranking_summary
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ranking-trial-summary
+          path: ranking_summary
+          retention-days: 90
