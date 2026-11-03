@@ -11,6 +11,8 @@ result=struct('subject',subject,'completed',false,'algorithmCommit',p.algorithm_
  'protocolSha256',source.protocol_sha256,'source',source,'errors',{{}}, ...
  'erp',emptyReadout(),'minimal',emptyReadout(),'common',emptyReadout(), ...
  'alpha',struct('completed',false,'recommended',false),'replayMaxError',NaN,'exportMaxError',NaN);
+algorithmOverride=getenv('PILOT_ALGORITHM_COMMIT');
+if ~isempty(algorithmOverride),result.algorithmCommit=algorithmOverride;end
 writeJson(fullfile(outDir,'result.json'),result);
 clock=tic;
 try
