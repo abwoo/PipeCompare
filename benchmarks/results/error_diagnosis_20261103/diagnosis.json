@@ -1,0 +1,112 @@
+{
+  "productionCommit": "7151821edf8a5a54c3167d7f18b66c530911b568",
+  "executionCommit": "a7d01ebaa0c3ff042159d3f550a94d210c52aec4",
+  "run": "41641303598",
+  "matlab": "26.1.0.3346908 (R2026a) Update 5",
+  "cases": [
+    {
+      "weighted": false,
+      "delta": 0,
+      "replications": 4000,
+      "trueBias": 0,
+      "exactSE": 0.15811388300841897,
+      "empiricalSE": 0.1560787663734652,
+      "legacyRmsSE": 0.15791863524504587,
+      "withinGroupWeightedRmsSE": 0.15796648296357868,
+      "legacyMeanPenaltySquared": 0.00018608778527600642,
+      "alternativeMeanPenaltySquared": 0.0003090559264768438,
+      "legacy95Coverage": 0.95025,
+      "alternative95Coverage": 0.9435
+    },
+    {
+      "weighted": false,
+      "delta": 3,
+      "replications": 4000,
+      "trueBias": 1.5,
+      "exactSE": 0.15811388300841897,
+      "empiricalSE": 0.1565523680509723,
+      "legacyRmsSE": 0.28754003924701377,
+      "withinGroupWeightedRmsSE": 0.15797021647251538,
+      "legacyMeanPenaltySquared": 0.8734122035095702,
+      "alternativeMeanPenaltySquared": 1.4335126747370117,
+      "legacy95Coverage": 0.997,
+      "alternative95Coverage": 0.9505
+    },
+    {
+      "weighted": false,
+      "delta": 8,
+      "replications": 4000,
+      "trueBias": 4,
+      "exactSE": 0.15811388300841897,
+      "empiricalSE": 0.15587099520311581,
+      "legacyRmsSE": 0.6592740682891601,
+      "withinGroupWeightedRmsSE": 0.15828778560699447,
+      "legacyMeanPenaltySquared": 7.189727314164961,
+      "alternativeMeanPenaltySquared": 13.584853318656982,
+      "legacy95Coverage": 1,
+      "alternative95Coverage": 0.9455
+    },
+    {
+      "weighted": true,
+      "delta": 0,
+      "replications": 4000,
+      "trueBias": 0,
+      "exactSE": 0.2525381361380525,
+      "empiricalSE": 0.2497699801620574,
+      "legacyRmsSE": 0.15522854977029987,
+      "withinGroupWeightedRmsSE": 0.2532490350121373,
+      "legacyMeanPenaltySquared": 0.0027905286858964772,
+      "alternativeMeanPenaltySquared": 0.0002599970683284434,
+      "legacy95Coverage": 0.78025,
+      "alternative95Coverage": 0.968
+    },
+    {
+      "weighted": true,
+      "delta": 3,
+      "replications": 4000,
+      "trueBias": 1.4999999999999991,
+      "exactSE": 0.2525381361380525,
+      "empiricalSE": 0.2548126559004866,
+      "legacyRmsSE": 0.28500058156567143,
+      "withinGroupWeightedRmsSE": 0.2523149165758615,
+      "legacyMeanPenaltySquared": 0.898157287387199,
+      "alternativeMeanPenaltySquared": 1.0616793565513318,
+      "legacy95Coverage": 0.958,
+      "alternative95Coverage": 0.95725
+    },
+    {
+      "weighted": true,
+      "delta": 8,
+      "replications": 4000,
+      "trueBias": 3.999999999999998,
+      "exactSE": 0.2525381361380525,
+      "empiricalSE": 0.2524588701990011,
+      "legacyRmsSE": 0.6598409931989225,
+      "withinGroupWeightedRmsSE": 0.25309097269657704,
+      "legacyMeanPenaltySquared": 7.254237086692868,
+      "alternativeMeanPenaltySquared": 12.352536672085883,
+      "legacy95Coverage": 1,
+      "alternative95Coverage": 0.9585
+    }
+  ],
+  "weightScaleProbe": [
+    {
+      "scale": 0.1,
+      "bias": 1.5000000000000002,
+      "penaltySquared": 0
+    },
+    {
+      "scale": 1,
+      "bias": 1.5,
+      "penaltySquared": 1.0396158465234464
+    },
+    {
+      "scale": 10,
+      "bias": 1.5,
+      "penaltySquared": 1.8219928340878606
+    }
+  ],
+  "frequencyExpansionEquivalent": true,
+  "productionModified": false,
+  "scope": "Fixed known blink labels, independent homoscedastic Gaussian scores, deterministic analytic weights. No causal separation of neural and artifact blink effects; no end-to-end improvement claim."
+}
