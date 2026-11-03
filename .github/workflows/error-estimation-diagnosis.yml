@@ -1,0 +1,28 @@
+name: Diagnose error-estimation assumptions
+on:
+  push:
+    branches: [codex/pr51-error-diagnosis-20261103]
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify unchanged production
+        run: git diff --exit-code 7151821edf8a5a54c3167d7f18b66c530911b568 HEAD -- +pipecompare
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+      - uses: matlab-actions/run-command@v2
+        with:
+          command: addpath(pwd);addpath('benchmarks');diagnose_error_estimation('diagnosis');
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: error-estimation-diagnosis
+          path: diagnosis
+          retention-days: 90
