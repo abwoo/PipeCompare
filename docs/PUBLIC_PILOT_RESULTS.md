@@ -74,3 +74,7 @@ The production algorithm is 7151821edf8a5a54c3167d7f18b66c530911b568. The execut
 Committed evidence: [per-record outcomes](../benchmarks/results/public_pilot_20261103/records.json), [compact table](../benchmarks/results/public_pilot_20261103/records.csv), [summary](../benchmarks/results/public_pilot_20261103/summary.json), [fault measurements](../benchmarks/results/public_pilot_20261103/faults.csv), and [provenance](../benchmarks/results/public_pilot_20261103/evidence.json). The run artifacts additionally retain candidate tables, calibration rows, executable exports and native logs for 90 days. Raw EEG and fitted ICA matrices are not committed.
 
 This supports small-sample operational usability for the declared 16-channel, 160-Hz excerpts and these two measurement presets. It does not certify all channel counts, ERP components, acquisition systems, preprocessing starting points, operating systems or MATLAB releases. It does not justify promoting an experimental algorithm, merging PR50, or declaring a general accuracy/calibration guarantee.
+
+## Follow-up scoring experiment
+
+A paired replay of all ten records tested removing factorial smoothing from ranking. Mean MSE increased from 0.483153 to 0.487013 uV² (0 improved, 1 worsened, 9 unchanged), and the existing known-truth simulation regressed. The variant was rejected; the production algorithm remains unchanged. See [the complete trial results](RANKING_TRIAL_RESULTS.md).
