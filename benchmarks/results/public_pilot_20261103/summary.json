@@ -1,0 +1,131 @@
+{
+  "scope": "Exploratory development benchmark of the unchanged main algorithm; not independent confirmation or a clinical performance claim.",
+  "algorithmCommit": "7151821edf8a5a54c3167d7f18b66c530911b568",
+  "executionCommits": [
+    "cca3b44e94ee5c4779f3f4d4f6ed4c3c6ec41b1e"
+  ],
+  "protocolSha256": "ab16dedf641079aa7cdc9e5d1ce09ee75b4d3b4ea75b9bf63eac867e75d3dc4a",
+  "expected": 10,
+  "present": 10,
+  "completed": 10,
+  "assessableRecommendations": 10,
+  "executionComplete": true,
+  "pilotUsabilityScreen": true,
+  "independentConfirmation": false,
+  "coverage": [
+    {
+      "subject": 1,
+      "present": true,
+      "completed": true,
+      "recommended": true,
+      "errors": []
+    },
+    {
+      "subject": 2,
+      "present": true,
+      "completed": true,
+      "recommended": true,
+      "errors": []
+    },
+    {
+      "subject": 3,
+      "present": true,
+      "completed": true,
+      "recommended": true,
+      "errors": []
+    },
+    {
+      "subject": 4,
+      "present": true,
+      "completed": true,
+      "recommended": true,
+      "errors": []
+    },
+    {
+      "subject": 5,
+      "present": true,
+      "completed": true,
+      "recommended": true,
+      "errors": []
+    },
+    {
+      "subject": 6,
+      "present": true,
+      "completed": true,
+      "recommended": true,
+      "errors": []
+    },
+    {
+      "subject": 7,
+      "present": true,
+      "completed": true,
+      "recommended": true,
+      "errors": []
+    },
+    {
+      "subject": 8,
+      "present": true,
+      "completed": true,
+      "recommended": true,
+      "errors": []
+    },
+    {
+      "subject": 9,
+      "present": true,
+      "completed": true,
+      "recommended": true,
+      "errors": []
+    },
+    {
+      "subject": 10,
+      "present": true,
+      "completed": true,
+      "recommended": true,
+      "errors": []
+    }
+  ],
+  "calibration": {
+    "assessable": 10,
+    "planned": 10,
+    "ratio": 1.1654103543938663,
+    "ci95": [
+      0.6709704017371986,
+      1.5966176699189427
+    ],
+    "actualRMS": 0.6950922197374128,
+    "reportedRMS": 0.5964355963689136,
+    "exploratory": true,
+    "stableCalibrationEstablished": false,
+    "relativeHalfWidth": 0.3971336210854143,
+    "meetsPilotPrecision": false,
+    "agreement": "not-established",
+    "undefinedBootstrapShare": 0,
+    "infiniteBootstrapShare": 0
+  },
+  "comparisons": {
+    "minimal": {
+      "paired": 10,
+      "standardMSE": 0.48315319393948364,
+      "controlMSE": 2.352044606814668,
+      "meanDifference": -1.8688914128751848,
+      "ci95": [
+        -3.2565158523534654,
+        -0.7058410476458589
+      ],
+      "verdict": "pilot-improvement"
+    },
+    "common": {
+      "paired": 10,
+      "standardMSE": 0.48315319393948364,
+      "controlMSE": 1.172761915588324,
+      "meanDifference": -0.6896087216488404,
+      "ci95": [
+        -1.944103027936474,
+        0.16979212998749668
+      ],
+      "verdict": "not-established"
+    }
+  },
+  "alphaCompleted": 10,
+  "alphaRecommendations": 10
+}
