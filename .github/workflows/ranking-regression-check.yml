@@ -1,0 +1,26 @@
+name: Existing ranking simulation regression check
+on:
+  push:
+    branches: [codex/pr51-ranking-check-20261103]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+      - name: Original ranking on existing known-truth simulation
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(pwd);s=testsuite('tests/test_statistics.m');s=s(contains({s.Name},'testFactorialShrinkageChoosesBetter'));assert(numel(s)==1);r=run(s);assertSuccess(r);
+      - name: Activate the frozen variant
+        run: cp benchmarks/variants/Rank.m +pipecompare/+eval/Rank.m
+      - name: Variant on the unchanged known-truth simulation
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(pwd);s=testsuite('tests/test_statistics.m');s=s(contains({s.Name},'testFactorialShrinkageChoosesBetter'));assert(numel(s)==1);r=run(s);assertSuccess(r);
