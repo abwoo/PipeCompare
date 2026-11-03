@@ -1,0 +1,95 @@
+name: Paired ranking trial record
+on:
+  workflow_call:
+    inputs:
+      subject:
+        type: number
+        required: true
+permissions:
+  contents: read
+jobs:
+  record:
+    name: Public participant ${{ inputs.subject }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      DISPLAY: ':99'
+      PILOT_SUBJECT: ${{ inputs.subject }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Verify unchanged production implementation
+        working-directory: PipeCompare
+        run: |
+          base=$(python -c "import json;print(json.load(open('benchmarks/public_pilot_protocol.json'))['algorithm_commit'])")
+          git diff --exit-code "$base" HEAD -- +pipecompare pop_pipecompare.m eegplugin_pipecompare.m fallback pcomp.m pipecompare_setup.m
+      - name: Fetch and checksum one sixty-second public excerpt
+        timeout-minutes: 5
+        run: python PipeCompare/benchmarks/fetch_public_pilot.py --subject "$PILOT_SUBJECT" --out input
+      - name: Checkout pinned EEGLAB version
+        run: git clone --depth 1 --branch 2026.0.0 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
+      - name: Record EEG implementation identity
+        run: echo "EEGLAB_SHA=$(git -C eeglab rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Bound Linux dependency downloads
+        run: bash PipeCompare/.github/scripts/pilot-prepare-matlab.sh
+      - name: Install matching CPU compiler
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y g++-12
+      - name: Start virtual display
+        timeout-minutes: 5
+        run: bash PipeCompare/.github/scripts/start-display.sh
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+          products: Signal_Processing_Toolbox
+      - name: Prepare pinned ICLabel CPU build
+        run: python PipeCompare/.github/scripts/pilot-iclabel-cpu.py eeglab/plugins/ICLabel/matconvnet
+      - name: Verify native ICLabel against its MATLAB reference
+        timeout-minutes: 12
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab'));eeglab nogui;
+            addpath(fullfile(pwd,'PipeCompare'));addpath(fullfile(pwd,'PipeCompare','benchmarks'));
+            pilot_native_backend(fullfile(pwd,'result','backend'));
+      - name: Record full Standard search, comparators, and replay outcomes
+        timeout-minutes: 55
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab'));eeglab nogui;
+            plugin=fileparts(which('pop_iclabel'));addpath(fullfile(plugin,'matconvnet','matlab'));vl_setupnn;
+            assert(exist('vl_nnconv','file')==3,'Native inference not active.');
+            addpath(fullfile(pwd,'PipeCompare'));addpath(fullfile(pwd,'PipeCompare','benchmarks'));
+            public_pilot(fullfile(pwd,'input'),fullfile(pwd,'result','baseline'),str2double(getenv('PILOT_SUBJECT')));
+      - name: Activate the single frozen scoring change
+        run: |
+          cp PipeCompare/benchmarks/within_variant/Measure.m PipeCompare/+pipecompare/+eval/Measure.m
+          echo "PILOT_ALGORITHM_COMMIT=$GITHUB_SHA" >> "$GITHUB_ENV"
+          git -C PipeCompare diff --stat
+      - name: Run within-group variance variant in a fresh MATLAB session
+        timeout-minutes: 55
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab'));eeglab nogui;
+            plugin=fileparts(which('pop_iclabel'));addpath(fullfile(plugin,'matconvnet','matlab'));vl_setupnn;
+            assert(exist('vl_nnconv','file')==3,'Native inference not active.');
+            addpath(fullfile(pwd,'PipeCompare'));addpath(fullfile(pwd,'PipeCompare','benchmarks'));
+            check_within_variance();
+            public_pilot(fullfile(pwd,'input'),fullfile(pwd,'result','variant'),str2double(getenv('PILOT_SUBJECT')));
+      - name: Preserve completed results and failure evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ranking-pair-${{ inputs.subject }}
+          path: result
+          retention-days: 90
+          if-no-files-found: warn
