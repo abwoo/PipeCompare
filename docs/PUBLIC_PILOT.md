@@ -50,3 +50,7 @@ Commands for a single source after installing the declared dependencies:
 Source: Schalk, G. (2009), EEG Motor Movement/Imagery Dataset (1.0.0), PhysioNet, https://doi.org/10.13026/C28G6P, Open Data Commons Attribution License 1.0. Original acquisition: Schalk et al. (2004), BCI2000, IEEE Transactions on Biomedical Engineering 51(6), 1034–1043.
 
 The frozen input/metric manifest is benchmarks/public_pilot_protocol.json. Executed outcomes and cloud run links will be added after the run, including adverse or unavailable results. No confirmation cohort is opened and no merge or release is performed.
+
+## Cloud execution
+
+Frozen benchmark execution: [Actions run 41604029052](https://github.com/abwoo/PipeCompare/actions/runs/41604029052), code revision cca3b44e94ee5c4779f3f4d4f6ed4c3c6ec41b1e. Outcomes are pending; this link is not a pass claim. Later result/documentation revisions must keep this execution revision distinct from the production algorithm revision.
