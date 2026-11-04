@@ -1,0 +1,30 @@
+{
+  "alpha": 0.02,
+  "bootstrap_replicates": 1999,
+  "method": "Paired basic-bootstrap one-sided simultaneous upper bound across all feasible alternatives relative to fixed incumbent; accept only the existing expanded-search recommendation if its upper bound is strictly below zero. All nonfinite evidence -> retain incumbent.",
+  "incumbent": "Previous within-group-variance procedure, with single EOG extension",
+  "challenger": "Already frozen full-EOG-expansion recommendation; do not choose a different candidate with truth",
+  "historical_run": 41790407556,
+  "historical_subjects": [
+    4,
+    5
+  ],
+  "historical_seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "next_seeds_if_gate_passes": [
+    5,
+    6,
+    7,
+    8,
+    9
+  ],
+  "historical_gate": "No primary/raw regression at any start, some strict primary improvement, S005 recovers original-main primary/raw MSE at all starts. Otherwise reject, do not retune alpha.",
+  "next_gate": "On seeds 5\u20139, no primary/raw regression against fresh within-variance baseline and some strict primary improvement. Then ten-person guardrail before any promotion.",
+  "limitations": "Adaptive candidate generation and incumbent selection reuse data. Simultaneous bootstrap is an exploratory score-evidence safeguard, not guaranteed calibration or a bound on true MSE. New starts on the same two participants are not an independent cohort.",
+  "production": "No production activation or merge; historical stage first, unseen-start stage pending."
+}

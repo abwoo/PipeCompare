@@ -1,0 +1,40 @@
+name: Frozen paired-bootstrap replacement gate
+on:
+  push:
+    branches: [codex/pr51-gate-20261104]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  historical:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: 41790407556
+          pattern: eog-pair-*
+          path: fragments
+      - name: Verify frozen variant then activate it for scoring
+        run: |
+          python -c "import json,hashlib;from pathlib import Path;p=Path('benchmarks');d=json.loads((p/'eog_plan.json').read_text());assert hashlib.sha256((p/'within_variant/Measure.m').read_bytes()).hexdigest()==d['hashes']['within_variant/Measure.m']"
+          cp benchmarks/within_variant/Measure.m +pipecompare/+eval/Measure.m
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+      - uses: matlab-actions/run-command@v2
+        with:
+          command: addpath(pwd);addpath('benchmarks');addpath('benchmarks/gate_trial');replay_replacement_gate('fragments','gate_results');
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python benchmarks/gate_trial/collect_gate.py gate_results
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: replacement-gate-results
+          path: gate_results
+          retention-days: 90
