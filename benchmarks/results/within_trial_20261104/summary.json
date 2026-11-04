@@ -1,0 +1,120 @@
+{
+  "pairs": 10,
+  "executionCommit": "f6265967ed5538629795ad308ee0baf3660dbf20",
+  "baselineMSE": 0.48315319393948364,
+  "variantMSE": 0.33909463755161573,
+  "difference": -0.14405855638786796,
+  "ci95": [
+    -0.451602872621306,
+    0.021165748147466256
+  ],
+  "baselineRawMSE": 0.5239750426980665,
+  "variantRawMSE": 0.3767493017789699,
+  "wins": 2,
+  "losses": 1,
+  "ties": 7,
+  "decision": "retain-exploratory-variant",
+  "independentConfirmation": false,
+  "rows": [
+    {
+      "subject": 1,
+      "baselineMSE": 1.3938751806146898,
+      "variantMSE": 1.3938751806146898,
+      "difference": 0.0,
+      "baselineRawMSE": 1.5083980304052313,
+      "variantRawMSE": 1.5083980304052313,
+      "baselineStable": true,
+      "variantStable": true
+    },
+    {
+      "subject": 2,
+      "baselineMSE": 0.01779583638669406,
+      "variantMSE": 0.01779583638669406,
+      "difference": 0.0,
+      "baselineRawMSE": 0.03209865226055555,
+      "variantRawMSE": 0.03209865226055555,
+      "baselineStable": true,
+      "variantStable": true
+    },
+    {
+      "subject": 3,
+      "baselineMSE": 0.24022090124381462,
+      "variantMSE": 0.24022090124381462,
+      "difference": 0.0,
+      "baselineRawMSE": 0.3237144412067696,
+      "variantRawMSE": 0.3237144412067696,
+      "baselineStable": true,
+      "variantStable": true
+    },
+    {
+      "subject": 4,
+      "baselineMSE": 1.7505260007935346,
+      "variantMSE": 0.2509782410217285,
+      "difference": -1.499547759771806,
+      "baselineRawMSE": 1.7694660641626863,
+      "variantRawMSE": 0.2596799504005951,
+      "baselineStable": true,
+      "variantStable": false
+    },
+    {
+      "subject": 5,
+      "baselineMSE": 0.25692012577012246,
+      "variantMSE": 0.3332677685608905,
+      "difference": 0.07634764279076806,
+      "baselineRawMSE": 0.2696161275997294,
+      "variantRawMSE": 0.344519748138831,
+      "baselineStable": true,
+      "variantStable": true
+    },
+    {
+      "subject": 6,
+      "baselineMSE": 0.4166179822239865,
+      "variantMSE": 0.3992325353263449,
+      "difference": -0.0173854468976416,
+      "baselineRawMSE": 0.588427562950505,
+      "variantRawMSE": 0.5510526469825292,
+      "baselineStable": false,
+      "variantStable": true
+    },
+    {
+      "subject": 7,
+      "baselineMSE": 0.01202699641682729,
+      "variantMSE": 0.01202699641682729,
+      "difference": 0.0,
+      "baselineRawMSE": 0.008467554307179662,
+      "variantRawMSE": 0.008467554307179662,
+      "baselineStable": true,
+      "variantStable": true
+    },
+    {
+      "subject": 8,
+      "baselineMSE": 0.08343592889260616,
+      "variantMSE": 0.08343592889260616,
+      "difference": 0.0,
+      "baselineRawMSE": 0.08551180411597663,
+      "variantRawMSE": 0.08551180411597663,
+      "baselineStable": true,
+      "variantStable": true
+    },
+    {
+      "subject": 9,
+      "baselineMSE": 0.04361038098368642,
+      "variantMSE": 0.04361038098368642,
+      "difference": 0.0,
+      "baselineRawMSE": 0.04249366422534912,
+      "variantRawMSE": 0.04249366422534912,
+      "baselineStable": true,
+      "variantStable": true
+    },
+    {
+      "subject": 10,
+      "baselineMSE": 0.616502606068875,
+      "variantMSE": 0.616502606068875,
+      "difference": 0.0,
+      "baselineRawMSE": 0.6115565257466822,
+      "variantRawMSE": 0.6115565257466822,
+      "baselineStable": true,
+      "variantStable": true
+    }
+  ]
+}
