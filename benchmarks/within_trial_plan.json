@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "baseline_commit": "7151821edf8a5a54c3167d7f18b66c530911b568",
+  "parent_evidence": "6aa8708893324023c74481c7f2e0c2200d020216",
+  "change": "Isolated within-group pooled residual variance in eyeBias. Original factorial shrinkage, BiasZ=2 and weight/count semantics retained. Baseline is original production because preceding weight experiment did not improve pilot accuracy.",
+  "primary": "Mean participant paired gain-corrected population-target MSE variant minus baseline.",
+  "retain_rule": "All 10 pairs complete, original replay matches committed record MSE to 1e-7, fixed controls and truth agree within each pair, unchanged search options, native/export replay pass, variant mean primary MSE strictly lower and mean raw MSE not higher. Otherwise restore original. No iterative parameter search.",
+  "scope": "Exploratory development on previously examined participants; no independent confirmation or general superiority claim.",
+  "raw_guardrail": true,
+  "variant_measure_sha256": "ebf3252a8ca582effe2af4c5f2ec2f2eee8f512c25d5a430115ec94655b33c11"
+}

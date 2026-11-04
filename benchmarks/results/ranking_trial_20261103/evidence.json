@@ -1,0 +1,128 @@
+{
+  "pairedRun": 41633294024,
+  "pairedExecution": "d2da597e2448aa040a6198b5e91cfd37dfe2f313",
+  "baselineProduction": "7151821edf8a5a54c3167d7f18b66c530911b568",
+  "regressionRun": 41634891238,
+  "regressionExecution": "376ec268ccb7dbcef77e9e002bdb703ded19515e",
+  "regressionOriginal": "passed",
+  "regressionVariant": "failed",
+  "originalSimulationExcessPercentRounded": 1.57,
+  "variantSimulationExcessPercentRounded": 2.38,
+  "variantSimulationExcess": 0.023775597453442,
+  "finalDisposition": "reject-variant-keep-original-production",
+  "artifacts": [
+    {
+      "id": 13231511520,
+      "name": "ranking-pair-9",
+      "digest": "sha256:70e32aba57aafa8db371788fefc4acb119e5f33072771725f8160dcbc3195b50"
+    },
+    {
+      "id": 13231092262,
+      "name": "ranking-pair-10",
+      "digest": "sha256:3ace9047a76b1937ce3a51b8e9d082f39f68ba313cb31bbafadb6348a891781f"
+    },
+    {
+      "id": 13230922157,
+      "name": "ranking-pair-8",
+      "digest": "sha256:374ad93b07118aaf68de0ff9bfba331e4221976c3a6adfa7b3dec31f61719efc"
+    },
+    {
+      "id": 13230603457,
+      "name": "ranking-trial-summary",
+      "digest": "sha256:8bd97607cea91c4d3db18f3a1186cfb3023b54f5c9429a1d75856a63a1eccbbc"
+    },
+    {
+      "id": 13230507408,
+      "name": "ranking-pair-7",
+      "digest": "sha256:4b2b562bf91d5fdc6cd34131237ac2f659f3aca720c5977a5d3f871c77181de4"
+    },
+    {
+      "id": 13230451941,
+      "name": "ranking-pair-2",
+      "digest": "sha256:06ce81e38891067087f5502d7dc27fa5996514ff1d341a065207fc933e0e8924"
+    },
+    {
+      "id": 13230432363,
+      "name": "ranking-pair-5",
+      "digest": "sha256:249bfd97d6f72c8195ae7ab737faef615377259900efc905a2bc78c4da3f1da9"
+    },
+    {
+      "id": 13230426145,
+      "name": "ranking-pair-3",
+      "digest": "sha256:f8dc2b0988493f5736a49853ef251d4197f7b9f067519e5611b4dd84c5f27725"
+    },
+    {
+      "id": 13230353824,
+      "name": "ranking-pair-6",
+      "digest": "sha256:eefa51fc7eb496dd0137436c1e736662f5c0943735aad7febb53d1a415d7c6b3"
+    },
+    {
+      "id": 13229708578,
+      "name": "ranking-pair-4",
+      "digest": "sha256:82d2710f1fa17678bb71cb23061b500228d3113fa8fc7afdab4b0640f38736a2"
+    },
+    {
+      "id": 13229087767,
+      "name": "ranking-pair-1",
+      "digest": "sha256:2109bbea8aaeccd60a0b36b6dbe006f37ae23057e0b764727e9b746d19a4a0d8"
+    }
+  ],
+  "jobs": [
+    {
+      "id": 125908032049,
+      "name": "first / Public participant 1",
+      "conclusion": "success"
+    },
+    {
+      "id": 125911447808,
+      "name": "remaining (2) / Public participant 2",
+      "conclusion": "success"
+    },
+    {
+      "id": 125911447971,
+      "name": "remaining (3) / Public participant 3",
+      "conclusion": "success"
+    },
+    {
+      "id": 125911448000,
+      "name": "remaining (4) / Public participant 4",
+      "conclusion": "success"
+    },
+    {
+      "id": 125914652255,
+      "name": "remaining (5) / Public participant 5",
+      "conclusion": "success"
+    },
+    {
+      "id": 125914902118,
+      "name": "remaining (6) / Public participant 6",
+      "conclusion": "success"
+    },
+    {
+      "id": 125915084823,
+      "name": "remaining (7) / Public participant 7",
+      "conclusion": "success"
+    },
+    {
+      "id": 125918006793,
+      "name": "remaining (8) / Public participant 8",
+      "conclusion": "success"
+    },
+    {
+      "id": 125918348927,
+      "name": "remaining (9) / Public participant 9",
+      "conclusion": "success"
+    },
+    {
+      "id": 125918654027,
+      "name": "remaining (10) / Public participant 10",
+      "conclusion": "success"
+    },
+    {
+      "id": 125922097590,
+      "name": "collect",
+      "conclusion": "success"
+    }
+  ],
+  "independentConfirmation": false
+}

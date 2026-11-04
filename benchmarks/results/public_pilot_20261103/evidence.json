@@ -1,0 +1,180 @@
+{
+  "algorithmCommit": "7151821edf8a5a54c3167d7f18b66c530911b568",
+  "executionCommit": "cca3b44e94ee5c4779f3f4d4f6ed4c3c6ec41b1e",
+  "workflowRun": 41604029052,
+  "workflowURL": "https://github.com/abwoo/PipeCompare/actions/runs/41604029052",
+  "workflowConclusion": "success",
+  "startedUTC": "2026-11-03T08:32:25Z",
+  "finishedUTC": "2026-11-03T08:53:25Z",
+  "protocolSha256": "ab16dedf641079aa7cdc9e5d1ce09ee75b4d3b4ea75b9bf63eac867e75d3dc4a",
+  "sourceManifestSha256": "7f5d16957d8ee7bce86cc7ccba0e5994f63f33781607eb3f838392d49311a208",
+  "newPythonTestsPassed": 9,
+  "independentCollectorJob": 125817722228,
+  "independentCollectorPassed": true,
+  "summaryArtifact": 13216203090,
+  "productionChanged": false,
+  "latestDocumentationHeadCompatibilityRun": false,
+  "checks": {
+    "records": 10,
+    "artifactMatchesLog": 10,
+    "uniqueSources": 10,
+    "allProductionReplaysAndExportsMatch": true,
+    "eeglabSha": "bcc710a8edd712738e48879b6846958a2be7be1d",
+    "matlab": "26.1.0.3346908 (R2026a) Update 5",
+    "icaStable": 9,
+    "maxNativeReferenceProbabilityDifference": 0.0000018477439880371094,
+    "meanComputeSeconds": 103.29927860000001,
+    "faultSummary": [
+      {
+        "faultSeconds": 1,
+        "planned": 10,
+        "assessed": 10,
+        "meanSampleRecall": 0,
+        "meanOutsideInjectedShare": 0
+      },
+      {
+        "faultSeconds": 5,
+        "planned": 10,
+        "assessed": 10,
+        "meanSampleRecall": 0,
+        "meanOutsideInjectedShare": 0
+      },
+      {
+        "faultSeconds": 10,
+        "planned": 10,
+        "assessed": 10,
+        "meanSampleRecall": 1,
+        "meanOutsideInjectedShare": 0.00315789473684211
+      },
+      {
+        "faultSeconds": 20,
+        "planned": 10,
+        "assessed": 10,
+        "meanSampleRecall": 1,
+        "meanOutsideInjectedShare": 0
+      }
+    ]
+  },
+  "records": [
+    {
+      "subject": 1,
+      "job": 125809468223,
+      "artifact": 13214759554,
+      "artifactSha256": "48507dfa1462dd965d77355718f256420c0d262d21669eddc28eed4acadf2f6d",
+      "sourceSha256": "4743b736131a7e147c150e8b37711029b6cda5e356c4b3e8261a03cdcaaf8b0c",
+      "nativeReference": {
+        "subject": 1,
+        "maxProbabilityDifference": 0.0000018477439880371094,
+        "sameWinningClasses": true
+      }
+    },
+    {
+      "subject": 2,
+      "job": 125811482772,
+      "artifact": 13215874046,
+      "artifactSha256": "02c028539797f9fcf222c8ef7d291ed9c7f54d27e9244b72f7db61fa443a0e95",
+      "sourceSha256": "d542689b31c977838f20b1a2062865b98ecf10a7e9702f56f101000d47f2ec68",
+      "nativeReference": {
+        "subject": 2,
+        "maxProbabilityDifference": 5.960464477539062e-7,
+        "sameWinningClasses": true
+      }
+    },
+    {
+      "subject": 3,
+      "job": 125811482626,
+      "artifact": 13216586122,
+      "artifactSha256": "006cdb28b63e403f926390e0b4f306bd2890a0dcf4238a0ae67468193dcb8c19",
+      "sourceSha256": "2af68afa8d4f158a7ae7f3903b66f0947925880639b7a8b5b6bb13b0c6c50f96",
+      "nativeReference": {
+        "subject": 3,
+        "maxProbabilityDifference": 5.960464477539062e-7,
+        "sameWinningClasses": true
+      }
+    },
+    {
+      "subject": 4,
+      "job": 125811482967,
+      "artifact": 13216421060,
+      "artifactSha256": "80fb8fca6621dab27a474b251308c8d2bc874af187f7dad5fcf234bf9152729a",
+      "sourceSha256": "23e9645f492488d2376ac3a606d177043efc6e5fb00281c2d6648e4b06a6ce62",
+      "nativeReference": {
+        "subject": 4,
+        "maxProbabilityDifference": 5.960464477539062e-7,
+        "sameWinningClasses": true
+      }
+    },
+    {
+      "subject": 5,
+      "job": 125813396006,
+      "artifact": 13216806561,
+      "artifactSha256": "ff777809e4493dd9acca58968dca96dc5e886e418fe69207ce102979fc9ba84c",
+      "sourceSha256": "f84f58d7d96bce1700af8b2c9e333d66e4b2183e34b3ed5634840fff37845af0",
+      "nativeReference": {
+        "subject": 5,
+        "maxProbabilityDifference": 5.960464477539062e-7,
+        "sameWinningClasses": true
+      }
+    },
+    {
+      "subject": 6,
+      "job": 125813517038,
+      "artifact": 13215889677,
+      "artifactSha256": "8b027ef6f69dc355f9524082ed9070ed53c181ebd9dac72f43a95a746d2b7a3f",
+      "sourceSha256": "bfe32b925fdd469c90ce6913f7409cf85e4492b40d36c77b83511592d6e4c647",
+      "nativeReference": {
+        "subject": 6,
+        "maxProbabilityDifference": 5.960464477539062e-7,
+        "sameWinningClasses": true
+      }
+    },
+    {
+      "subject": 7,
+      "job": 125813519571,
+      "artifact": 13216956420,
+      "artifactSha256": "e8e49889d11b04a1401a1c64b2072bee0cb3ea2f9a60745d76e7d9204ed5414c",
+      "sourceSha256": "2ca422c6076860f12bce174799c5d7e85cae46b7b09a8e8519681d0f82168b22",
+      "nativeReference": {
+        "subject": 7,
+        "maxProbabilityDifference": 5.960464477539062e-7,
+        "sameWinningClasses": true
+      }
+    },
+    {
+      "subject": 8,
+      "job": 125815228800,
+      "artifact": 13216637820,
+      "artifactSha256": "a390e63dbeed72213c12defa2c6fd702fa9473ee4df326a246e3230f6453ba5a",
+      "sourceSha256": "678e47541d9903c300ba7811554ad1f8bfbe2bff086407cb4ff489d2d0e507bc",
+      "nativeReference": {
+        "subject": 8,
+        "maxProbabilityDifference": 5.960464477539062e-7,
+        "sameWinningClasses": true
+      }
+    },
+    {
+      "subject": 9,
+      "job": 125815344629,
+      "artifact": 13217575277,
+      "artifactSha256": "bfad0407a1a801ab9d8b83b1c416a32b18e9a9e89ad794452486e95b7ba5b8f1",
+      "sourceSha256": "37f117b69060f2c784d74fe973d6af30b3b978f9c7c127324273f5741749bb2e",
+      "nativeReference": {
+        "subject": 9,
+        "maxProbabilityDifference": 5.960464477539062e-7,
+        "sameWinningClasses": true
+      }
+    },
+    {
+      "subject": 10,
+      "job": 125815884554,
+      "artifact": 13217550607,
+      "artifactSha256": "d086abce11b92da6982bd53a2e498243ef8e05df83012fd16a77cee03bedcaf1",
+      "sourceSha256": "0d694b503e5ea0f6088a790f09390efb1be2688ad92213f5e82fa2f343cd18c4",
+      "nativeReference": {
+        "subject": 10,
+        "maxProbabilityDifference": 5.960464477539062e-7,
+        "sameWinningClasses": true
+      }
+    }
+  ]
+}

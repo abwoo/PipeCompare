@@ -1,0 +1,24 @@
+{
+  "run": 41737985970,
+  "summary_artifact_id": 13281441965,
+  "summary_zip_sha256": "499aee2a32513c2849aae4690145229965de9a56839bec8ccc09568574cdd9dd",
+  "independent_arithmetic_checks": "pass: recomputed all ERP and comparator MSE/rawMSE from estimates, gains and population truth",
+  "paired_identity_checks": "pass: source, truth, options, EEGLAB; baseline MSE reproduces original ten participants",
+  "replay_max_error": 0,
+  "export_max_error": 0,
+  "variant_measure_sha256": "ebf3252a8ca582effe2af4c5f2ec2f2eee8f512c25d5a430115ec94655b33c11",
+  "scope": "Scoped known-truth/null/factorial checks only; original whole statistical suite not claimed.",
+  "cloud_log_record_matches": 20,
+  "collector_log_summary_match": true,
+  "all_ten_workers_variance_checks_passed": true,
+  "mean_null_penalty": 0.000655009416944,
+  "retained_execution_files_git_blob_verified": [
+    "benchmarks/within_variant/Measure.m",
+    "benchmarks/check_within_variance.m",
+    "benchmarks/compare_within_trial.py",
+    "benchmarks/within_trial_plan.json",
+    "benchmarks/public_pilot.m",
+    ".github/workflows/within-trial.yml",
+    ".github/workflows/within-trial-record.yml"
+  ]
+}
