@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "subjects": [
+    4,
+    5
+  ],
+  "ica_seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "baseline_commit": "7151821edf8a5a54c3167d7f18b66c530911b568",
+  "candidate_execution": "f6265967ed5538629795ad308ee0baf3660dbf20",
+  "variant_measure_sha256": "ebf3252a8ca582effe2af4c5f2ec2f2eee8f512c25d5a430115ec94655b33c11",
+  "executor_harness_sha256": "a4dde6a1fac63631f07ee7761b8b7feb15d2130c181f414e45e0dab96491338d",
+  "scope": "Two previously examined participants; same source excerpt, injection and ranking RNG. Full adaptive search per ICA fitting sample permutation. No algorithm tuning; no independent cohort. Seeds are repeated fits, not independent subjects.",
+  "stages": [
+    "initial",
+    "after_cutoffs",
+    "after_eog"
+  ],
+  "retention_rule": "Diagnostic only; do not activate production or merge. Report every seed and worst case. Call S004 benefit stable across tested starts only if variant primary MSE is lower at all five starts and mean raw MSE is not higher; otherwise report it seed-sensitive. Diagnose S005 via stage traces and opposite-formula re-ranking of fixed candidate outputs. Never select a seed/recipe using truth.",
+  "seed_zero_gate": "Both arms must reproduce previously committed MSE, raw MSE and exact selected pipeline within 1e-7 for S004 and S005.",
+  "recovery": "One artifact per subject/seed, including baseline and variant; retry failed jobs only, collector rejects missing/duplicate pairs. No reuse of partial MATLAB state across arms.",
+  "skipped": "No re-download of other subjects; no alpha, fault, fixed comparator or full compatibility repeat. Internal ICA diagnostics disabled because every start is now a full adaptive run. Native replay remains checked; no new seeded executable-export claim."
+}

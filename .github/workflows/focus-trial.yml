@@ -1,0 +1,50 @@
+name: Focused S004 S005 seed stability and search diagnosis
+on:
+  push:
+    branches: [codex/pr51-focus-20261104]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  first:
+    uses: ./.github/workflows/focus-record.yml
+    with:
+      subject: 4
+      seed: 0
+  remaining:
+    needs: first
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        subject: [4,5]
+        seed: [0,1,2,3,4]
+        exclude:
+          - subject: 4
+            seed: 0
+    uses: ./.github/workflows/focus-record.yml
+    with:
+      subject: ${{ matrix.subject }}
+      seed: ${{ matrix.seed }}
+  collect:
+    if: always()
+    needs: [first,remaining]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m unittest discover -s benchmarks -p test_focus_collector.py
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: focus-pair-*
+          path: fragments
+      - run: python benchmarks/collect_focus.py fragments focus_summary
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: focus-summary
+          path: focus_summary
+          retention-days: 90
