@@ -1,0 +1,12 @@
+{
+  "status": "completed-diagnosed",
+  "execution": "3816a28cbd6922f4beccc10b830a3f7656673d7f",
+  "run": 41825137589,
+  "verificationRun": 41825720716,
+  "artifact": 13319351381,
+  "invalidConditionRows": 101496,
+  "cause": "no_nonblink_comparison",
+  "productionChanged": false,
+  "merged": false,
+  "next": "Audit blink detection and stage-wise comparison-trial retention; no repair yet tested"
+}
