@@ -1,0 +1,24 @@
+{
+  "subjects": [
+    4,
+    5
+  ],
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "change": "Expand every feasible pre-EOG parent once, recommended first then ascending IDs, deduplicate paths, rank all children together. No recursive expansion. No other search or scoring change.",
+  "baseline": "Retained within-group variance candidate",
+  "reference_execution": "21488182b61ae9ac0c8f692365b9e686e6668f57",
+  "scope": "Development reuse of two participants; starts are not independent subjects.",
+  "gate": "All ten pairs valid, fresh baseline reproduces all previous within-variant estimates. Require S004 and S005 no individual-start primary/raw regressions versus within candidate (1e-7 tolerance), at least one strict primary improvement, and S005 no worse than original main at every start. Only then proceed to full ten-participant paired pilot. Otherwise reject this experimental change; preserve evidence and original defaults. Never merge.",
+  "hashes": {
+    "eog_variant/Executor.m": "f0d111beba1bc8f57032b76cdd8884aff1b3bdb6daa7f4a652611a6cafcb69ec",
+    "eog_variant/FocusedExecutor.m": "efa874bb360de04e7a784c1d16a9d6029a3bd9309de94af9f7968c9bb33260a3",
+    "within_variant/Measure.m": "ebf3252a8ca582effe2af4c5f2ec2f2eee8f512c25d5a430115ec94655b33c11",
+    "focus_harness/Executor.m": "a4dde6a1fac63631f07ee7761b8b7feb15d2130c181f414e45e0dab96491338d"
+  }
+}
