@@ -1,4 +1,4 @@
-name: Diagnose nonfinite paired-bootstrap scores
+name: Summarize nonfinite-score diagnosis
 on:
   push:
     branches: [codex/pr51-nonfinite-20261104]
@@ -7,36 +7,20 @@ permissions:
   contents: read
   actions: read
 jobs:
-  historical:
+  summary:
     runs-on: ubuntu-22.04
-    timeout-minutes: 35
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: 41790407556
-          pattern: eog-pair-*
-          path: fragments
-      - uses: actions/download-artifact@v4
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: 41806029163
-          name: replacement-gate-results
-          path: previous_gate
-      - name: Verify frozen variant then activate it for scoring
-        run: |
-          python -c "import json,hashlib;from pathlib import Path;p=Path('benchmarks');d=json.loads((p/'eog_plan.json').read_text());assert hashlib.sha256((p/'within_variant/Measure.m').read_bytes()).hexdigest()==d['hashes']['within_variant/Measure.m']"
-          cp benchmarks/within_variant/Measure.m +pipecompare/+eval/Measure.m
-      - uses: matlab-actions/setup-matlab@v2
-        with:
-          release: R2026a
-      - uses: matlab-actions/run-command@v2
-        with:
-          command: addpath(pwd);addpath('benchmarks');addpath('benchmarks/nonfinite_trial');diagnose_nonfinite('fragments','previous_gate','nonfinite_results');
-      - if: always()
-        uses: actions/upload-artifact@v4
-        with:
+          run-id: 41825137589
           name: nonfinite-diagnosis-results
-          path: nonfinite_results
+          path: input
+      - run: python3 benchmarks/nonfinite_trial/summarize.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-nonfinite-summary
+          path: summary.json
           retention-days: 90
