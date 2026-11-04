@@ -1,0 +1,12 @@
+{
+  "branch": "codex/pr51-support-audit-20261104",
+  "execution": "50990f6ec5d50a4cba56d67bb21a576b7b95f54d",
+  "status": "completed-diagnosed",
+  "productionChanged": false,
+  "merged": false,
+  "run": 41827407681,
+  "artifact": 13320092418,
+  "candidateSnapshots": 1270,
+  "selectedSnapshots": 60,
+  "next": "Inspect HMM timing on IDs 3,31,38 and amplitude/channel evidence for rejected ID 23; no implementation defect yet established"
+}

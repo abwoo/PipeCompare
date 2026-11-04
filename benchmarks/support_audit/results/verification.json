@@ -1,0 +1,21 @@
+{
+  "candidateSnapshots": 1270,
+  "selectedSnapshots": 60,
+  "extraS005Flags": [
+    3,
+    31,
+    38
+  ],
+  "extraFlagSource": "continuous EOG HMM only",
+  "s005SelectedSupportBeforeEOG": [
+    2,
+    3
+  ],
+  "s005SelectedSupportAfterEOG": [
+    1,
+    3
+  ],
+  "lostUnflaggedTrial": 23,
+  "allFiveStartsAgree": true,
+  "productionChanged": false
+}

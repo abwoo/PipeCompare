@@ -1,0 +1,3834 @@
+[
+  {
+    "subject": 4,
+    "seed": 0,
+    "arm": "baseline",
+    "stage": "initial",
+    "candidate": 2,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 13,
+        "retained": 20,
+        "retainedUnflagged": 13,
+        "positiveUnflagged": 13,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          1,
+          4,
+          6,
+          7,
+          19,
+          20,
+          26,
+          28,
+          32,
+          33,
+          34,
+          35,
+          41
+        ],
+        "removedInjectedBlink": 1,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 14
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 8,
+        "retained": 20,
+        "retainedUnflagged": 8,
+        "positiveUnflagged": 8,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          3,
+          10,
+          24,
+          25,
+          31,
+          36,
+          38,
+          40
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 9,
+        "retainedNoInjectedBlink": 11
+      }
+    ],
+    "absentIds": 8,
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 4,
+    "seed": 0,
+    "arm": "baseline",
+    "stage": "after_cutoffs",
+    "candidate": 2,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 13,
+        "retained": 20,
+        "retainedUnflagged": 13,
+        "positiveUnflagged": 13,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          1,
+          4,
+          6,
+          7,
+          19,
+          20,
+          26,
+          28,
+          32,
+          33,
+          34,
+          35,
+          41
+        ],
+        "removedInjectedBlink": 1,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 14
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 8,
+        "retained": 20,
+        "retainedUnflagged": 8,
+        "positiveUnflagged": 8,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          3,
+          10,
+          24,
+          25,
+          31,
+          36,
+          38,
+          40
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 9,
+        "retainedNoInjectedBlink": 11
+      }
+    ],
+    "absentIds": 8,
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 4,
+    "seed": 0,
+    "arm": "baseline",
+    "stage": "after_eog",
+    "candidate": 25,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 13,
+        "retained": 21,
+        "retainedUnflagged": 13,
+        "positiveUnflagged": 13,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          1,
+          4,
+          6,
+          7,
+          19,
+          20,
+          26,
+          28,
+          32,
+          33,
+          34,
+          35,
+          41
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 7,
+        "retainedNoInjectedBlink": 14
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 8,
+        "retained": 20,
+        "retainedUnflagged": 8,
+        "positiveUnflagged": 8,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          3,
+          10,
+          24,
+          25,
+          31,
+          36,
+          38,
+          40
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 9,
+        "retainedNoInjectedBlink": 11
+      }
+    ],
+    "absentIds": [],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 4,
+    "seed": 0,
+    "arm": "variant",
+    "stage": "initial",
+    "candidate": 2,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 13,
+        "retained": 20,
+        "retainedUnflagged": 13,
+        "positiveUnflagged": 13,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          1,
+          4,
+          6,
+          7,
+          19,
+          20,
+          26,
+          28,
+          32,
+          33,
+          34,
+          35,
+          41
+        ],
+        "removedInjectedBlink": 1,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 14
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 8,
+        "retained": 20,
+        "retainedUnflagged": 8,
+        "positiveUnflagged": 8,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          3,
+          10,
+          24,
+          25,
+          31,
+          36,
+          38,
+          40
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 9,
+        "retainedNoInjectedBlink": 11
+      }
+    ],
+    "absentIds": 8,
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 4,
+    "seed": 0,
+    "arm": "variant",
+    "stage": "after_cutoffs",
+    "candidate": 2,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 13,
+        "retained": 20,
+        "retainedUnflagged": 13,
+        "positiveUnflagged": 13,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          1,
+          4,
+          6,
+          7,
+          19,
+          20,
+          26,
+          28,
+          32,
+          33,
+          34,
+          35,
+          41
+        ],
+        "removedInjectedBlink": 1,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 14
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 8,
+        "retained": 20,
+        "retainedUnflagged": 8,
+        "positiveUnflagged": 8,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          3,
+          10,
+          24,
+          25,
+          31,
+          36,
+          38,
+          40
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 9,
+        "retainedNoInjectedBlink": 11
+      }
+    ],
+    "absentIds": 8,
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 4,
+    "seed": 0,
+    "arm": "variant",
+    "stage": "after_eog",
+    "candidate": 42,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 13,
+        "retained": 21,
+        "retainedUnflagged": 13,
+        "positiveUnflagged": 13,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          1,
+          4,
+          6,
+          7,
+          19,
+          20,
+          26,
+          28,
+          32,
+          33,
+          34,
+          35,
+          41
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 7,
+        "retainedNoInjectedBlink": 14
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 8,
+        "retained": 20,
+        "retainedUnflagged": 8,
+        "positiveUnflagged": 8,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          3,
+          10,
+          24,
+          25,
+          31,
+          36,
+          38,
+          40
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 9,
+        "retainedNoInjectedBlink": 11
+      }
+    ],
+    "absentIds": [],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 4,
+    "seed": 1,
+    "arm": "baseline",
+    "stage": "initial",
+    "candidate": 2,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 13,
+        "retained": 20,
+        "retainedUnflagged": 13,
+        "positiveUnflagged": 13,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          1,
+          4,
+          6,
+          7,
+          19,
+          20,
+          26,
+          28,
+          32,
+          33,
+          34,
+          35,
+          41
+        ],
+        "removedInjectedBlink": 1,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 14
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 8,
+        "retained": 20,
+        "retainedUnflagged": 8,
+        "positiveUnflagged": 8,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          3,
+          10,
+          24,
+          25,
+          31,
+          36,
+          38,
+          40
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 9,
+        "retainedNoInjectedBlink": 11
+      }
+    ],
+    "absentIds": 8,
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 4,
+    "seed": 1,
+    "arm": "baseline",
+    "stage": "after_cutoffs",
+    "candidate": 2,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 13,
+        "retained": 20,
+        "retainedUnflagged": 13,
+        "positiveUnflagged": 13,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          1,
+          4,
+          6,
+          7,
+          19,
+          20,
+          26,
+          28,
+          32,
+          33,
+          34,
+          35,
+          41
+        ],
+        "removedInjectedBlink": 1,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 14
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 8,
+        "retained": 20,
+        "retainedUnflagged": 8,
+        "positiveUnflagged": 8,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          3,
+          10,
+          24,
+          25,
+          31,
+          36,
+          38,
+          40
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 9,
+        "retainedNoInjectedBlink": 11
+      }
+    ],
+    "absentIds": 8,
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 4,
+    "seed": 1,
+    "arm": "baseline",
+    "stage": "after_eog",
+    "candidate": 25,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 13,
+        "retained": 21,
+        "retainedUnflagged": 13,
+        "positiveUnflagged": 13,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          1,
+          4,
+          6,
+          7,
+          19,
+          20,
+          26,
+          28,
+          32,
+          33,
+          34,
+          35,
+          41
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 7,
+        "retainedNoInjectedBlink": 14
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 8,
+        "retained": 20,
+        "retainedUnflagged": 8,
+        "positiveUnflagged": 8,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          3,
+          10,
+          24,
+          25,
+          31,
+          36,
+          38,
+          40
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 9,
+        "retainedNoInjectedBlink": 11
+      }
+    ],
+    "absentIds": [],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 4,
+    "seed": 1,
+    "arm": "variant",
+    "stage": "initial",
+    "candidate": 2,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 13,
+        "retained": 20,
+        "retainedUnflagged": 13,
+        "positiveUnflagged": 13,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          1,
+          4,
+          6,
+          7,
+          19,
+          20,
+          26,
+          28,
+          32,
+          33,
+          34,
+          35,
+          41
+        ],
+        "removedInjectedBlink": 1,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 14
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 8,
+        "retained": 20,
+        "retainedUnflagged": 8,
+        "positiveUnflagged": 8,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          3,
+          10,
+          24,
+          25,
+          31,
+          36,
+          38,
+          40
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 9,
+        "retainedNoInjectedBlink": 11
+      }
+    ],
+    "absentIds": 8,
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 4,
+    "seed": 1,
+    "arm": "variant",
+    "stage": "after_cutoffs",
+    "candidate": 2,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 13,
+        "retained": 20,
+        "retainedUnflagged": 13,
+        "positiveUnflagged": 13,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          1,
+          4,
+          6,
+          7,
+          19,
+          20,
+          26,
+          28,
+          32,
+          33,
+          34,
+          35,
+          41
+        ],
+        "removedInjectedBlink": 1,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 14
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 8,
+        "retained": 20,
+        "retainedUnflagged": 8,
+        "positiveUnflagged": 8,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          3,
+          10,
+          24,
+          25,
+          31,
+          36,
+          38,
+          40
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 9,
+        "retainedNoInjectedBlink": 11
+      }
+    ],
+    "absentIds": 8,
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 4,
+    "seed": 1,
+    "arm": "variant",
+    "stage": "after_eog",
+    "candidate": 42,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 13,
+        "retained": 21,
+        "retainedUnflagged": 13,
+        "positiveUnflagged": 13,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          1,
+          4,
+          6,
+          7,
+          19,
+          20,
+          26,
+          28,
+          32,
+          33,
+          34,
+          35,
+          41
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 7,
+        "retainedNoInjectedBlink": 14
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 8,
+        "retained": 20,
+        "retainedUnflagged": 8,
+        "positiveUnflagged": 8,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          3,
+          10,
+          24,
+          25,
+          31,
+          36,
+          38,
+          40
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 9,
+        "retainedNoInjectedBlink": 11
+      }
+    ],
+    "absentIds": [],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 4,
+    "seed": 2,
+    "arm": "baseline",
+    "stage": "initial",
+    "candidate": 1,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 13,
+        "retained": 20,
+        "retainedUnflagged": 13,
+        "positiveUnflagged": 13,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          1,
+          4,
+          6,
+          7,
+          19,
+          20,
+          26,
+          28,
+          32,
+          33,
+          34,
+          35,
+          41
+        ],
+        "removedInjectedBlink": 1,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 14
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 8,
+        "retained": 20,
+        "retainedUnflagged": 8,
+        "positiveUnflagged": 8,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          3,
+          10,
+          24,
+          25,
+          31,
+          36,
+          38,
+          40
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 9,
+        "retainedNoInjectedBlink": 11
+      }
+    ],
+    "absentIds": 8,
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 4,
+    "seed": 2,
+    "arm": "baseline",
+    "stage": "after_cutoffs",
+    "candidate": 1,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 13,
+        "retained": 20,
+        "retainedUnflagged": 13,
+        "positiveUnflagged": 13,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          1,
+          4,
+          6,
+          7,
+          19,
+          20,
+          26,
+          28,
+          32,
+          33,
+          34,
+          35,
+          41
+        ],
+        "removedInjectedBlink": 1,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 14
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 8,
+        "retained": 20,
+        "retainedUnflagged": 8,
+        "positiveUnflagged": 8,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          3,
+          10,
+          24,
+          25,
+          31,
+          36,
+          38,
+          40
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 9,
+        "retainedNoInjectedBlink": 11
+      }
+    ],
+    "absentIds": 8,
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 4,
+    "seed": 2,
+    "arm": "baseline",
+    "stage": "after_eog",
+    "candidate": 1,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 13,
+        "retained": 20,
+        "retainedUnflagged": 13,
+        "positiveUnflagged": 13,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          1,
+          4,
+          6,
+          7,
+          19,
+          20,
+          26,
+          28,
+          32,
+          33,
+          34,
+          35,
+          41
+        ],
+        "removedInjectedBlink": 1,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 14
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 8,
+        "retained": 20,
+        "retainedUnflagged": 8,
+        "positiveUnflagged": 8,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          3,
+          10,
+          24,
+          25,
+          31,
+          36,
+          38,
+          40
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 9,
+        "retainedNoInjectedBlink": 11
+      }
+    ],
+    "absentIds": 8,
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 4,
+    "seed": 2,
+    "arm": "variant",
+    "stage": "initial",
+    "candidate": 1,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 13,
+        "retained": 20,
+        "retainedUnflagged": 13,
+        "positiveUnflagged": 13,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          1,
+          4,
+          6,
+          7,
+          19,
+          20,
+          26,
+          28,
+          32,
+          33,
+          34,
+          35,
+          41
+        ],
+        "removedInjectedBlink": 1,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 14
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 8,
+        "retained": 20,
+        "retainedUnflagged": 8,
+        "positiveUnflagged": 8,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          3,
+          10,
+          24,
+          25,
+          31,
+          36,
+          38,
+          40
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 9,
+        "retainedNoInjectedBlink": 11
+      }
+    ],
+    "absentIds": 8,
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 4,
+    "seed": 2,
+    "arm": "variant",
+    "stage": "after_cutoffs",
+    "candidate": 1,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 13,
+        "retained": 20,
+        "retainedUnflagged": 13,
+        "positiveUnflagged": 13,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          1,
+          4,
+          6,
+          7,
+          19,
+          20,
+          26,
+          28,
+          32,
+          33,
+          34,
+          35,
+          41
+        ],
+        "removedInjectedBlink": 1,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 14
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 8,
+        "retained": 20,
+        "retainedUnflagged": 8,
+        "positiveUnflagged": 8,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          3,
+          10,
+          24,
+          25,
+          31,
+          36,
+          38,
+          40
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 9,
+        "retainedNoInjectedBlink": 11
+      }
+    ],
+    "absentIds": 8,
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 4,
+    "seed": 2,
+    "arm": "variant",
+    "stage": "after_eog",
+    "candidate": 2,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 13,
+        "retained": 20,
+        "retainedUnflagged": 13,
+        "positiveUnflagged": 13,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          1,
+          4,
+          6,
+          7,
+          19,
+          20,
+          26,
+          28,
+          32,
+          33,
+          34,
+          35,
+          41
+        ],
+        "removedInjectedBlink": 1,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 14
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 8,
+        "retained": 20,
+        "retainedUnflagged": 8,
+        "positiveUnflagged": 8,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          3,
+          10,
+          24,
+          25,
+          31,
+          36,
+          38,
+          40
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 9,
+        "retainedNoInjectedBlink": 11
+      }
+    ],
+    "absentIds": 8,
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 4,
+    "seed": 3,
+    "arm": "baseline",
+    "stage": "initial",
+    "candidate": 16,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 13,
+        "retained": 17,
+        "retainedUnflagged": 12,
+        "positiveUnflagged": 12,
+        "removedUnflaggedIds": 7,
+        "retainedUnflaggedIds": [
+          1,
+          4,
+          6,
+          19,
+          20,
+          26,
+          28,
+          32,
+          33,
+          34,
+          35,
+          41
+        ],
+        "removedInjectedBlink": 3,
+        "removedNoInjectedBlink": 1,
+        "retainedInjectedBlink": 4,
+        "retainedNoInjectedBlink": 13
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 8,
+        "retained": 16,
+        "retainedUnflagged": 6,
+        "positiveUnflagged": 6,
+        "removedUnflaggedIds": [
+          10,
+          40
+        ],
+        "retainedUnflaggedIds": [
+          3,
+          24,
+          25,
+          31,
+          36,
+          38
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 4,
+        "retainedInjectedBlink": 9,
+        "retainedNoInjectedBlink": 7
+      }
+    ],
+    "absentIds": [
+      5,
+      7,
+      8,
+      10,
+      11,
+      15,
+      37,
+      40
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 4,
+    "seed": 3,
+    "arm": "baseline",
+    "stage": "after_cutoffs",
+    "candidate": 16,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 13,
+        "retained": 17,
+        "retainedUnflagged": 12,
+        "positiveUnflagged": 12,
+        "removedUnflaggedIds": 7,
+        "retainedUnflaggedIds": [
+          1,
+          4,
+          6,
+          19,
+          20,
+          26,
+          28,
+          32,
+          33,
+          34,
+          35,
+          41
+        ],
+        "removedInjectedBlink": 3,
+        "removedNoInjectedBlink": 1,
+        "retainedInjectedBlink": 4,
+        "retainedNoInjectedBlink": 13
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 8,
+        "retained": 16,
+        "retainedUnflagged": 6,
+        "positiveUnflagged": 6,
+        "removedUnflaggedIds": [
+          10,
+          40
+        ],
+        "retainedUnflaggedIds": [
+          3,
+          24,
+          25,
+          31,
+          36,
+          38
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 4,
+        "retainedInjectedBlink": 9,
+        "retainedNoInjectedBlink": 7
+      }
+    ],
+    "absentIds": [
+      5,
+      7,
+      8,
+      10,
+      11,
+      15,
+      37,
+      40
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 4,
+    "seed": 3,
+    "arm": "baseline",
+    "stage": "after_eog",
+    "candidate": 25,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 13,
+        "retained": 21,
+        "retainedUnflagged": 13,
+        "positiveUnflagged": 13,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          1,
+          4,
+          6,
+          7,
+          19,
+          20,
+          26,
+          28,
+          32,
+          33,
+          34,
+          35,
+          41
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 7,
+        "retainedNoInjectedBlink": 14
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 8,
+        "retained": 20,
+        "retainedUnflagged": 8,
+        "positiveUnflagged": 8,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          3,
+          10,
+          24,
+          25,
+          31,
+          36,
+          38,
+          40
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 9,
+        "retainedNoInjectedBlink": 11
+      }
+    ],
+    "absentIds": [],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 4,
+    "seed": 3,
+    "arm": "variant",
+    "stage": "initial",
+    "candidate": 16,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 13,
+        "retained": 17,
+        "retainedUnflagged": 12,
+        "positiveUnflagged": 12,
+        "removedUnflaggedIds": 7,
+        "retainedUnflaggedIds": [
+          1,
+          4,
+          6,
+          19,
+          20,
+          26,
+          28,
+          32,
+          33,
+          34,
+          35,
+          41
+        ],
+        "removedInjectedBlink": 3,
+        "removedNoInjectedBlink": 1,
+        "retainedInjectedBlink": 4,
+        "retainedNoInjectedBlink": 13
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 8,
+        "retained": 16,
+        "retainedUnflagged": 6,
+        "positiveUnflagged": 6,
+        "removedUnflaggedIds": [
+          10,
+          40
+        ],
+        "retainedUnflaggedIds": [
+          3,
+          24,
+          25,
+          31,
+          36,
+          38
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 4,
+        "retainedInjectedBlink": 9,
+        "retainedNoInjectedBlink": 7
+      }
+    ],
+    "absentIds": [
+      5,
+      7,
+      8,
+      10,
+      11,
+      15,
+      37,
+      40
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 4,
+    "seed": 3,
+    "arm": "variant",
+    "stage": "after_cutoffs",
+    "candidate": 16,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 13,
+        "retained": 17,
+        "retainedUnflagged": 12,
+        "positiveUnflagged": 12,
+        "removedUnflaggedIds": 7,
+        "retainedUnflaggedIds": [
+          1,
+          4,
+          6,
+          19,
+          20,
+          26,
+          28,
+          32,
+          33,
+          34,
+          35,
+          41
+        ],
+        "removedInjectedBlink": 3,
+        "removedNoInjectedBlink": 1,
+        "retainedInjectedBlink": 4,
+        "retainedNoInjectedBlink": 13
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 8,
+        "retained": 16,
+        "retainedUnflagged": 6,
+        "positiveUnflagged": 6,
+        "removedUnflaggedIds": [
+          10,
+          40
+        ],
+        "retainedUnflaggedIds": [
+          3,
+          24,
+          25,
+          31,
+          36,
+          38
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 4,
+        "retainedInjectedBlink": 9,
+        "retainedNoInjectedBlink": 7
+      }
+    ],
+    "absentIds": [
+      5,
+      7,
+      8,
+      10,
+      11,
+      15,
+      37,
+      40
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 4,
+    "seed": 3,
+    "arm": "variant",
+    "stage": "after_eog",
+    "candidate": 42,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 13,
+        "retained": 21,
+        "retainedUnflagged": 13,
+        "positiveUnflagged": 13,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          1,
+          4,
+          6,
+          7,
+          19,
+          20,
+          26,
+          28,
+          32,
+          33,
+          34,
+          35,
+          41
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 7,
+        "retainedNoInjectedBlink": 14
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 8,
+        "retained": 20,
+        "retainedUnflagged": 8,
+        "positiveUnflagged": 8,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          3,
+          10,
+          24,
+          25,
+          31,
+          36,
+          38,
+          40
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 9,
+        "retainedNoInjectedBlink": 11
+      }
+    ],
+    "absentIds": [],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 4,
+    "seed": 4,
+    "arm": "baseline",
+    "stage": "initial",
+    "candidate": 14,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 13,
+        "retained": 17,
+        "retainedUnflagged": 12,
+        "positiveUnflagged": 12,
+        "removedUnflaggedIds": 7,
+        "retainedUnflaggedIds": [
+          1,
+          4,
+          6,
+          19,
+          20,
+          26,
+          28,
+          32,
+          33,
+          34,
+          35,
+          41
+        ],
+        "removedInjectedBlink": 3,
+        "removedNoInjectedBlink": 1,
+        "retainedInjectedBlink": 4,
+        "retainedNoInjectedBlink": 13
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 8,
+        "retained": 16,
+        "retainedUnflagged": 6,
+        "positiveUnflagged": 6,
+        "removedUnflaggedIds": [
+          10,
+          40
+        ],
+        "retainedUnflaggedIds": [
+          3,
+          24,
+          25,
+          31,
+          36,
+          38
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 4,
+        "retainedInjectedBlink": 9,
+        "retainedNoInjectedBlink": 7
+      }
+    ],
+    "absentIds": [
+      5,
+      7,
+      8,
+      10,
+      11,
+      15,
+      37,
+      40
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 4,
+    "seed": 4,
+    "arm": "baseline",
+    "stage": "after_cutoffs",
+    "candidate": 14,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 13,
+        "retained": 17,
+        "retainedUnflagged": 12,
+        "positiveUnflagged": 12,
+        "removedUnflaggedIds": 7,
+        "retainedUnflaggedIds": [
+          1,
+          4,
+          6,
+          19,
+          20,
+          26,
+          28,
+          32,
+          33,
+          34,
+          35,
+          41
+        ],
+        "removedInjectedBlink": 3,
+        "removedNoInjectedBlink": 1,
+        "retainedInjectedBlink": 4,
+        "retainedNoInjectedBlink": 13
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 8,
+        "retained": 16,
+        "retainedUnflagged": 6,
+        "positiveUnflagged": 6,
+        "removedUnflaggedIds": [
+          10,
+          40
+        ],
+        "retainedUnflaggedIds": [
+          3,
+          24,
+          25,
+          31,
+          36,
+          38
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 4,
+        "retainedInjectedBlink": 9,
+        "retainedNoInjectedBlink": 7
+      }
+    ],
+    "absentIds": [
+      5,
+      7,
+      8,
+      10,
+      11,
+      15,
+      37,
+      40
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 4,
+    "seed": 4,
+    "arm": "baseline",
+    "stage": "after_eog",
+    "candidate": 25,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 13,
+        "retained": 21,
+        "retainedUnflagged": 13,
+        "positiveUnflagged": 13,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          1,
+          4,
+          6,
+          7,
+          19,
+          20,
+          26,
+          28,
+          32,
+          33,
+          34,
+          35,
+          41
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 7,
+        "retainedNoInjectedBlink": 14
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 8,
+        "retained": 20,
+        "retainedUnflagged": 8,
+        "positiveUnflagged": 8,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          3,
+          10,
+          24,
+          25,
+          31,
+          36,
+          38,
+          40
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 9,
+        "retainedNoInjectedBlink": 11
+      }
+    ],
+    "absentIds": [],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 4,
+    "seed": 4,
+    "arm": "variant",
+    "stage": "initial",
+    "candidate": 14,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 13,
+        "retained": 17,
+        "retainedUnflagged": 12,
+        "positiveUnflagged": 12,
+        "removedUnflaggedIds": 7,
+        "retainedUnflaggedIds": [
+          1,
+          4,
+          6,
+          19,
+          20,
+          26,
+          28,
+          32,
+          33,
+          34,
+          35,
+          41
+        ],
+        "removedInjectedBlink": 3,
+        "removedNoInjectedBlink": 1,
+        "retainedInjectedBlink": 4,
+        "retainedNoInjectedBlink": 13
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 8,
+        "retained": 16,
+        "retainedUnflagged": 6,
+        "positiveUnflagged": 6,
+        "removedUnflaggedIds": [
+          10,
+          40
+        ],
+        "retainedUnflaggedIds": [
+          3,
+          24,
+          25,
+          31,
+          36,
+          38
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 4,
+        "retainedInjectedBlink": 9,
+        "retainedNoInjectedBlink": 7
+      }
+    ],
+    "absentIds": [
+      5,
+      7,
+      8,
+      10,
+      11,
+      15,
+      37,
+      40
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 4,
+    "seed": 4,
+    "arm": "variant",
+    "stage": "after_cutoffs",
+    "candidate": 14,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 13,
+        "retained": 17,
+        "retainedUnflagged": 12,
+        "positiveUnflagged": 12,
+        "removedUnflaggedIds": 7,
+        "retainedUnflaggedIds": [
+          1,
+          4,
+          6,
+          19,
+          20,
+          26,
+          28,
+          32,
+          33,
+          34,
+          35,
+          41
+        ],
+        "removedInjectedBlink": 3,
+        "removedNoInjectedBlink": 1,
+        "retainedInjectedBlink": 4,
+        "retainedNoInjectedBlink": 13
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 8,
+        "retained": 16,
+        "retainedUnflagged": 6,
+        "positiveUnflagged": 6,
+        "removedUnflaggedIds": [
+          10,
+          40
+        ],
+        "retainedUnflaggedIds": [
+          3,
+          24,
+          25,
+          31,
+          36,
+          38
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 4,
+        "retainedInjectedBlink": 9,
+        "retainedNoInjectedBlink": 7
+      }
+    ],
+    "absentIds": [
+      5,
+      7,
+      8,
+      10,
+      11,
+      15,
+      37,
+      40
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 4,
+    "seed": 4,
+    "arm": "variant",
+    "stage": "after_eog",
+    "candidate": 42,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 13,
+        "retained": 21,
+        "retainedUnflagged": 13,
+        "positiveUnflagged": 13,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          1,
+          4,
+          6,
+          7,
+          19,
+          20,
+          26,
+          28,
+          32,
+          33,
+          34,
+          35,
+          41
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 7,
+        "retainedNoInjectedBlink": 14
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 8,
+        "retained": 20,
+        "retainedUnflagged": 8,
+        "positiveUnflagged": 8,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          3,
+          10,
+          24,
+          25,
+          31,
+          36,
+          38,
+          40
+        ],
+        "removedInjectedBlink": 0,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 9,
+        "retainedNoInjectedBlink": 11
+      }
+    ],
+    "absentIds": [],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 5,
+    "seed": 0,
+    "arm": "baseline",
+    "stage": "initial",
+    "candidate": 2,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 2,
+        "retained": 14,
+        "retainedUnflagged": 2,
+        "positiveUnflagged": 2,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          23,
+          33
+        ],
+        "removedInjectedBlink": 7,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 10,
+        "retainedNoInjectedBlink": 4
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 3,
+        "retained": 10,
+        "retainedUnflagged": 3,
+        "positiveUnflagged": 3,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          17,
+          26,
+          27
+        ],
+        "removedInjectedBlink": 10,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 4
+      }
+    ],
+    "absentIds": [
+      1,
+      6,
+      7,
+      9,
+      10,
+      11,
+      12,
+      16,
+      18,
+      19,
+      20,
+      24,
+      30,
+      34,
+      35,
+      36,
+      39
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 5,
+    "seed": 0,
+    "arm": "baseline",
+    "stage": "after_cutoffs",
+    "candidate": 2,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 2,
+        "retained": 14,
+        "retainedUnflagged": 2,
+        "positiveUnflagged": 2,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          23,
+          33
+        ],
+        "removedInjectedBlink": 7,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 10,
+        "retainedNoInjectedBlink": 4
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 3,
+        "retained": 10,
+        "retainedUnflagged": 3,
+        "positiveUnflagged": 3,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          17,
+          26,
+          27
+        ],
+        "removedInjectedBlink": 10,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 4
+      }
+    ],
+    "absentIds": [
+      1,
+      6,
+      7,
+      9,
+      10,
+      11,
+      12,
+      16,
+      18,
+      19,
+      20,
+      24,
+      30,
+      34,
+      35,
+      36,
+      39
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 5,
+    "seed": 0,
+    "arm": "baseline",
+    "stage": "after_eog",
+    "candidate": 25,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 2,
+        "retained": 15,
+        "retainedUnflagged": 1,
+        "positiveUnflagged": 1,
+        "removedUnflaggedIds": 23,
+        "retainedUnflaggedIds": 33,
+        "removedInjectedBlink": 5,
+        "removedNoInjectedBlink": 1,
+        "retainedInjectedBlink": 12,
+        "retainedNoInjectedBlink": 3
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 3,
+        "retained": 13,
+        "retainedUnflagged": 3,
+        "positiveUnflagged": 3,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          17,
+          26,
+          27
+        ],
+        "removedInjectedBlink": 6,
+        "removedNoInjectedBlink": 1,
+        "retainedInjectedBlink": 10,
+        "retainedNoInjectedBlink": 3
+      }
+    ],
+    "absentIds": [
+      1,
+      2,
+      3,
+      7,
+      12,
+      13,
+      20,
+      23,
+      24,
+      28,
+      37,
+      39,
+      41
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 5,
+    "seed": 0,
+    "arm": "variant",
+    "stage": "initial",
+    "candidate": 2,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 2,
+        "retained": 14,
+        "retainedUnflagged": 2,
+        "positiveUnflagged": 2,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          23,
+          33
+        ],
+        "removedInjectedBlink": 7,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 10,
+        "retainedNoInjectedBlink": 4
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 3,
+        "retained": 10,
+        "retainedUnflagged": 3,
+        "positiveUnflagged": 3,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          17,
+          26,
+          27
+        ],
+        "removedInjectedBlink": 10,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 4
+      }
+    ],
+    "absentIds": [
+      1,
+      6,
+      7,
+      9,
+      10,
+      11,
+      12,
+      16,
+      18,
+      19,
+      20,
+      24,
+      30,
+      34,
+      35,
+      36,
+      39
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 5,
+    "seed": 0,
+    "arm": "variant",
+    "stage": "after_cutoffs",
+    "candidate": 2,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 2,
+        "retained": 14,
+        "retainedUnflagged": 2,
+        "positiveUnflagged": 2,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          23,
+          33
+        ],
+        "removedInjectedBlink": 7,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 10,
+        "retainedNoInjectedBlink": 4
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 3,
+        "retained": 10,
+        "retainedUnflagged": 3,
+        "positiveUnflagged": 3,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          17,
+          26,
+          27
+        ],
+        "removedInjectedBlink": 10,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 4
+      }
+    ],
+    "absentIds": [
+      1,
+      6,
+      7,
+      9,
+      10,
+      11,
+      12,
+      16,
+      18,
+      19,
+      20,
+      24,
+      30,
+      34,
+      35,
+      36,
+      39
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 5,
+    "seed": 0,
+    "arm": "variant",
+    "stage": "after_eog",
+    "candidate": 30,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 2,
+        "retained": 16,
+        "retainedUnflagged": 1,
+        "positiveUnflagged": 1,
+        "removedUnflaggedIds": 23,
+        "retainedUnflaggedIds": 33,
+        "removedInjectedBlink": 4,
+        "removedNoInjectedBlink": 1,
+        "retainedInjectedBlink": 13,
+        "retainedNoInjectedBlink": 3
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 3,
+        "retained": 14,
+        "retainedUnflagged": 3,
+        "positiveUnflagged": 3,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          17,
+          26,
+          27
+        ],
+        "removedInjectedBlink": 5,
+        "removedNoInjectedBlink": 1,
+        "retainedInjectedBlink": 11,
+        "retainedNoInjectedBlink": 3
+      }
+    ],
+    "absentIds": [
+      2,
+      3,
+      7,
+      13,
+      16,
+      23,
+      24,
+      28,
+      37,
+      39,
+      41
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 5,
+    "seed": 1,
+    "arm": "baseline",
+    "stage": "initial",
+    "candidate": 2,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 2,
+        "retained": 14,
+        "retainedUnflagged": 2,
+        "positiveUnflagged": 2,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          23,
+          33
+        ],
+        "removedInjectedBlink": 7,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 10,
+        "retainedNoInjectedBlink": 4
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 3,
+        "retained": 10,
+        "retainedUnflagged": 3,
+        "positiveUnflagged": 3,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          17,
+          26,
+          27
+        ],
+        "removedInjectedBlink": 10,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 4
+      }
+    ],
+    "absentIds": [
+      1,
+      6,
+      7,
+      10,
+      11,
+      12,
+      16,
+      18,
+      19,
+      20,
+      24,
+      30,
+      32,
+      34,
+      35,
+      36,
+      39
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 5,
+    "seed": 1,
+    "arm": "baseline",
+    "stage": "after_cutoffs",
+    "candidate": 2,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 2,
+        "retained": 14,
+        "retainedUnflagged": 2,
+        "positiveUnflagged": 2,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          23,
+          33
+        ],
+        "removedInjectedBlink": 7,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 10,
+        "retainedNoInjectedBlink": 4
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 3,
+        "retained": 10,
+        "retainedUnflagged": 3,
+        "positiveUnflagged": 3,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          17,
+          26,
+          27
+        ],
+        "removedInjectedBlink": 10,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 4
+      }
+    ],
+    "absentIds": [
+      1,
+      6,
+      7,
+      10,
+      11,
+      12,
+      16,
+      18,
+      19,
+      20,
+      24,
+      30,
+      32,
+      34,
+      35,
+      36,
+      39
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 5,
+    "seed": 1,
+    "arm": "baseline",
+    "stage": "after_eog",
+    "candidate": 25,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 2,
+        "retained": 15,
+        "retainedUnflagged": 1,
+        "positiveUnflagged": 1,
+        "removedUnflaggedIds": 23,
+        "retainedUnflaggedIds": 33,
+        "removedInjectedBlink": 5,
+        "removedNoInjectedBlink": 1,
+        "retainedInjectedBlink": 12,
+        "retainedNoInjectedBlink": 3
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 3,
+        "retained": 13,
+        "retainedUnflagged": 3,
+        "positiveUnflagged": 3,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          17,
+          26,
+          27
+        ],
+        "removedInjectedBlink": 6,
+        "removedNoInjectedBlink": 1,
+        "retainedInjectedBlink": 10,
+        "retainedNoInjectedBlink": 3
+      }
+    ],
+    "absentIds": [
+      1,
+      2,
+      3,
+      7,
+      12,
+      13,
+      20,
+      23,
+      24,
+      28,
+      37,
+      39,
+      41
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 5,
+    "seed": 1,
+    "arm": "variant",
+    "stage": "initial",
+    "candidate": 2,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 2,
+        "retained": 14,
+        "retainedUnflagged": 2,
+        "positiveUnflagged": 2,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          23,
+          33
+        ],
+        "removedInjectedBlink": 7,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 10,
+        "retainedNoInjectedBlink": 4
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 3,
+        "retained": 10,
+        "retainedUnflagged": 3,
+        "positiveUnflagged": 3,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          17,
+          26,
+          27
+        ],
+        "removedInjectedBlink": 10,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 4
+      }
+    ],
+    "absentIds": [
+      1,
+      6,
+      7,
+      10,
+      11,
+      12,
+      16,
+      18,
+      19,
+      20,
+      24,
+      30,
+      32,
+      34,
+      35,
+      36,
+      39
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 5,
+    "seed": 1,
+    "arm": "variant",
+    "stage": "after_cutoffs",
+    "candidate": 2,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 2,
+        "retained": 14,
+        "retainedUnflagged": 2,
+        "positiveUnflagged": 2,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          23,
+          33
+        ],
+        "removedInjectedBlink": 7,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 10,
+        "retainedNoInjectedBlink": 4
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 3,
+        "retained": 10,
+        "retainedUnflagged": 3,
+        "positiveUnflagged": 3,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          17,
+          26,
+          27
+        ],
+        "removedInjectedBlink": 10,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 4
+      }
+    ],
+    "absentIds": [
+      1,
+      6,
+      7,
+      10,
+      11,
+      12,
+      16,
+      18,
+      19,
+      20,
+      24,
+      30,
+      32,
+      34,
+      35,
+      36,
+      39
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 5,
+    "seed": 1,
+    "arm": "variant",
+    "stage": "after_eog",
+    "candidate": 30,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 2,
+        "retained": 16,
+        "retainedUnflagged": 1,
+        "positiveUnflagged": 1,
+        "removedUnflaggedIds": 23,
+        "retainedUnflaggedIds": 33,
+        "removedInjectedBlink": 4,
+        "removedNoInjectedBlink": 1,
+        "retainedInjectedBlink": 13,
+        "retainedNoInjectedBlink": 3
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 3,
+        "retained": 14,
+        "retainedUnflagged": 3,
+        "positiveUnflagged": 3,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          17,
+          26,
+          27
+        ],
+        "removedInjectedBlink": 5,
+        "removedNoInjectedBlink": 1,
+        "retainedInjectedBlink": 11,
+        "retainedNoInjectedBlink": 3
+      }
+    ],
+    "absentIds": [
+      2,
+      3,
+      7,
+      13,
+      16,
+      23,
+      24,
+      28,
+      37,
+      39,
+      41
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 5,
+    "seed": 2,
+    "arm": "baseline",
+    "stage": "initial",
+    "candidate": 2,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 2,
+        "retained": 14,
+        "retainedUnflagged": 2,
+        "positiveUnflagged": 2,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          23,
+          33
+        ],
+        "removedInjectedBlink": 7,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 10,
+        "retainedNoInjectedBlink": 4
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 3,
+        "retained": 10,
+        "retainedUnflagged": 3,
+        "positiveUnflagged": 3,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          17,
+          26,
+          27
+        ],
+        "removedInjectedBlink": 10,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 4
+      }
+    ],
+    "absentIds": [
+      1,
+      6,
+      7,
+      10,
+      11,
+      12,
+      16,
+      18,
+      19,
+      20,
+      24,
+      30,
+      32,
+      34,
+      35,
+      36,
+      39
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 5,
+    "seed": 2,
+    "arm": "baseline",
+    "stage": "after_cutoffs",
+    "candidate": 2,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 2,
+        "retained": 14,
+        "retainedUnflagged": 2,
+        "positiveUnflagged": 2,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          23,
+          33
+        ],
+        "removedInjectedBlink": 7,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 10,
+        "retainedNoInjectedBlink": 4
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 3,
+        "retained": 10,
+        "retainedUnflagged": 3,
+        "positiveUnflagged": 3,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          17,
+          26,
+          27
+        ],
+        "removedInjectedBlink": 10,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 4
+      }
+    ],
+    "absentIds": [
+      1,
+      6,
+      7,
+      10,
+      11,
+      12,
+      16,
+      18,
+      19,
+      20,
+      24,
+      30,
+      32,
+      34,
+      35,
+      36,
+      39
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 5,
+    "seed": 2,
+    "arm": "baseline",
+    "stage": "after_eog",
+    "candidate": 25,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 2,
+        "retained": 15,
+        "retainedUnflagged": 1,
+        "positiveUnflagged": 1,
+        "removedUnflaggedIds": 23,
+        "retainedUnflaggedIds": 33,
+        "removedInjectedBlink": 5,
+        "removedNoInjectedBlink": 1,
+        "retainedInjectedBlink": 12,
+        "retainedNoInjectedBlink": 3
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 3,
+        "retained": 13,
+        "retainedUnflagged": 3,
+        "positiveUnflagged": 3,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          17,
+          26,
+          27
+        ],
+        "removedInjectedBlink": 6,
+        "removedNoInjectedBlink": 1,
+        "retainedInjectedBlink": 10,
+        "retainedNoInjectedBlink": 3
+      }
+    ],
+    "absentIds": [
+      1,
+      2,
+      3,
+      7,
+      12,
+      13,
+      20,
+      23,
+      24,
+      28,
+      37,
+      39,
+      41
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 5,
+    "seed": 2,
+    "arm": "variant",
+    "stage": "initial",
+    "candidate": 2,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 2,
+        "retained": 14,
+        "retainedUnflagged": 2,
+        "positiveUnflagged": 2,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          23,
+          33
+        ],
+        "removedInjectedBlink": 7,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 10,
+        "retainedNoInjectedBlink": 4
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 3,
+        "retained": 10,
+        "retainedUnflagged": 3,
+        "positiveUnflagged": 3,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          17,
+          26,
+          27
+        ],
+        "removedInjectedBlink": 10,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 4
+      }
+    ],
+    "absentIds": [
+      1,
+      6,
+      7,
+      10,
+      11,
+      12,
+      16,
+      18,
+      19,
+      20,
+      24,
+      30,
+      32,
+      34,
+      35,
+      36,
+      39
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 5,
+    "seed": 2,
+    "arm": "variant",
+    "stage": "after_cutoffs",
+    "candidate": 2,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 2,
+        "retained": 14,
+        "retainedUnflagged": 2,
+        "positiveUnflagged": 2,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          23,
+          33
+        ],
+        "removedInjectedBlink": 7,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 10,
+        "retainedNoInjectedBlink": 4
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 3,
+        "retained": 10,
+        "retainedUnflagged": 3,
+        "positiveUnflagged": 3,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          17,
+          26,
+          27
+        ],
+        "removedInjectedBlink": 10,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 4
+      }
+    ],
+    "absentIds": [
+      1,
+      6,
+      7,
+      10,
+      11,
+      12,
+      16,
+      18,
+      19,
+      20,
+      24,
+      30,
+      32,
+      34,
+      35,
+      36,
+      39
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 5,
+    "seed": 2,
+    "arm": "variant",
+    "stage": "after_eog",
+    "candidate": 30,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 2,
+        "retained": 16,
+        "retainedUnflagged": 1,
+        "positiveUnflagged": 1,
+        "removedUnflaggedIds": 23,
+        "retainedUnflaggedIds": 33,
+        "removedInjectedBlink": 4,
+        "removedNoInjectedBlink": 1,
+        "retainedInjectedBlink": 13,
+        "retainedNoInjectedBlink": 3
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 3,
+        "retained": 14,
+        "retainedUnflagged": 3,
+        "positiveUnflagged": 3,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          17,
+          26,
+          27
+        ],
+        "removedInjectedBlink": 5,
+        "removedNoInjectedBlink": 1,
+        "retainedInjectedBlink": 11,
+        "retainedNoInjectedBlink": 3
+      }
+    ],
+    "absentIds": [
+      2,
+      3,
+      7,
+      13,
+      16,
+      23,
+      24,
+      28,
+      37,
+      39,
+      41
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 5,
+    "seed": 3,
+    "arm": "baseline",
+    "stage": "initial",
+    "candidate": 2,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 2,
+        "retained": 14,
+        "retainedUnflagged": 2,
+        "positiveUnflagged": 2,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          23,
+          33
+        ],
+        "removedInjectedBlink": 7,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 10,
+        "retainedNoInjectedBlink": 4
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 3,
+        "retained": 10,
+        "retainedUnflagged": 3,
+        "positiveUnflagged": 3,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          17,
+          26,
+          27
+        ],
+        "removedInjectedBlink": 10,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 4
+      }
+    ],
+    "absentIds": [
+      1,
+      6,
+      7,
+      10,
+      11,
+      12,
+      16,
+      18,
+      19,
+      20,
+      24,
+      30,
+      32,
+      34,
+      35,
+      36,
+      39
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 5,
+    "seed": 3,
+    "arm": "baseline",
+    "stage": "after_cutoffs",
+    "candidate": 2,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 2,
+        "retained": 14,
+        "retainedUnflagged": 2,
+        "positiveUnflagged": 2,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          23,
+          33
+        ],
+        "removedInjectedBlink": 7,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 10,
+        "retainedNoInjectedBlink": 4
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 3,
+        "retained": 10,
+        "retainedUnflagged": 3,
+        "positiveUnflagged": 3,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          17,
+          26,
+          27
+        ],
+        "removedInjectedBlink": 10,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 4
+      }
+    ],
+    "absentIds": [
+      1,
+      6,
+      7,
+      10,
+      11,
+      12,
+      16,
+      18,
+      19,
+      20,
+      24,
+      30,
+      32,
+      34,
+      35,
+      36,
+      39
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 5,
+    "seed": 3,
+    "arm": "baseline",
+    "stage": "after_eog",
+    "candidate": 25,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 2,
+        "retained": 15,
+        "retainedUnflagged": 1,
+        "positiveUnflagged": 1,
+        "removedUnflaggedIds": 23,
+        "retainedUnflaggedIds": 33,
+        "removedInjectedBlink": 5,
+        "removedNoInjectedBlink": 1,
+        "retainedInjectedBlink": 12,
+        "retainedNoInjectedBlink": 3
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 3,
+        "retained": 13,
+        "retainedUnflagged": 3,
+        "positiveUnflagged": 3,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          17,
+          26,
+          27
+        ],
+        "removedInjectedBlink": 6,
+        "removedNoInjectedBlink": 1,
+        "retainedInjectedBlink": 10,
+        "retainedNoInjectedBlink": 3
+      }
+    ],
+    "absentIds": [
+      1,
+      2,
+      3,
+      7,
+      12,
+      13,
+      20,
+      23,
+      24,
+      28,
+      37,
+      39,
+      41
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 5,
+    "seed": 3,
+    "arm": "variant",
+    "stage": "initial",
+    "candidate": 2,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 2,
+        "retained": 14,
+        "retainedUnflagged": 2,
+        "positiveUnflagged": 2,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          23,
+          33
+        ],
+        "removedInjectedBlink": 7,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 10,
+        "retainedNoInjectedBlink": 4
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 3,
+        "retained": 10,
+        "retainedUnflagged": 3,
+        "positiveUnflagged": 3,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          17,
+          26,
+          27
+        ],
+        "removedInjectedBlink": 10,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 4
+      }
+    ],
+    "absentIds": [
+      1,
+      6,
+      7,
+      10,
+      11,
+      12,
+      16,
+      18,
+      19,
+      20,
+      24,
+      30,
+      32,
+      34,
+      35,
+      36,
+      39
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 5,
+    "seed": 3,
+    "arm": "variant",
+    "stage": "after_cutoffs",
+    "candidate": 2,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 2,
+        "retained": 14,
+        "retainedUnflagged": 2,
+        "positiveUnflagged": 2,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          23,
+          33
+        ],
+        "removedInjectedBlink": 7,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 10,
+        "retainedNoInjectedBlink": 4
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 3,
+        "retained": 10,
+        "retainedUnflagged": 3,
+        "positiveUnflagged": 3,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          17,
+          26,
+          27
+        ],
+        "removedInjectedBlink": 10,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 4
+      }
+    ],
+    "absentIds": [
+      1,
+      6,
+      7,
+      10,
+      11,
+      12,
+      16,
+      18,
+      19,
+      20,
+      24,
+      30,
+      32,
+      34,
+      35,
+      36,
+      39
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 5,
+    "seed": 3,
+    "arm": "variant",
+    "stage": "after_eog",
+    "candidate": 30,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 2,
+        "retained": 16,
+        "retainedUnflagged": 1,
+        "positiveUnflagged": 1,
+        "removedUnflaggedIds": 23,
+        "retainedUnflaggedIds": 33,
+        "removedInjectedBlink": 4,
+        "removedNoInjectedBlink": 1,
+        "retainedInjectedBlink": 13,
+        "retainedNoInjectedBlink": 3
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 3,
+        "retained": 14,
+        "retainedUnflagged": 3,
+        "positiveUnflagged": 3,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          17,
+          26,
+          27
+        ],
+        "removedInjectedBlink": 5,
+        "removedNoInjectedBlink": 1,
+        "retainedInjectedBlink": 11,
+        "retainedNoInjectedBlink": 3
+      }
+    ],
+    "absentIds": [
+      2,
+      3,
+      7,
+      13,
+      16,
+      23,
+      24,
+      28,
+      37,
+      39,
+      41
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 5,
+    "seed": 4,
+    "arm": "baseline",
+    "stage": "initial",
+    "candidate": 2,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 2,
+        "retained": 14,
+        "retainedUnflagged": 2,
+        "positiveUnflagged": 2,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          23,
+          33
+        ],
+        "removedInjectedBlink": 7,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 10,
+        "retainedNoInjectedBlink": 4
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 3,
+        "retained": 10,
+        "retainedUnflagged": 3,
+        "positiveUnflagged": 3,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          17,
+          26,
+          27
+        ],
+        "removedInjectedBlink": 10,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 4
+      }
+    ],
+    "absentIds": [
+      1,
+      6,
+      7,
+      10,
+      11,
+      12,
+      16,
+      18,
+      19,
+      20,
+      24,
+      30,
+      32,
+      34,
+      35,
+      36,
+      39
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 5,
+    "seed": 4,
+    "arm": "baseline",
+    "stage": "after_cutoffs",
+    "candidate": 2,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 2,
+        "retained": 14,
+        "retainedUnflagged": 2,
+        "positiveUnflagged": 2,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          23,
+          33
+        ],
+        "removedInjectedBlink": 7,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 10,
+        "retainedNoInjectedBlink": 4
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 3,
+        "retained": 10,
+        "retainedUnflagged": 3,
+        "positiveUnflagged": 3,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          17,
+          26,
+          27
+        ],
+        "removedInjectedBlink": 10,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 4
+      }
+    ],
+    "absentIds": [
+      1,
+      6,
+      7,
+      10,
+      11,
+      12,
+      16,
+      18,
+      19,
+      20,
+      24,
+      30,
+      32,
+      34,
+      35,
+      36,
+      39
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 5,
+    "seed": 4,
+    "arm": "baseline",
+    "stage": "after_eog",
+    "candidate": 25,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 2,
+        "retained": 15,
+        "retainedUnflagged": 1,
+        "positiveUnflagged": 1,
+        "removedUnflaggedIds": 23,
+        "retainedUnflaggedIds": 33,
+        "removedInjectedBlink": 5,
+        "removedNoInjectedBlink": 1,
+        "retainedInjectedBlink": 12,
+        "retainedNoInjectedBlink": 3
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 3,
+        "retained": 13,
+        "retainedUnflagged": 3,
+        "positiveUnflagged": 3,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          17,
+          26,
+          27
+        ],
+        "removedInjectedBlink": 6,
+        "removedNoInjectedBlink": 1,
+        "retainedInjectedBlink": 10,
+        "retainedNoInjectedBlink": 3
+      }
+    ],
+    "absentIds": [
+      1,
+      2,
+      3,
+      7,
+      12,
+      13,
+      20,
+      23,
+      24,
+      28,
+      37,
+      39,
+      41
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 5,
+    "seed": 4,
+    "arm": "variant",
+    "stage": "initial",
+    "candidate": 2,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 2,
+        "retained": 14,
+        "retainedUnflagged": 2,
+        "positiveUnflagged": 2,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          23,
+          33
+        ],
+        "removedInjectedBlink": 7,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 10,
+        "retainedNoInjectedBlink": 4
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 3,
+        "retained": 10,
+        "retainedUnflagged": 3,
+        "positiveUnflagged": 3,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          17,
+          26,
+          27
+        ],
+        "removedInjectedBlink": 10,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 4
+      }
+    ],
+    "absentIds": [
+      1,
+      6,
+      7,
+      10,
+      11,
+      12,
+      16,
+      18,
+      19,
+      20,
+      24,
+      30,
+      32,
+      34,
+      35,
+      36,
+      39
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 5,
+    "seed": 4,
+    "arm": "variant",
+    "stage": "after_cutoffs",
+    "candidate": 2,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 2,
+        "retained": 14,
+        "retainedUnflagged": 2,
+        "positiveUnflagged": 2,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          23,
+          33
+        ],
+        "removedInjectedBlink": 7,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 10,
+        "retainedNoInjectedBlink": 4
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 3,
+        "retained": 10,
+        "retainedUnflagged": 3,
+        "positiveUnflagged": 3,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          17,
+          26,
+          27
+        ],
+        "removedInjectedBlink": 10,
+        "removedNoInjectedBlink": 0,
+        "retainedInjectedBlink": 6,
+        "retainedNoInjectedBlink": 4
+      }
+    ],
+    "absentIds": [
+      1,
+      6,
+      7,
+      10,
+      11,
+      12,
+      16,
+      18,
+      19,
+      20,
+      24,
+      30,
+      32,
+      34,
+      35,
+      36,
+      39
+    ],
+    "rejectionIdsExplainAbsence": true
+  },
+  {
+    "subject": 5,
+    "seed": 4,
+    "arm": "variant",
+    "stage": "after_eog",
+    "candidate": 30,
+    "selected": true,
+    "conditions": [
+      {
+        "condition": 1,
+        "referenceTrials": 21,
+        "referenceUnflagged": 2,
+        "retained": 16,
+        "retainedUnflagged": 1,
+        "positiveUnflagged": 1,
+        "removedUnflaggedIds": 23,
+        "retainedUnflaggedIds": 33,
+        "removedInjectedBlink": 4,
+        "removedNoInjectedBlink": 1,
+        "retainedInjectedBlink": 13,
+        "retainedNoInjectedBlink": 3
+      },
+      {
+        "condition": 2,
+        "referenceTrials": 20,
+        "referenceUnflagged": 3,
+        "retained": 14,
+        "retainedUnflagged": 3,
+        "positiveUnflagged": 3,
+        "removedUnflaggedIds": [],
+        "retainedUnflaggedIds": [
+          17,
+          26,
+          27
+        ],
+        "removedInjectedBlink": 5,
+        "removedNoInjectedBlink": 1,
+        "retainedInjectedBlink": 11,
+        "retainedNoInjectedBlink": 3
+      }
+    ],
+    "absentIds": [
+      2,
+      3,
+      7,
+      13,
+      16,
+      23,
+      24,
+      28,
+      37,
+      39,
+      41
+    ],
+    "rejectionIdsExplainAbsence": true
+  }
+]
