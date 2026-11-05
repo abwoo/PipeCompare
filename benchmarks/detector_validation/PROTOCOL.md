@@ -25,3 +25,7 @@ Completion requires 10/10 subjects, 40 external outputs (2 blocks × 2 channel c
 Run independent Python count/metric checks. Each subject's inputs/provenance and each trace's masks are retained as artifacts; rerun only after identifying failures, verify identical source hashes before pooling across attempts. No adaptive threshold change, no repeated ten-person P3 search. An independently video/EOG-labeled event-level dataset remains needed for natural-blink error rates; Georgia Tech BLINK was considered but its published download currently requires a contact form, and no personal information was submitted.
 
 Sources: https://www.nature.com/articles/s41597-026-07120-7 ; https://github.com/OpenNeuroDatasets/ds006386 ; https://gnan.ece.gatech.edu/eeg-eyeblinks/
+
+## Data-availability amendment before any detector outcomes
+
+Initial run 41957688403 stopped while parsing subject 4: no open_base annotation exists. No HMM outcomes were generated. Keep all ten participant slots; record missing block/configuration slots explicitly and run available blocks without substituting participants or inferring baseline from another task. Completion checks require 40 accounted-for slots, not falsely claim 40 measured outputs. Available-block averages have explicit denominators and are descriptive, not paired full-cohort contrasts. Missing comparisons remain unresolved.

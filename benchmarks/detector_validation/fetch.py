@@ -25,7 +25,8 @@ for sub in range(1,11):
     # First instructed blink block; first eye-open baseline follows eye-closed.
     blink=float(next(r['onset'] for r in ev if r['trial_type']=='4'))
     ann=list(csv.DictReader(io.StringIO(annotations.decode('utf-8-sig'))))
-    opened=min(float(r['start_time']) for r in ann if r['label']=='open_base')+2
+    open_starts=[float(r['start_time']) for r in ann if r['label']=='open_base']
+    opened=min(open_starts)+2 if open_starts else None
     url=p+'eeg.edf'; h0=get(url,(0,255)); hb=int(h0[184:192]); h=get(url,(0,hb-1))
     ns=int(h[252:256]); dur=float(h[244:252]); nr=int(h[236:244]); pos=256
     fields=[]
@@ -38,6 +39,10 @@ for sub in range(1,11):
     provenance={'subject':sub,'source':ROOT+url,'headerSHA256':digest(h),'annotationsSHA256':digest(annotations),'eventsSHA256':digest(events),'windows':[]}
     (OUT/f'S{sub:03d}_annotations.csv').write_bytes(annotations)
     for name,start in [('open',opened),('blink',blink)]:
+        if start is None:
+            (OUT/f'S{sub:03d}_{name}_missing.json').write_text(json.dumps({'reason':'no open_base annotation; no replacement'}))
+            provenance['windows'].append({'name':name,'status':'missing'})
+            continue
         a=math.floor(start/dur); z=math.ceil((start+60)/dur); assert z<=nr
         span=(hb+a*rb,hb+z*rb-1); b=get(url,span)
         data=np.frombuffer(b,dtype='<i2').reshape(z-a,-1); signals=[]

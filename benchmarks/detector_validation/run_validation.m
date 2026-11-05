@@ -3,7 +3,12 @@ function run_validation(out)
 rows={};
 for sub=1:10
  for name={'open','blink'}
-  tag=sprintf('S%03d_%s',sub,name{1});D=load(fullfile(out,[tag '.mat']));
+  tag=sprintf('S%03d_%s',sub,name{1});
+  if isfile(fullfile(out,[tag '_missing.json']))
+   for channels=[1 2],rows{end+1}=struct('subject',sub,'block',name{1},'channels',channels,'status','missing');end
+   continue;
+  end
+  D=load(fullfile(out,[tag '.mat']));
   for channels=[1 2]
    X=D.X(1:channels,:);[h,m]=pipecompare.eval.Hmm.events(X,D.fs);
    r=X-movmedian(X,round(D.fs),2);a=abs(r-median(r,2));rob=any(a>5*max(1.4826*median(a,2),eps),1);

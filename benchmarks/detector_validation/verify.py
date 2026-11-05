@@ -3,6 +3,8 @@ p=pathlib.Path('detector_results');rows=json.loads((p/'external_summary.json').r
 assert len(rows)==40 and len(controls)==40
 assert {(r['subject'],r['block'],r['channels']) for r in rows}=={(s,b,c) for s in range(1,11) for b in ['open','blink'] for c in [1,2]}
 for r in rows:
+    if r.get('status')=='missing':
+        assert (p/f"S{r['subject']:03d}_{r['block']}_missing.json").exists();continue
     f=p/f"S{r['subject']:03d}_{r['block']}_ch{r['channels']}.csv"
     mask=list(csv.DictReader(f.open()));assert len(mask)==60000
     h=[int(x['hmm']) for x in mask];hp=[int(x['hmmPadded']) for x in mask];rp=[int(x['robustPadded']) for x in mask]
@@ -13,9 +15,11 @@ for r in controls:
     assert r['totalEvents']==(0 if r['amplitude']==0 else 10)
     assert 0<=r['hitEvents']<=r['totalEvents']
     for key in ['outsideSupportFraction','markedFraction']:assert math.isfinite(r[key]) and 0<=r[key]<=1
-summary={'executionChecks':'passed','externalInvalidFits':sum(not r['hmmValid'] for r in rows),'syntheticInvalidFits':sum(not r['hmmValid'] for r in controls),'external':{},'synthetic':{}}
+missing=[r for r in rows if r.get('status')=='missing'];rows=[r for r in rows if r.get('status')!='missing']
+summary={'missing':missing,'executionChecks':'passed','externalInvalidFits':sum(not r['hmmValid'] for r in rows),'syntheticInvalidFits':sum(not r['hmmValid'] for r in controls),'external':{},'synthetic':{}}
 for c in [1,2]:
-    summary['external'][str(c)]={b:{k:sum(r[k] for r in rows if r['channels']==c and r['block']==b)/10 for k in ['hmmPaddedFraction','robustPaddedFraction','hmmOnlyFraction']} for b in ['open','blink']}
+    summary['external'][str(c)]={b:{k:sum(r[k] for r in rows if r['channels']==c and r['block']==b)/sum(r['channels']==c and r['block']==b for r in rows) for k in ['hmmPaddedFraction','robustPaddedFraction','hmmOnlyFraction']} for b in ['open','blink']}
+summary['availableCounts']={str(c):{b:sum(r['channels']==c and r['block']==b for r in rows) for b in ['open','blink']} for c in [1,2]}
 for amp in [0,4,8,16]:
     q=[r for r in controls if r['amplitude']==amp];assert len(q)==10
     summary['synthetic'][str(amp)]={'hits':sum(r['hitEvents'] for r in q),'events':sum(r['totalEvents'] for r in q),'outsideSupportFraction':sum(r['outsideSupportFraction'] for r in q)/10}
