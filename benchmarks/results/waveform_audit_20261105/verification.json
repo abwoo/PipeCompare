@@ -1,0 +1,26 @@
+{
+  "hmmCases": 3,
+  "selectedRecipes": 2,
+  "sourceSampleVerification": "passed",
+  "scope": "seed-zero diagnostic; fixed decisions, not new adaptive search",
+  "rejection": [
+    {
+      "arm": "baseline",
+      "channel": "F7",
+      "thresholdUV": 21.8,
+      "peakUV": 23.39937973022461,
+      "timeMs": 556.2499999999999,
+      "beforeEogPeakUV": 24.022066116333008,
+      "replayMaxError": 0
+    },
+    {
+      "arm": "variant",
+      "channel": "F8",
+      "thresholdUV": 26,
+      "peakUV": 26.229204177856445,
+      "timeMs": 56.249999999999964,
+      "beforeEogPeakUV": 26.090049743652344,
+      "replayMaxError": 0
+    }
+  ]
+}
