@@ -1,0 +1,101 @@
+{
+  "missing": [
+    {
+      "subject": 4,
+      "block": "open",
+      "channels": 1,
+      "status": "missing"
+    },
+    {
+      "subject": 4,
+      "block": "open",
+      "channels": 2,
+      "status": "missing"
+    },
+    {
+      "subject": 9,
+      "block": "open",
+      "channels": 1,
+      "status": "missing"
+    },
+    {
+      "subject": 9,
+      "block": "open",
+      "channels": 2,
+      "status": "missing"
+    },
+    {
+      "subject": 10,
+      "block": "open",
+      "channels": 1,
+      "status": "missing"
+    },
+    {
+      "subject": 10,
+      "block": "open",
+      "channels": 2,
+      "status": "missing"
+    }
+  ],
+  "executionChecks": "passed",
+  "externalInvalidFits": 0,
+  "syntheticInvalidFits": 0,
+  "external": {
+    "1": {
+      "open": {
+        "hmmPaddedFraction": 0.13128571428571428,
+        "robustPaddedFraction": 0.06570238095238094,
+        "hmmOnlyFraction": 0.06798333333333333
+      },
+      "blink": {
+        "hmmPaddedFraction": 0.3349333333333333,
+        "robustPaddedFraction": 0.18562833333333334,
+        "hmmOnlyFraction": 0.16229333333333334
+      }
+    },
+    "2": {
+      "open": {
+        "hmmPaddedFraction": 0.1381666666666667,
+        "robustPaddedFraction": 0.10243333333333333,
+        "hmmOnlyFraction": 0.06250238095238095
+      },
+      "blink": {
+        "hmmPaddedFraction": 0.35475,
+        "robustPaddedFraction": 0.19887166666666664,
+        "hmmOnlyFraction": 0.16968166666666668
+      }
+    }
+  },
+  "synthetic": {
+    "0": {
+      "hits": 0,
+      "events": 0,
+      "outsideSupportFraction": 0.0011866666666666666
+    },
+    "4": {
+      "hits": 98,
+      "events": 100,
+      "outsideSupportFraction": 0.0011777777777777778
+    },
+    "8": {
+      "hits": 100,
+      "events": 100,
+      "outsideSupportFraction": 0.0010962962962962962
+    },
+    "16": {
+      "hits": 100,
+      "events": 100,
+      "outsideSupportFraction": 0.005755555555555555
+    }
+  },
+  "availableCounts": {
+    "1": {
+      "open": 7,
+      "blink": 10
+    },
+    "2": {
+      "open": 7,
+      "blink": 10
+    }
+  }
+}
