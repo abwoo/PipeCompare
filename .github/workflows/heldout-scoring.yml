@@ -1,0 +1,49 @@
+name: Frozen scoring held-out validation
+on:
+  push:
+    branches: [codex/pr51-heldout-20261106]
+    paths:
+      - 'benchmarks/heldout*'
+      - 'benchmarks/fetch_heldout.py'
+      - 'benchmarks/compare_heldout.py'
+      - '.github/workflows/heldout*'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  first:
+    uses: ./.github/workflows/heldout-record.yml
+    with:
+      subject: 11
+  remaining:
+    needs: first
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        subject: [12,13,14,15,16,17,18,19,20]
+    uses: ./.github/workflows/heldout-record.yml
+    with:
+      subject: ${{ matrix.subject }}
+  collect:
+    if: always()
+    needs: [first,remaining]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy==2.2.6
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: heldout-pair-*
+          path: fragments
+      - run: python benchmarks/compare_heldout.py fragments heldout_summary
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: heldout-scoring-summary-attempt-${{ github.run_attempt }}
+          path: heldout_summary
+          retention-days: 90

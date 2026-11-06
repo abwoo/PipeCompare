@@ -1,0 +1,124 @@
+name: Held-out scoring pair
+on:
+  workflow_call:
+    inputs:
+      subject:
+        type: number
+        required: true
+permissions:
+  contents: read
+jobs:
+  record:
+    name: Public participant ${{ inputs.subject }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 150
+    env:
+      DISPLAY: ':99'
+      PILOT_SUBJECT: ${{ inputs.subject }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Verify unchanged production implementation
+        working-directory: PipeCompare
+        run: |
+          base=$(python -c "import json;print(json.load(open('benchmarks/heldout_protocol.json'))['algorithm_commit'])")
+          git diff --exit-code "$base" HEAD -- +pipecompare pop_pipecompare.m eegplugin_pipecompare.m fallback pcomp.m pipecompare_setup.m
+      - name: Verify frozen baseline and variant identities
+        run: |
+          python - <<'PYCODE'
+          import json,hashlib,os
+          from pathlib import Path
+          r=Path('PipeCompare');p=json.loads((r/'benchmarks/heldout_protocol.json').read_text())
+          for path,key in [('+pipecompare/+eval/Measure.m','baseline_measure_sha256'),('benchmarks/within_variant/Measure.m','variant_measure_sha256')]:
+              assert hashlib.sha256((r/path).read_bytes()).hexdigest()==p[key], path
+          with open(os.environ['GITHUB_ENV'],'a') as f:
+              f.write('PILOT_MEASURE_SHA256='+p['baseline_measure_sha256']+'\n')
+          PYCODE
+      - name: Fetch and checksum one sixty-second public excerpt
+        timeout-minutes: 5
+        run: python PipeCompare/benchmarks/fetch_heldout.py --subject "$PILOT_SUBJECT" --out input
+      - name: Checkout pinned EEGLAB version
+        run: git clone --depth 1 --branch 2026.0.0 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
+      - name: Record EEG implementation identity
+        run: echo "EEGLAB_SHA=$(git -C eeglab rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Bound Linux dependency downloads
+        run: bash PipeCompare/.github/scripts/pilot-prepare-matlab.sh
+      - name: Install matching CPU compiler
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y g++-12
+      - name: Start virtual display
+        timeout-minutes: 5
+        run: bash PipeCompare/.github/scripts/start-display.sh
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+          products: Signal_Processing_Toolbox
+      - name: Prepare pinned ICLabel CPU build
+        run: python PipeCompare/.github/scripts/pilot-iclabel-cpu.py eeglab/plugins/ICLabel/matconvnet
+      - name: Verify native ICLabel against its MATLAB reference
+        timeout-minutes: 12
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab'));eeglab nogui;
+            addpath(fullfile(pwd,'PipeCompare'));addpath(fullfile(pwd,'PipeCompare','benchmarks'));
+            pilot_native_backend(fullfile(pwd,'result','backend'));
+      - name: Record full Standard search, comparators, and replay outcomes
+        timeout-minutes: 55
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab'));eeglab nogui;
+            plugin=fileparts(which('pop_iclabel'));addpath(fullfile(plugin,'matconvnet','matlab'));vl_setupnn;
+            assert(exist('vl_nnconv','file')==3,'Native inference not active.');
+            addpath(fullfile(pwd,'PipeCompare'));addpath(fullfile(pwd,'PipeCompare','benchmarks'));
+            heldout_pilot(fullfile(pwd,'input'),fullfile(pwd,'result','baseline'),str2double(getenv('PILOT_SUBJECT')));
+      - name: Preserve baseline checkpoint
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: heldout-baseline-${{ inputs.subject }}-attempt-${{ github.run_attempt }}
+          path: result/baseline
+          retention-days: 90
+          if-no-files-found: warn
+      - name: Activate the single frozen scoring change
+        run: |
+          cp PipeCompare/benchmarks/within_variant/Measure.m PipeCompare/+pipecompare/+eval/Measure.m
+          echo "PILOT_ALGORITHM_COMMIT=$GITHUB_SHA" >> "$GITHUB_ENV"
+          echo "PILOT_MEASURE_SHA256=$(sha256sum PipeCompare/+pipecompare/+eval/Measure.m | cut -d' ' -f1)" >> "$GITHUB_ENV"
+          git -C PipeCompare diff --stat
+      - name: Run within-group variance variant in a fresh MATLAB session
+        timeout-minutes: 55
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab'));eeglab nogui;
+            plugin=fileparts(which('pop_iclabel'));addpath(fullfile(plugin,'matconvnet','matlab'));vl_setupnn;
+            assert(exist('vl_nnconv','file')==3,'Native inference not active.');
+            addpath(fullfile(pwd,'PipeCompare'));addpath(fullfile(pwd,'PipeCompare','benchmarks'));
+            heldout_pilot(fullfile(pwd,'input'),fullfile(pwd,'result','variant'),str2double(getenv('PILOT_SUBJECT')));
+      - name: Check paired execution before scheduling the remaining subjects
+        run: |
+          python - <<'PYCODE'
+          import json
+          from pathlib import Path
+          for arm in ['baseline','variant']:
+              x=json.loads((Path('result')/arm/'result.json').read_text())
+              assert x['completed'], (arm,x['errors'])
+              assert x['notRun']==0, arm
+          PYCODE
+      - name: Preserve completed results and failure evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: heldout-pair-${{ inputs.subject }}-attempt-${{ github.run_attempt }}
+          path: result
+          retention-days: 90
+          if-no-files-found: warn

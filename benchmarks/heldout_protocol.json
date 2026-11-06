@@ -1,0 +1,187 @@
+{
+  "version": 1,
+  "name": "PR51 frozen scoring variant: held-out EEGMMIDB subjects 11-20",
+  "algorithm_commit": "7151821edf8a5a54c3167d7f18b66c530911b568",
+  "scope": "Prospective held-out participant comparison for the PR51 scoring variant, using real resting EEG plus known injected P3/blinks. Same-source generalization only; not real ERP-task, clinical, or independently executed validation.",
+  "source": {
+    "dataset": "PhysioNet EEG Motor Movement/Imagery Dataset",
+    "version": "1.0.0",
+    "doi": "10.13026/C28G6P",
+    "license": "ODC-By-1.0",
+    "base_url": "https://physionet-open.s3.amazonaws.com/eegmmidb/1.0.0/",
+    "manifest_sha256": "7f5d16957d8ee7bce86cc7ccba0e5994f63f33781607eb3f838392d49311a208",
+    "files": [
+      {
+        "subject": 11,
+        "path": "S011/S011R01.edf",
+        "sha256": "374dfa06c6df18e3bd324f4c8aefa462bacb6bf9dcbfe8d58ae6e84ed2bbc443"
+      },
+      {
+        "subject": 12,
+        "path": "S012/S012R01.edf",
+        "sha256": "ad02ce8943d45f07bcf6f69714a61005e570f3fd26f0e8e1bac38c7ad80fcc73"
+      },
+      {
+        "subject": 13,
+        "path": "S013/S013R01.edf",
+        "sha256": "6f41486d61f25ea3c38608b650f4e9a19d5e6782113fa184408049267fd75310"
+      },
+      {
+        "subject": 14,
+        "path": "S014/S014R01.edf",
+        "sha256": "9ff971d9225e764428182bf4833ce5a60e620b7b157df9798ea6266070442433"
+      },
+      {
+        "subject": 15,
+        "path": "S015/S015R01.edf",
+        "sha256": "79564c46036cd6c3d1371811f2cc426c9ac14d09d7da3dcf935a65d1a633c9c6"
+      },
+      {
+        "subject": 16,
+        "path": "S016/S016R01.edf",
+        "sha256": "a0396eaa7765e822a9520e78321044f7296888442e6258f3e33c550228d84576"
+      },
+      {
+        "subject": 17,
+        "path": "S017/S017R01.edf",
+        "sha256": "051e38a4601ef46f4e5be488f06e3a6c0cf53263d6166075dd94cbddec38624c"
+      },
+      {
+        "subject": 18,
+        "path": "S018/S018R01.edf",
+        "sha256": "664012489cbc59928d2bbd665e4f3d557421e9ecec7a8ff6f46faa64ea9e7028"
+      },
+      {
+        "subject": 19,
+        "path": "S019/S019R01.edf",
+        "sha256": "2c542b11398dfe863ffdfa3e94aa8ee3fe6414b5ca384c7a242b018dd9e9df12"
+      },
+      {
+        "subject": 20,
+        "path": "S020/S020R01.edf",
+        "sha256": "da48b7d4ed805218e12c70c775b47a3a111670901e06e7de843916c579278693"
+      }
+    ]
+  },
+  "excerpt": {
+    "offset_seconds": 0,
+    "duration_seconds": 60,
+    "sampling_rate": 160,
+    "channels": [
+      "Fp1",
+      "Fp2",
+      "F7",
+      "F3",
+      "Fz",
+      "F4",
+      "F8",
+      "C3",
+      "Cz",
+      "C4",
+      "P3",
+      "Pz",
+      "P4",
+      "O1",
+      "Oz",
+      "O2"
+    ]
+  },
+  "toolchain": {
+    "matlab": "R2026a",
+    "eeglab": "2026.0.0",
+    "numpy": "2.2.6",
+    "scipy": "1.15.3"
+  },
+  "simulation": {
+    "seed_base": 951000,
+    "background_scale_uv": 8,
+    "blink_prevalence": [
+      0,
+      0.1,
+      0.3,
+      0.5,
+      0.7
+    ],
+    "blink_amplitude_uv": 150,
+    "neural_blink_multiplier": 1.3,
+    "trial_spacing_seconds": 1.35,
+    "target_amplitude_uv": 8,
+    "standard_amplitude_ratio": 0.3333333333333333,
+    "amplitude_cv": 0.3,
+    "latency_mean_seconds": 0.4,
+    "latency_sd_seconds": 0.04,
+    "width_seconds": 0.08,
+    "roi": "Pz",
+    "window_seconds": [
+      0.3,
+      0.6
+    ],
+    "baseline_seconds": [
+      -0.2,
+      0
+    ],
+    "epoch_seconds": [
+      -0.2,
+      0.8
+    ]
+  },
+  "evaluation": {
+    "record_unit": "one source participant; conditions and candidates are not independent records",
+    "primary": "record-mean squared gain-corrected population-target selected error",
+    "comparators": [
+      "minimal-fixed",
+      "common-fixed"
+    ],
+    "additional": [
+      "native replay",
+      "exported executable script",
+      "raw ERP error",
+      "conditional realized-trial error",
+      "selection regret within feasible fitted family",
+      "retention, positive trial weights and unflagged effective support",
+      "reported-error calibration with explicit missingness"
+    ],
+    "whole_procedure": "The main Standard search is freshly fitted per recording with Presets.searchOptions unchanged, including ICA reseeds and adaptive cutoff/EOG checks. Crossfit is not called independent evaluation.",
+    "expected_records": 10,
+    "bootstrap_draws": 10000,
+    "bootstrap_seed": 510003,
+    "minimum_recommendations_for_pilot_execution": 10,
+    "replay_tolerance_uv": 1e-06,
+    "precision_floor_records": 30,
+    "relative_half_width_target": 0.1,
+    "calibration_agreement_band": [
+      0.8,
+      1.2
+    ],
+    "calibration_agreement_scope": "Pilot diagnostic only. A ratio interval entirely in this band is preliminary agreement; an interval wholly outside is adverse; overlap is not-established. Ten records never establish stable calibration.",
+    "scientific_decision": "See decision_gates. All planned subjects stay in coverage. Incomplete pairs cannot establish improvement; no post-outcome tuning.",
+    "interval_rule": "Record bootstrap order statistic ceil((B+1)*q), clipped to [1,B]; retain all draws, including zero-denominator/undefined calibration mass."
+  },
+  "non_goals": [
+    "No production edits, merge, or release",
+    "No outcome-driven thresholds, participants, seeds, excerpts, or per-person variant selection",
+    "No alpha/channel-fault or historical detector reruns",
+    "No independent clean-neural or clinical ground-truth claim",
+    "No PR50 confirmation opening claim; this freezes new-to-PR51 development participants, not an independently conducted external study"
+  ],
+  "frozen_from_pr51": "e8a3c5322b3ebcdbaf56ef4441c8841c5b82b0ef",
+  "baseline_measure_sha256": "b26dc1a25cab772410cbed85d53d51077d21ed6d9576239c09397c79e37cf5bf",
+  "variant_measure_sha256": "ebf3252a8ca582effe2af4c5f2ec2f2eee8f512c25d5a430115ec94655b33c11",
+  "variant_change": "Pooled within-flag-group residual variance in eyeBias only; unchanged factorial smoothing, BiasZ=2, legacy weight/count semantics, and Standard search.",
+  "search_rng_seed": 610006,
+  "decision_gates": {
+    "minimum_relative_mean_mse_reduction": 0.05,
+    "paired_ci_upper_less_than": 0,
+    "raw_mean_mse_must_not_increase": true,
+    "wins_must_exceed_losses": true,
+    "individual_regression_absolute_allowance_uv2": 0.05,
+    "individual_regression_relative_allowance": 0.2,
+    "individual_regression_rule": "delta <= max(absolute allowance, relative allowance * baseline MSE)",
+    "minimum_effective_unflagged_when_flagged": 5,
+    "minimum_effective_unflagged_without_flagged": 2,
+    "require_all_selected_reported_errors_finite": true,
+    "tie_tolerance_uv2": 1e-09,
+    "rule": "Incomplete or invalid pair: incomplete. Otherwise worse mean corrected or raw MSE: reject. Otherwise all improvement, individual and support gates pass: retain-heldout-supported. Otherwise inconclusive; do not promote. No automatic production change or merge.",
+    "require_all_feasible_bootstrap_scores_finite": true
+  }
+}
