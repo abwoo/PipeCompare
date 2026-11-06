@@ -1,5 +1,6 @@
 function heldout_pilot(dataDir,outDir,subject)
 % One frozen source record. Keep adverse results and production exceptions.
+if nargin==0,checkSupportRecorder();return;end
 if ~isfolder(outDir),mkdir(outDir);end
 p=jsondecode(fileread(fullfile(fileparts(mfilename('fullpath')),'heldout_protocol.json')));
 assert(ismember(subject,[p.source.files.subject]),'PipeCompare:Pilot','Unplanned participant.');
@@ -210,6 +211,24 @@ for c=1:numel(r.ref.ids)
   'eyeBiasAssessed',logical(o.eyeBiasAssessed(c)), ...
   'eyeBiasFinite',isfinite(o.eyeBias(c))&&isfinite(o.eyeBiasSq(c)), ...
   'referenceIds',r.ref.ids{c},'scores',x','weights',w','flagged',flags');
- rows(c)=a; %#ok<AGROW>
+ if c==1,rows=repmat(a,1,numel(r.ref.ids));else,rows(c)=a;end
 end
+end
+
+function checkSupportRecorder()
+% Exercise the actual recorder without EEG, fitting or performance outcomes.
+r.ref.ids={[1 2 3],[4 5 6]};r.ref.names={'target','standard'};
+r.ref.n=[3 3];r.ref.blink={{logical([0;1;0]),logical([1;0;0])}};
+o.X={[2;4;NaN],[3;5;7]};o.w={};o.eyeBiasAssessed=[true true];
+o.eyeBias=[0 0];o.eyeBiasSq=[0 0];
+r.cands.m=struct('objectives',o,'kept',[2 3],'retention',[2/3 1]);
+a=selectedSupport(r,1);
+assert(numel(a)==2&&strcmp(a(1).condition,'target')&&strcmp(a(2).condition,'standard'));
+assert(isequal([a.positiveN],[2 3])&&isequal([a.unflaggedN],[1 2]));
+assert(isequal(a(1).weights,[1 1 0])&&isequal(a(2).referenceIds,[4 5 6]));
+r.cands.m.objectives.w={[.5;1;NaN],[0;1;2]};a=selectedSupport(r,1);
+assert(isequal([a.positiveN],[2 2])&&isequal([a.flaggedN],[1 0]));
+assert(abs(a(2).effectiveUnflaggedN-1.8)<1e-12);
+decoded=jsondecode(jsonencode(a));assert(numel(decoded)==2&&decoded(2).kept==3);
+fprintf('HELDOUT_SUPPORT_RECORDER_CHECK_PASSED\n');
 end

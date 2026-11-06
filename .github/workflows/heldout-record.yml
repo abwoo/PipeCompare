@@ -70,6 +70,7 @@ jobs:
             addpath(fullfile(pwd,'eeglab'));eeglab nogui;
             addpath(fullfile(pwd,'PipeCompare'));addpath(fullfile(pwd,'PipeCompare','benchmarks'));
             pilot_native_backend(fullfile(pwd,'result','backend'));
+            heldout_pilot();
       - name: Record full Standard search, comparators, and replay outcomes
         timeout-minutes: 55
         uses: matlab-actions/run-command@v2

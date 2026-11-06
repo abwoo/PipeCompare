@@ -2,6 +2,8 @@
 
 Status: protocol fixed before running any new participant. PR51 remains open and unmerged; production remains the original implementation.
 
+Execution amendment: run 42225506767 stopped on subject 11 because the new support recorder assigned a populated MATLAB structure into an empty structure without matching fields. Both arms reached their selected point estimates, but support recording and replay were incomplete; subjects 12–20 were skipped. The correction initializes the output array from the first actual record and adds a two-condition weighted/unweighted recorder check. Source selection, simulation, algorithm files and all decision gates are unchanged. The failed run remains preserved; the new execution is collected separately, with no mixing of its partial records. Because partial subject-11 outcomes were exposed by the failure logs, this amendment is explicitly recorded rather than represented as occurring before any outcome exposure.
+
 Question: does the retained within-group variance scoring change improve selected P3 accuracy on new-to-PR51 participants, without unacceptable individual deterioration or unsupported uncertainty estimates?
 
 ## Frozen inputs and scope
