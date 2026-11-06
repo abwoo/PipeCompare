@@ -52,5 +52,9 @@ X=np.stack([x[labels.index('IO1')]-x[labels.index('Fp1')],x[labels.index('IO2')]
 F=x[labels.index('Fp1'),start:end+1][None,:]
 savemat(P/'input.mat',{'X':X,'F':F,'fs':fs,'time':t})
 np.savetxt(P/'optical_reference.csv',np.c_[t,valid,reference],delimiter=',',header='seconds,referenceEligible,binocularBlink',comments='')
-meta={'source':url,'zipSHA256':digest,'fs':fs,'startSeconds':float(t[0]),'endSeconds':float(t[-1]),'samples':len(t),'syncCount':len(a),'maxInteriorSyncResidualMs':float(max(abs(residual[1:-1]))*1000),'syncResidualMs':(residual*1000).tolist(),'binocularIntervals':refs,'leftIntervals':blinks['L'],'rightIntervals':blinks['R'],'note':'One participant; optical algorithm reference, not adjudicated video truth; no event timing fitted to EEG amplitude.'}
+saccades=[]
+for eye,on,off in re.findall(r'^ESACC\s+([LR])\s+(\d+)\s+(\d+)\s+\d+',txt,re.M):
+ lo,hi=convert([int(on),int(off)])
+ if hi>=t[0] and lo<=t[-1]:saccades.append([float(lo),float(hi)])
+meta={'opticalSaccadeIntervals':saccades,'source':url,'zipSHA256':digest,'fs':fs,'startSeconds':float(t[0]),'endSeconds':float(t[-1]),'samples':len(t),'syncCount':len(a),'maxInteriorSyncResidualMs':float(max(abs(residual[1:-1]))*1000),'syncResidualMs':(residual*1000).tolist(),'binocularIntervals':refs,'leftIntervals':blinks['L'],'rightIntervals':blinks['R'],'note':'One participant; optical algorithm reference, not adjudicated video truth; no event timing fitted to EEG amplitude.'}
 (P/'reference.json').write_text(json.dumps(meta,indent=2));print('REFERENCE_READY',json.dumps(meta))
