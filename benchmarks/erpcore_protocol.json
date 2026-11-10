@@ -1,0 +1,808 @@
+{
+  "version": 1,
+  "name": "ERP CORE real-P3 validation (PR51 follow-up)",
+  "algorithm_commit": "7151821edf8a5a54c3167d7f18b66c530911b568",
+  "frozen_from_pr51": "98b682ddd55ffb7a1b48bf8964d71b3f3584fe39",
+  "baseline_measure_sha256": "b26dc1a25cab772410cbed85d53d51077d21ed6d9576239c09397c79e37cf5bf",
+  "scope": "Real-task validation of the PipeCompare Standard search on the ERP CORE P3 oddball task: 20 participants, no injected truth. Primary endpoint is the per-participant bootstrap SE of the P3 difference amplitude; superiority is judged by paired precision against two fixed controls, calibration by reported SE vs bootstrap SE.",
+  "source": {
+    "dataset": "ERP CORE",
+    "task": "P3",
+    "citation": "Kappenman et al. 2021, NeuroImage 225:117465",
+    "paper": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7909723/",
+    "doi": "10.18115/D5JW4R",
+    "osf_project": "thsqg",
+    "osf_p3_component": "etdkz",
+    "osf_bids_component": "9f5w7",
+    "license": "CC BY-SA 4.0",
+    "license_note": "P3 License.txt and the BIDS LICENSE both state CC BY-SA 4.0; dataset_description.json says CC0. CC BY-SA 4.0 is recorded as authoritative.",
+    "sampling_rate_hz": 1024,
+    "channels_total": 33,
+    "excluded_from_p3": [
+      {
+        "subject": 6,
+        "reason": "ACC, TC"
+      },
+      {
+        "subject": 9,
+        "reason": "AR, TC"
+      },
+      {
+        "subject": 10,
+        "reason": "ACC, TC"
+      },
+      {
+        "subject": 30,
+        "reason": "AR, TC"
+      },
+      {
+        "subject": 35,
+        "reason": "TC"
+      },
+      {
+        "subject": 40,
+        "reason": "AR, TC"
+      }
+    ],
+    "exclusion_definitions": "AR = over 25% trials rejected due to artifact; TC = less than 50% rare trials remaining after artifact rejection; ACC = total accuracy lower than 75%. Source: P3_Subject_Summary.xlsx on the OSF record (sha256 063b26a665e3cf27...). Total usable 34, matching the paper's P3 N=34.",
+    "cohort": "First 20 by subject ID among the 34 P3-usable participants.",
+    "files": [
+      {
+        "subject": 1,
+        "set": {
+          "name": "sub-001_task-P3_eeg.set",
+          "sha256": "1c1ee859ce73966f62f6f92e9375b46798c8c2a9c88855945807e85b24f37645",
+          "md5": "785dc48789dc654f5e7e3686b50441fa",
+          "size": 3957432,
+          "osf_id": "60077c08ba010908a4892449",
+          "url": "https://osf.io/download/kz9vd/"
+        },
+        "fdt": {
+          "name": "sub-001_task-P3_eeg.fdt",
+          "sha256": "ada79544e26cef9331d6dd8490d13adc7c16b3f3311f0b9a3a188b203b4a6b43",
+          "md5": "18d2a32492658f1f5befd62cd6aaf0eb",
+          "size": 63123456,
+          "osf_id": "60077c03ba010908a7892b80",
+          "url": "https://osf.io/download/cxz4j/"
+        },
+        "events": {
+          "name": "sub-001_task-P3_events.tsv",
+          "sha256": "88e62c87fff245c5375db4cbbe6d2129fbc95b7fd3e0f3d040d0f5c78d31a620",
+          "md5": "5de6056cdcb5d3e9107f307044465873",
+          "size": 14557,
+          "osf_id": "60077c0aba010908a4892452",
+          "url": "https://osf.io/download/tsv5p/"
+        },
+        "valid_targets_300s": 22,
+        "valid_standards_300s": 96,
+        "valid_targets_180s": 15,
+        "valid_standards_180s": 64
+      },
+      {
+        "subject": 2,
+        "set": {
+          "name": "sub-002_task-P3_eeg.set",
+          "sha256": "f16a1094fc1e4a737eee8135d40a98f1b5605b134bad6fd4b96c992546df0feb",
+          "md5": "e812c66fe59894f607e8895221f4918b",
+          "size": 3448864,
+          "osf_id": "60077c19e80d3708e7a58060",
+          "url": "https://osf.io/download/pfbvt/"
+        },
+        "fdt": {
+          "name": "sub-002_task-P3_eeg.fdt",
+          "sha256": "d10892e1ac0cdfb6180f7be8661c4276087fcf87fe397bb002888724bd6309c2",
+          "md5": "2eab3bfe25a5fd32ed42eda0d6270f16",
+          "size": 54743040,
+          "osf_id": "60077c12ba0109089e891da5",
+          "url": "https://osf.io/download/9wzt8/"
+        },
+        "events": {
+          "name": "sub-002_task-P3_events.tsv",
+          "sha256": "eaf0fe7b14362f2f607d943572c4f2bd3a6ccc27ea794b4b9b60147dbbb71974",
+          "md5": "ba1aeed3dbfdcf412a4f9d9067637ba6",
+          "size": 14547,
+          "osf_id": "60077c1de80d3708dfa573fe",
+          "url": "https://osf.io/download/qycsk/"
+        },
+        "valid_targets_300s": 27,
+        "valid_standards_300s": 122,
+        "valid_targets_180s": 16,
+        "valid_standards_180s": 67
+      },
+      {
+        "subject": 3,
+        "set": {
+          "name": "sub-003_task-P3_eeg.set",
+          "sha256": "c89361e6a55fd950a6677b5ffad4b6e284e140b495cd837a999235aa5506212c",
+          "md5": "7db4a006b567bc9e7aeb20f70adc10a7",
+          "size": 3219208,
+          "osf_id": "60077c2e86541a092c14d85b",
+          "url": "https://osf.io/download/2n5pr/"
+        },
+        "fdt": {
+          "name": "sub-003_task-P3_eeg.fdt",
+          "sha256": "ef70827a8657ea84308074e1230a6faf11ae8e070a80dc8c73d0b6ae74129f8f",
+          "md5": "a1c9ff06c6fdb8bb504f8fb7321b2c4d",
+          "size": 50958336,
+          "osf_id": "60077c25ba0109089e891db8",
+          "url": "https://osf.io/download/shnjt/"
+        },
+        "events": {
+          "name": "sub-003_task-P3_events.tsv",
+          "sha256": "f26cd21d097ada68bbe2bfc6de3f22ba3859ef1c2717cee1b561a720668c2996",
+          "md5": "a497ec5a8b17cb761ad8b8a7a636d48e",
+          "size": 14474,
+          "osf_id": "60077c3386541a092914b8ad",
+          "url": "https://osf.io/download/pcx26/"
+        },
+        "valid_targets_300s": 26,
+        "valid_standards_300s": 120,
+        "valid_targets_180s": 18,
+        "valid_standards_180s": 73
+      },
+      {
+        "subject": 4,
+        "set": {
+          "name": "sub-004_task-P3_eeg.set",
+          "sha256": "71e6defd4e65b46e66e8d703b6e6322a5e742647ecbcb89741aa3846ef7b72f0",
+          "md5": "ac0f8cb3a2c0ee1d676a9aab44d7633f",
+          "size": 4587664,
+          "osf_id": "60077c4286541a092914b8e1",
+          "url": "https://osf.io/download/60077c4286541a092914b8e1/"
+        },
+        "fdt": {
+          "name": "sub-004_task-P3_eeg.fdt",
+          "sha256": "13c7c97d6f7cba952ff34c73739473292d42ab620b2d1fab64b3e22de463733d",
+          "md5": "8345542fb89644d868caf2cedcedc39c",
+          "size": 73531392,
+          "osf_id": "60077c3dba010908a7892c69",
+          "url": "https://osf.io/download/60077c3dba010908a7892c69/"
+        },
+        "events": {
+          "name": "sub-004_task-P3_events.tsv",
+          "sha256": "add13f5d93da0b394a7bf3abb1a4f1029286f1805c3ab90995b9521e9e82cb89",
+          "md5": "dfb75476b07691649378c720cbad8600",
+          "size": 14561,
+          "osf_id": "60077c45e80d3708eaa588c8",
+          "url": "https://osf.io/download/60077c45e80d3708eaa588c8/"
+        },
+        "valid_targets_300s": 18,
+        "valid_standards_300s": 95,
+        "valid_targets_180s": 11,
+        "valid_standards_180s": 56
+      },
+      {
+        "subject": 5,
+        "set": {
+          "name": "sub-005_task-P3_eeg.set",
+          "sha256": "661fae8c029039ffe6301dddb97cba6eeed3580af8db438972e2e18f122686be",
+          "md5": "525ae6a25db68df8d52b631dbf88e1ea",
+          "size": 3260168,
+          "osf_id": "60077c54e80d3708eaa58909",
+          "url": "https://osf.io/download/60077c54e80d3708eaa58909/"
+        },
+        "fdt": {
+          "name": "sub-005_task-P3_eeg.fdt",
+          "sha256": "fdc000cbb5205bf992a4403b0cc7690545fc3280e012d6cf8bb41f7c9ce14eb6",
+          "md5": "933706955c4d2b5b5b82586e8cef5391",
+          "size": 51634176,
+          "osf_id": "60077c4ee80d3708e2a575cb",
+          "url": "https://osf.io/download/60077c4ee80d3708e2a575cb/"
+        },
+        "events": {
+          "name": "sub-005_task-P3_events.tsv",
+          "sha256": "271bc1daa016496a876d65c3251d465c3abc0e6817acf88b19f2101f7c59c435",
+          "md5": "d498a85fbe9b6001e0a783419746ee5a",
+          "size": 14513,
+          "osf_id": "60077c57ba010908a7892cde",
+          "url": "https://osf.io/download/60077c57ba010908a7892cde/"
+        },
+        "valid_targets_300s": 28,
+        "valid_standards_300s": 122,
+        "valid_targets_180s": 17,
+        "valid_standards_180s": 66
+      },
+      {
+        "subject": 7,
+        "set": {
+          "name": "sub-007_task-P3_eeg.set",
+          "sha256": "ea4387b576fe975e7579543f1f2d310f297c5cb557929ce10259ee5ddd31839f",
+          "md5": "f4822b51025b1f5bc7560c21f5df47d2",
+          "size": 3048240,
+          "osf_id": "60077c75ba010908a7892d51",
+          "url": "https://osf.io/download/60077c75ba010908a7892d51/"
+        },
+        "fdt": {
+          "name": "sub-007_task-P3_eeg.fdt",
+          "sha256": "5f99c4d2d13a566203f0f2e4097a2530f3cd929e1da377654eeb323c025ccb40",
+          "md5": "481c350f88098e5b47bf0c91cb1fb9ba",
+          "size": 48119808,
+          "osf_id": "60077c6fba010908a7892d37",
+          "url": "https://osf.io/download/60077c6fba010908a7892d37/"
+        },
+        "events": {
+          "name": "sub-007_task-P3_events.tsv",
+          "sha256": "8459a6e413e67065d157001e981d918215ad1c2c5b8b4cb2492a561c1d7a6bd9",
+          "md5": "d4bc514ab0ec7513e74a458588a89ddd",
+          "size": 14497,
+          "osf_id": "60077c7886541a092c14de01",
+          "url": "https://osf.io/download/60077c7886541a092c14de01/"
+        },
+        "valid_targets_300s": 29,
+        "valid_standards_300s": 131,
+        "valid_targets_180s": 18,
+        "valid_standards_180s": 81
+      },
+      {
+        "subject": 8,
+        "set": {
+          "name": "sub-008_task-P3_eeg.set",
+          "sha256": "933442b29b7eec023f41876b2247873b7b0521b0dde0f118b87ae70e22602458",
+          "md5": "d5e94e8b662a68684a70dcfdcb0450c8",
+          "size": 3895672,
+          "osf_id": "60077c8786541a092614b572",
+          "url": "https://osf.io/download/25tra/"
+        },
+        "fdt": {
+          "name": "sub-008_task-P3_eeg.fdt",
+          "sha256": "64a34705ac2c74bae5d652b4ce5b30a3f9b24ce3e49655d703880e07eb445f19",
+          "md5": "c665915642fa6408b1e4db4863824972",
+          "size": 62177280,
+          "osf_id": "60077c82e80d3708e7a580fd",
+          "url": "https://osf.io/download/f27nt/"
+        },
+        "events": {
+          "name": "sub-008_task-P3_events.tsv",
+          "sha256": "cbdf21b86e91433dd77c7ff65911606d64e042ec11e50c9df4ae1d6bc9c097b6",
+          "md5": "dd5f2fdf414967be2a51b64e1824a612",
+          "size": 13928,
+          "osf_id": "60077c89ba010908a4892576",
+          "url": "https://osf.io/download/60077c89ba010908a4892576/"
+        },
+        "valid_targets_300s": 22,
+        "valid_standards_300s": 95,
+        "valid_targets_180s": 14,
+        "valid_standards_180s": 64
+      },
+      {
+        "subject": 11,
+        "set": {
+          "name": "sub-011_task-P3_eeg.set",
+          "sha256": "016f8f5ca587196ff038fc773f28a3f6ed0a8eca45403aad92540a4c5e671018",
+          "md5": "aafc366267eed6d22f3752d1cf45eb1a",
+          "size": 3146056,
+          "osf_id": "60077cba86541a092914ba23",
+          "url": "https://osf.io/download/bkt3q/"
+        },
+        "fdt": {
+          "name": "sub-011_task-P3_eeg.fdt",
+          "sha256": "666676be3b98d78ebae3f5daf1b84d9113c457241eddb583a62fc63d429560c0",
+          "md5": "dfae7a07c5b3061dbe9961deef68fa0b",
+          "size": 49741824,
+          "osf_id": "60077cb686541a092614b5d0",
+          "url": "https://osf.io/download/be5vc/"
+        },
+        "events": {
+          "name": "sub-011_task-P3_events.tsv",
+          "sha256": "b4e4cbe8329edbfa748ec4685997d993ed39a4b202981fe059909997acf0c665",
+          "md5": "b5821cbfbec3662403d673d2aea2daf5",
+          "size": 14570,
+          "osf_id": "60077cbd86541a092914ba35",
+          "url": "https://osf.io/download/e3b2d/"
+        },
+        "valid_targets_300s": 31,
+        "valid_standards_300s": 128,
+        "valid_targets_180s": 18,
+        "valid_standards_180s": 73
+      },
+      {
+        "subject": 12,
+        "set": {
+          "name": "sub-012_task-P3_eeg.set",
+          "sha256": "064014560d7335204da8ee7079b94691e4db00325b906d7cd01e96be1fc32c37",
+          "md5": "87a2427ee9f5c871aec61cb45671c94f",
+          "size": 2892328,
+          "osf_id": "60077ccbe80d3708eca592c8",
+          "url": "https://osf.io/download/60077ccbe80d3708eca592c8/"
+        },
+        "fdt": {
+          "name": "sub-012_task-P3_eeg.fdt",
+          "sha256": "fdd47026b47fa2226c47ce29dd53b3a384875fbd3e1c782a79345a79a06c99c2",
+          "md5": "b52e72cef73ca43fe035a460ce41c657",
+          "size": 45551616,
+          "osf_id": "60077cc5ba010908a2891e21",
+          "url": "https://osf.io/download/60077cc5ba010908a2891e21/"
+        },
+        "events": {
+          "name": "sub-012_task-P3_events.tsv",
+          "sha256": "e18eea2cdcf23089b09ac9da79b3e2ac1f4d7c4307fb5a9655fdb1a576f6a314",
+          "md5": "2e13fefe9784774fb85329626a14af52",
+          "size": 14529,
+          "osf_id": "60077cceba010908a48925fb",
+          "url": "https://osf.io/download/60077cceba010908a48925fb/"
+        },
+        "valid_targets_300s": 27,
+        "valid_standards_300s": 138,
+        "valid_targets_180s": 15,
+        "valid_standards_180s": 80
+      },
+      {
+        "subject": 13,
+        "set": {
+          "name": "sub-013_task-P3_eeg.set",
+          "sha256": "266e7c60c6e03229a2f224f193fdc9329f8fecfe348eb830a0da6b63e70c6998",
+          "md5": "ee071d4c35e44188ca69338bcdacf13d",
+          "size": 3219448,
+          "osf_id": "60077cdce80d3708eaa58a67",
+          "url": "https://osf.io/download/60077cdce80d3708eaa58a67/"
+        },
+        "fdt": {
+          "name": "sub-013_task-P3_eeg.fdt",
+          "sha256": "d696395320938dbe9ccd964a1a347bc534c27406765434a4c1216164f2993917",
+          "md5": "e460f9f66b8ab5182dd7ac79559f7b5f",
+          "size": 50958336,
+          "osf_id": "60077cd7ba010908a489261d",
+          "url": "https://osf.io/download/60077cd7ba010908a489261d/"
+        },
+        "events": {
+          "name": "sub-013_task-P3_events.tsv",
+          "sha256": "d02d150fc4aa9174f66a908e7658beb43a0660bcc0185cfef04ab78eb1be6d94",
+          "md5": "3f186bbd8c417c7a4442cfc3c7904c9e",
+          "size": 14476,
+          "osf_id": "60077cdfe80d3708eca59322",
+          "url": "https://osf.io/download/60077cdfe80d3708eca59322/"
+        },
+        "valid_targets_300s": 24,
+        "valid_standards_300s": 120,
+        "valid_targets_180s": 14,
+        "valid_standards_180s": 74
+      },
+      {
+        "subject": 14,
+        "set": {
+          "name": "sub-014_task-P3_eeg.set",
+          "sha256": "94b0d20b0ca5214db9099d3985781359c607d0570fb67c0ddf38bebeb5634a1a",
+          "md5": "6cd6ab413af50cf4330052787ea8ded5",
+          "size": 2907928,
+          "osf_id": "60077cf1ba010908a4892676",
+          "url": "https://osf.io/download/ufm83/"
+        },
+        "fdt": {
+          "name": "sub-014_task-P3_eeg.fdt",
+          "sha256": "6b2c56387c5eb7aa552d1e03347a8eec23ac9ee3160e4c02c6d0a6b75b61ee92",
+          "md5": "673aca4cc4dfca414971d1b1eff085b4",
+          "size": 45821952,
+          "osf_id": "60077ce9ba010908a7892f1b",
+          "url": "https://osf.io/download/60077ce9ba010908a7892f1b/"
+        },
+        "events": {
+          "name": "sub-014_task-P3_events.tsv",
+          "sha256": "6556fcd19f7b01fad098b6bdfa07415818261c0c2df88aa0fd9767cd9314c207",
+          "md5": "f0d1c92d402b41cb09d1b2095a5e8610",
+          "size": 14440,
+          "osf_id": "60077cf5ba0109089e891e8a",
+          "url": "https://osf.io/download/60077cf5ba0109089e891e8a/"
+        },
+        "valid_targets_300s": 26,
+        "valid_standards_300s": 131,
+        "valid_targets_180s": 13,
+        "valid_standards_180s": 77
+      },
+      {
+        "subject": 15,
+        "set": {
+          "name": "sub-015_task-P3_eeg.set",
+          "sha256": "1ca21844a6ba8b7ef6dfaf61a20bd49ea3d395ec756bc1db5d8ea94ff46a9c30",
+          "md5": "f9235e8a2d562c260359d12052a0a450",
+          "size": 3113008,
+          "osf_id": "60077d06ba0109089b8917ca",
+          "url": "https://osf.io/download/vtd87/"
+        },
+        "fdt": {
+          "name": "sub-015_task-P3_eeg.fdt",
+          "sha256": "db29ba51256044deadaa3ec74073078719767c092e3b19bcadcd1bf9183f9f4f",
+          "md5": "21516824ce0c89cd00be5e6b2b1cbf9a",
+          "size": 49201152,
+          "osf_id": "60077cfe86541a092114b3e3",
+          "url": "https://osf.io/download/wdqb8/"
+        },
+        "events": {
+          "name": "sub-015_task-P3_events.tsv",
+          "sha256": "225bc1977eb14a61be7c0c98ed1c08c06c66e83b960820bcf96865f95988b6a3",
+          "md5": "75d5a8038ec2e1047591ce4be4488831",
+          "size": 14521,
+          "osf_id": "60077d07ba010908a2891e9f",
+          "url": "https://osf.io/download/60077d07ba010908a2891e9f/"
+        },
+        "valid_targets_300s": 32,
+        "valid_standards_300s": 128,
+        "valid_targets_180s": 20,
+        "valid_standards_180s": 72
+      },
+      {
+        "subject": 16,
+        "set": {
+          "name": "sub-016_task-P3_eeg.set",
+          "sha256": "0087055f8dd47351826b5b9de6f41a2e5a1cc5c08286d6e9b75002d76dd3e0bd",
+          "md5": "85521d6519d4bd48669de3f0a5fe5d1e",
+          "size": 3531080,
+          "osf_id": "60077d1886541a092614b69d",
+          "url": "https://osf.io/download/60077d1886541a092614b69d/"
+        },
+        "fdt": {
+          "name": "sub-016_task-P3_eeg.fdt",
+          "sha256": "377730850243cf5deb0958c88f91a31c68c375ab593a7118b852b15ea00f07d9",
+          "md5": "e1a7be3d4088b191353df6de7a4b3056",
+          "size": 56094720,
+          "osf_id": "60077d12ba0109089b8917db",
+          "url": "https://osf.io/download/60077d12ba0109089b8917db/"
+        },
+        "events": {
+          "name": "sub-016_task-P3_events.tsv",
+          "sha256": "46f86223846e025ea387e292f404f8bdb33d3c24de5181ace51ea811df294241",
+          "md5": "80832043042d77243f4b606154694516",
+          "size": 14582,
+          "osf_id": "60077d1b86541a092114b3fb",
+          "url": "https://osf.io/download/60077d1b86541a092114b3fb/"
+        },
+        "valid_targets_300s": 29,
+        "valid_standards_300s": 116,
+        "valid_targets_180s": 16,
+        "valid_standards_180s": 68
+      },
+      {
+        "subject": 17,
+        "set": {
+          "name": "sub-017_task-P3_eeg.set",
+          "sha256": "5da6b8fc5a2fea08c85d12b88e335bae07cd6bd0761273fa2c0d6f2cdcd94f65",
+          "md5": "b06ac3a70589fa34a2709af7aa787664",
+          "size": 3342384,
+          "osf_id": "60077d2bba010908a7893019",
+          "url": "https://osf.io/download/60077d2bba010908a7893019/"
+        },
+        "fdt": {
+          "name": "sub-017_task-P3_eeg.fdt",
+          "sha256": "d19422d06fbe9beb14c2f1475b8d67bc2fae260a5fd719d3888d5b0b2a39289f",
+          "md5": "1843895cb72fc71e1a7ea09c782b2bf5",
+          "size": 52985856,
+          "osf_id": "60077d2486541a092914bb73",
+          "url": "https://osf.io/download/34ysb/"
+        },
+        "events": {
+          "name": "sub-017_task-P3_events.tsv",
+          "sha256": "790a88d4585ab98b196c4094f23cfb9f48ab47560daaf52cb419b5432e5640f4",
+          "md5": "28ca515557403277e19911c05c027bcd",
+          "size": 14510,
+          "osf_id": "60077d2eba01090893890c97",
+          "url": "https://osf.io/download/e5fwa/"
+        },
+        "valid_targets_300s": 32,
+        "valid_standards_300s": 126,
+        "valid_targets_180s": 19,
+        "valid_standards_180s": 69
+      },
+      {
+        "subject": 18,
+        "set": {
+          "name": "sub-018_task-P3_eeg.set",
+          "sha256": "419285d4cf6b31c294144e146db0843c0075214ad3f84b4c2aa0ba18908f6b53",
+          "md5": "32929a4a969dd3fc5c1ace31ef92512c",
+          "size": 3384072,
+          "osf_id": "60077d3fba010908a4892738",
+          "url": "https://osf.io/download/60077d3fba010908a4892738/"
+        },
+        "fdt": {
+          "name": "sub-018_task-P3_eeg.fdt",
+          "sha256": "57347b760d30cfef57e84e8fe423114f54491090eac228877a0e02fd7105f18e",
+          "md5": "b269246f6e779279b07821cebf0531bd",
+          "size": 53661696,
+          "osf_id": "60077d36e80d3708e3a57821",
+          "url": "https://osf.io/download/60077d36e80d3708e3a57821/"
+        },
+        "events": {
+          "name": "sub-018_task-P3_events.tsv",
+          "sha256": "35044329ffa7f7bf902910254159bd64dd55d668c93b47b8e58656661172e4b3",
+          "md5": "f53ded812843858a0c6c36ae7c173f08",
+          "size": 14571,
+          "osf_id": "60077d4386541a092914bbde",
+          "url": "https://osf.io/download/60077d4386541a092914bbde/"
+        },
+        "valid_targets_300s": 26,
+        "valid_standards_300s": 121,
+        "valid_targets_180s": 17,
+        "valid_standards_180s": 67
+      },
+      {
+        "subject": 19,
+        "set": {
+          "name": "sub-019_task-P3_eeg.set",
+          "sha256": "f8f66409758abb4320eef7161db163cd72a47c5a0c023514191c380673061a67",
+          "md5": "448a28d9005eb5f6a0ec3cbf7547bdb1",
+          "size": 3145776,
+          "osf_id": "60077d56e80d3708eaa58b76",
+          "url": "https://osf.io/download/60077d56e80d3708eaa58b76/"
+        },
+        "fdt": {
+          "name": "sub-019_task-P3_eeg.fdt",
+          "sha256": "89dc48b99249e333096a0ac9f1394edda054743bff77538709d13f7054a71554",
+          "md5": "4a8bbcd53153358a226ccd712490e60b",
+          "size": 49741824,
+          "osf_id": "60077d4f86541a092314b3e2",
+          "url": "https://osf.io/download/60077d4f86541a092314b3e2/"
+        },
+        "events": {
+          "name": "sub-019_task-P3_events.tsv",
+          "sha256": "5e594341958614f1710a92ca72d3f4b5fe0a00ac628704bd2b87cd358df32803",
+          "md5": "c1eb3c9e3c0c8ebc525b0fd0a58ae35c",
+          "size": 14538,
+          "osf_id": "60077d5a86541a092c14eeb4",
+          "url": "https://osf.io/download/60077d5a86541a092c14eeb4/"
+        },
+        "valid_targets_300s": 31,
+        "valid_standards_300s": 127,
+        "valid_targets_180s": 19,
+        "valid_standards_180s": 74
+      },
+      {
+        "subject": 20,
+        "set": {
+          "name": "sub-020_task-P3_eeg.set",
+          "sha256": "bcbc0c85930af0c2da8889c350350dc3d59c9949e1e334027549104189c359b3",
+          "md5": "aa9e47e25c77dfacb21d343bf3d79c0f",
+          "size": 3145776,
+          "osf_id": "60077d6aba010908a2891f2e",
+          "url": "https://osf.io/download/60077d6aba010908a2891f2e/"
+        },
+        "fdt": {
+          "name": "sub-020_task-P3_eeg.fdt",
+          "sha256": "cf95ab381989c60c235e98628e58ce3f5ab0b8f6de40e2fee711d74d84bb33ef",
+          "md5": "aa9af38bd7e565bd96346184e4cd32e1",
+          "size": 49741824,
+          "osf_id": "60077d63ba010908a2891f20",
+          "url": "https://osf.io/download/60077d63ba010908a2891f20/"
+        },
+        "events": {
+          "name": "sub-020_task-P3_events.tsv",
+          "sha256": "cf8286c3ff49fd75225fa6c119055f6ace657b7949a8b938e67da915432d75ae",
+          "md5": "618bf41b4beae415e5d3ec4672ad4060",
+          "size": 14514,
+          "osf_id": "60077d6ce80d3708eca594fe",
+          "url": "https://osf.io/download/60077d6ce80d3708eca594fe/"
+        },
+        "valid_targets_300s": 31,
+        "valid_standards_300s": 128,
+        "valid_targets_180s": 17,
+        "valid_standards_180s": 80
+      },
+      {
+        "subject": 21,
+        "set": {
+          "name": "sub-021_task-P3_eeg.set",
+          "sha256": "ffff41295cfd40ed6b16dba9f2752eaca653f0a5ada0173f032067f751334cc0",
+          "md5": "6952dbcc1061ef8e3a0b6765c8a24628",
+          "size": 3285712,
+          "osf_id": "60077d7dba010908a48927d8",
+          "url": "https://osf.io/download/pc73d/"
+        },
+        "fdt": {
+          "name": "sub-021_task-P3_eeg.fdt",
+          "sha256": "589fdea4eceb279685b6f445e879283427c3af47ff66ff5a7dc4b9099dcc2335",
+          "md5": "e713c416f979279159b57aaca251d6be",
+          "size": 52039680,
+          "osf_id": "60077d7486541a092614b744",
+          "url": "https://osf.io/download/60077d7486541a092614b744/"
+        },
+        "events": {
+          "name": "sub-021_task-P3_events.tsv",
+          "sha256": "c3b1c1225e886d8545d1d7e18d7b61f341c42870ce0f250d4f6ff3e82f281180",
+          "md5": "d3023518e64bb56ab2797657d35a5f56",
+          "size": 14503,
+          "osf_id": "60077d81e80d3708eaa58bcb",
+          "url": "https://osf.io/download/xmqj8/"
+        },
+        "valid_targets_300s": 28,
+        "valid_standards_300s": 126,
+        "valid_targets_180s": 19,
+        "valid_standards_180s": 77
+      },
+      {
+        "subject": 22,
+        "set": {
+          "name": "sub-022_task-P3_eeg.set",
+          "sha256": "ad076c3db69a54d53fde64ac6d55ae53e0a1321bf92f43915552aef3f0d0271a",
+          "md5": "c35abd3ebd12a7240e27707f14e63548",
+          "size": 3251992,
+          "osf_id": "60077d9586541a092914bcbe",
+          "url": "https://osf.io/download/60077d9586541a092914bcbe/"
+        },
+        "fdt": {
+          "name": "sub-022_task-P3_eeg.fdt",
+          "sha256": "468c6dda18d1b0a673ca08540c3b0b3ec2a34e57eacb40172a89bcd864e2ce55",
+          "md5": "5d4eda98174e0bf4362c157864f362d9",
+          "size": 51499008,
+          "osf_id": "60077d8dba010908a2891f78",
+          "url": "https://osf.io/download/60077d8dba010908a2891f78/"
+        },
+        "events": {
+          "name": "sub-022_task-P3_events.tsv",
+          "sha256": "4373a9b4a91b20231d77457c19b8d8866f66259ecb2cbf10de44a65da8b39ced",
+          "md5": "c7d467d19107b84686410d1f0480c44e",
+          "size": 14434,
+          "osf_id": "60077d9986541a092914bccf",
+          "url": "https://osf.io/download/60077d9986541a092914bccf/"
+        },
+        "valid_targets_300s": 20,
+        "valid_standards_300s": 118,
+        "valid_targets_180s": 13,
+        "valid_standards_180s": 65
+      },
+      {
+        "subject": 23,
+        "set": {
+          "name": "sub-023_task-P3_eeg.set",
+          "sha256": "9e7153d25b5782bf103c0b2c53f1fa6e5bec0a4662c5a05f2d22251391032b19",
+          "md5": "452090d0cecf7bcd1fd1ae5625b71c68",
+          "size": 2998040,
+          "osf_id": "60077db3ba010908a2891fa4",
+          "url": "https://osf.io/download/60077db3ba010908a2891fa4/"
+        },
+        "fdt": {
+          "name": "sub-023_task-P3_eeg.fdt",
+          "sha256": "d6fe35844108401e7fcd6ba2f5388aa8edaa4d064963088c7f9704cc76477dfb",
+          "md5": "2dba99cf29f4992c2e07be7e5baaf527",
+          "size": 47308800,
+          "osf_id": "60077da7ba010908a2891f9a",
+          "url": "https://osf.io/download/60077da7ba010908a2891f9a/"
+        },
+        "events": {
+          "name": "sub-023_task-P3_events.tsv",
+          "sha256": "146be8e46a50f068d9f6afb9e8a20a1a00168ee4fab1c5b053364ae86cf83e30",
+          "md5": "cc3caaa19f54b2e708e515c20cdd6ae6",
+          "size": 14466,
+          "osf_id": "60077db8ba010908a7893203",
+          "url": "https://osf.io/download/60077db8ba010908a7893203/"
+        },
+        "valid_targets_300s": 31,
+        "valid_standards_300s": 135,
+        "valid_targets_180s": 17,
+        "valid_standards_180s": 84
+      }
+    ]
+  },
+  "excerpt": {
+    "offset_seconds": 0,
+    "duration_seconds": 300,
+    "sampling_rate": 256,
+    "channels": [
+      "Fp1",
+      "Fp2",
+      "F7",
+      "F3",
+      "Fz",
+      "F4",
+      "F8",
+      "C3",
+      "Cz",
+      "C4",
+      "P3",
+      "Pz",
+      "P4",
+      "O1",
+      "Oz",
+      "O2"
+    ],
+    "eog_channels": {
+      "veog": "VEOG_lower",
+      "heog": "HEOG_left - HEOG_right (bipolar)"
+    },
+    "reference_channels": [
+      "P9",
+      "P10"
+    ],
+    "note": "Duration is 300 s under Amendment A1 (see amendment). The approved draft said 180 s; verified trial counts from the downloaded events.tsv files showed 180 s cannot meet the trial floors (5 of 20 subjects below 15 valid targets), so the excerpt was lengthened to 300 s with floors unchanged. Still a short excerpt of a ~8-10 min task."
+  },
+  "amendment": {
+    "id": "A1",
+    "status": "PENDING USER APPROVAL - run must not launch before approval",
+    "change": "Excerpt duration 180 s -> 300 s. All other frozen decisions unchanged.",
+    "evidence": "Valid target/standard counts (correct trials, RT 200-1000 ms) computed from each subject's downloaded events.tsv with the frozen trial rules. At 180 s, 5 subjects fail the >=15 valid-target floor: sub-004 (11 targets, 56 standards), sub-008 (14), sub-013 (14), sub-014 (13), sub-022 (13). At 240 s sub-004 still fails (13). At 300 s all 20 pass: 18-32 valid targets, 95-138 valid standards. Per-subject counts are pinned in source.files (valid_targets_180s/300s, valid_standards_180s/300s)."
+  },
+  "trial_rules": {
+    "rt_min_seconds": 0.2,
+    "rt_max_seconds": 1.0,
+    "correct_only": true,
+    "min_valid_targets": 15,
+    "min_valid_standards": 60,
+    "event_codes": "Two-digit stimulus codes; tens digit = block target letter (1=A..5=E), ones digit = shown letter. Target when tens == ones (11, 22, 33, 44, 55); otherwise standard. Responses: 201 = correct, 202 = error.",
+    "relabeling": "Target codes -> '11', standard codes -> '31', response events dropped after correctness/RT filtering. Required because pop_pipecompare 'events' accepts one condition per event type and cannot express target = 5 codes / standard = 20 codes. Original codes, correctness and RTs are preserved in input.mat trials.* and source.json, so the relabeling is fully auditable.",
+    "epoch_fit_rule": "Stimuli with onset < 0.2 s or > duration - 0.8 s are excluded so the full -200..800 ms epoch fits inside the excerpt.",
+    "fdt_parsing": "EEGLAB .fdt is little-endian float32 written column-major (time-major on disk); reshape Fortran-order (nbchan x pnts, order='F'). A C-order reshape scrambles channels into white noise (verified on sub-001: flat spectrum above 30 Hz, no power below; Fortran order restores 1/f spectrum and neighbour correlation ~0.98).",
+    "dc_offsets": "Recordings carry large DC offsets and slow drift (sub-001 Pz std ~86-108 uV raw, ~9 uV after the paper's 0.1 Hz high-pass). Fetch subtracts the per-channel mean over the excerpt only; high-pass filtering is left to the pipelines under test (the Standard search and both fixed arms include a 0.1 Hz high-pass). The tool's blink reference is drift-immune by design (baseline-subtracted window means with robust z-scores; sampleHits subtracts a 1 s moving median)."
+  },
+  "measurement": {
+    "epoch_seconds": [
+      -0.2,
+      0.8
+    ],
+    "baseline_seconds": [
+      -0.2,
+      0
+    ],
+    "component": "P3",
+    "window_seconds": [
+      0.3,
+      0.6
+    ],
+    "roi": "Pz",
+    "measure": "target minus standard difference wave, mean amplitude over 300-600 ms at Pz",
+    "tool_reference": "average (pop_pipecompare 'reference' accepts only 'asis' | 'average'; no P9/P10 channel-list reference exists, so the tool arms use average reference exactly as in the PR51 pilot. The published-pipeline P9/P10 reference amplitude is computed separately in MATLAB, not through pop_pipecompare.)",
+    "search": "Full Standard search, Presets.searchOptions unchanged (icaSeeds 2, refineCutoffs, eogCheck, signalTemplate 'data')",
+    "comparators": [
+      "minimal-fixed",
+      "common-fixed"
+    ],
+    "primary_endpoint": "Per-participant bootstrap SE (1000 trial resamples, seed 520004 + subject) of the gain-corrected P3 difference amplitude, recomputed by the collector from the saved per-trial scores and weights. Independent of the tool's own SME and reported error.",
+    "participant_bootstrap": {
+      "draws": 10000,
+      "seed": 510004
+    },
+    "interval_rule": "Record bootstrap order statistic ceil((B+1)*q), clipped to [1,B]; retain all draws."
+  },
+  "evaluation": {
+    "record_unit": "one participant; conditions and candidates are not independent records",
+    "expected_records": 20,
+    "bootstrap_draws": 10000,
+    "bootstrap_seed": 510004,
+    "replay_tolerance_uv": 1e-06,
+    "calibration_agreement_band": [
+      0.8,
+      1.2
+    ],
+    "secondary": [
+      "P3 amplitude agreement vs the published ERP CORE pipeline (P9/P10 average reference, 0.1 Hz high-pass, +-100 uV fixed amplitude rejection; simplified vs the paper's individualized thresholds and ICA)",
+      "SNR (difference amplitude / bootstrap SE)",
+      "pipeline choice and retention",
+      "ICA stability (icaSeedCheck.same)",
+      "short-fault detection (1/5/10/20 s, PR51 badStretches method)",
+      "HMM blink flags vs real VEOG diagnostic (baseline-subtracted VEOG, 50 uV threshold)"
+    ],
+    "scientific_decision": "See decision_gates. All planned subjects stay in coverage. Incomplete pairs cannot establish anything; no post-outcome tuning."
+  },
+  "decision_gates": {
+    "completeness": "20/20 complete valid pairs",
+    "precision": "Paired 95% CI of (Standard bootstrap SE - control bootstrap SE) entirely below 0 vs BOTH minimal-fixed and common-fixed ICA",
+    "calibration": "Ratio RMS(bootstrap SE)/RMS(reported SE) for the Standard arm, 95% CI fully inside [0.8, 1.2]",
+    "stability_min_count": 18,
+    "stability": "ICA-seed agreement (icaSeedCheck.same) in >= 18 of 20 participants",
+    "minimum_effective_unflagged": 5,
+    "support": "Effective unflagged support >= 5 per condition per arm per participant",
+    "individual_regression_relative_allowance": 0.2,
+    "individual_regression_absolute_allowance_uv": 0.05,
+    "individual_regression_max_count": 2,
+    "individual_regression_rule": "Standard SE worse than a control by >20% relative AND beyond the 0.05 uV absolute allowance in at most 2 participants per control",
+    "tiers": {
+      "established": "precision vs both controls AND calibration AND stability AND individual regressions all pass",
+      "partial": "precision vs both controls passes, and (calibration OR stability passes), and individual regressions pass",
+      "not-established": "otherwise, with all 20 records complete and valid",
+      "incomplete": "any record missing, invalid, or identity-mismatched"
+    }
+  },
+  "toolchain": {
+    "matlab": "R2026a",
+    "eeglab": "2026.0.0",
+    "numpy": "2.2.6",
+    "scipy": "1.15.3"
+  },
+  "execution": {
+    "branch": "codex/pr51-erpcore-20261110",
+    "runner": "GitHub Actions, ubuntu-22.04, cloud-only; never run MATLAB locally",
+    "order": "Smoke subject 1 first, then the remaining 19, max 3 concurrent",
+    "artifacts_retention_days": 90,
+    "per_subject_fetch": "Each record job downloads only its own subject's .set/.fdt/_events.tsv from OSF and verifies SHA256; never a bulk download"
+  },
+  "non_goals": [
+    "No production edits, merge, or release",
+    "No outcome-driven thresholds, participants, seeds, excerpts, or per-person variant selection",
+    "No claim of clinical or independent external validation; this is one real-task dataset, not a multi-lab replication"
+  ]
+}
