@@ -1,0 +1,168 @@
+{
+  "version": 1,
+  "name": "PR51 ten-short-public-recording pilot",
+  "algorithm_commit": "7151821edf8a5a54c3167d7f18b66c530911b568",
+  "scope": "Exploratory development benchmark of the unchanged main algorithm; not independent confirmation or a clinical performance claim.",
+  "source": {
+    "dataset": "PhysioNet EEG Motor Movement/Imagery Dataset",
+    "version": "1.0.0",
+    "doi": "10.13026/C28G6P",
+    "license": "ODC-By-1.0",
+    "base_url": "https://physionet-open.s3.amazonaws.com/eegmmidb/1.0.0/",
+    "manifest_sha256": "7f5d16957d8ee7bce86cc7ccba0e5994f63f33781607eb3f838392d49311a208",
+    "files": [
+      {
+        "subject": 1,
+        "path": "S001/S001R01.edf",
+        "sha256": "4743b736131a7e147c150e8b37711029b6cda5e356c4b3e8261a03cdcaaf8b0c"
+      },
+      {
+        "subject": 2,
+        "path": "S002/S002R01.edf",
+        "sha256": "d542689b31c977838f20b1a2062865b98ecf10a7e9702f56f101000d47f2ec68"
+      },
+      {
+        "subject": 3,
+        "path": "S003/S003R01.edf",
+        "sha256": "2af68afa8d4f158a7ae7f3903b66f0947925880639b7a8b5b6bb13b0c6c50f96"
+      },
+      {
+        "subject": 4,
+        "path": "S004/S004R01.edf",
+        "sha256": "23e9645f492488d2376ac3a606d177043efc6e5fb00281c2d6648e4b06a6ce62"
+      },
+      {
+        "subject": 5,
+        "path": "S005/S005R01.edf",
+        "sha256": "f84f58d7d96bce1700af8b2c9e333d66e4b2183e34b3ed5634840fff37845af0"
+      },
+      {
+        "subject": 6,
+        "path": "S006/S006R01.edf",
+        "sha256": "bfe32b925fdd469c90ce6913f7409cf85e4492b40d36c77b83511592d6e4c647"
+      },
+      {
+        "subject": 7,
+        "path": "S007/S007R01.edf",
+        "sha256": "2ca422c6076860f12bce174799c5d7e85cae46b7b09a8e8519681d0f82168b22"
+      },
+      {
+        "subject": 8,
+        "path": "S008/S008R01.edf",
+        "sha256": "678e47541d9903c300ba7811554ad1f8bfbe2bff086407cb4ff489d2d0e507bc"
+      },
+      {
+        "subject": 9,
+        "path": "S009/S009R01.edf",
+        "sha256": "37f117b69060f2c784d74fe973d6af30b3b978f9c7c127324273f5741749bb2e"
+      },
+      {
+        "subject": 10,
+        "path": "S010/S010R01.edf",
+        "sha256": "0d694b503e5ea0f6088a790f09390efb1be2688ad92213f5e82fa2f343cd18c4"
+      }
+    ]
+  },
+  "excerpt": {
+    "offset_seconds": 0,
+    "duration_seconds": 60,
+    "sampling_rate": 160,
+    "channels": [
+      "Fp1",
+      "Fp2",
+      "F7",
+      "F3",
+      "Fz",
+      "F4",
+      "F8",
+      "C3",
+      "Cz",
+      "C4",
+      "P3",
+      "Pz",
+      "P4",
+      "O1",
+      "Oz",
+      "O2"
+    ]
+  },
+  "toolchain": {
+    "matlab": "R2026a",
+    "eeglab": "2026.0.0",
+    "numpy": "2.2.6",
+    "scipy": "1.15.3"
+  },
+  "simulation": {
+    "seed_base": 951000,
+    "background_scale_uv": 8,
+    "blink_prevalence": [
+      0,
+      0.1,
+      0.3,
+      0.5,
+      0.7
+    ],
+    "blink_amplitude_uv": 150,
+    "neural_blink_multiplier": 1.3,
+    "trial_spacing_seconds": 1.35,
+    "target_amplitude_uv": 8,
+    "standard_amplitude_ratio": 0.3333333333333333,
+    "amplitude_cv": 0.3,
+    "latency_mean_seconds": 0.4,
+    "latency_sd_seconds": 0.04,
+    "width_seconds": 0.08,
+    "roi": "Pz",
+    "window_seconds": [
+      0.3,
+      0.6
+    ],
+    "baseline_seconds": [
+      -0.2,
+      0
+    ],
+    "epoch_seconds": [
+      -0.2,
+      0.8
+    ]
+  },
+  "evaluation": {
+    "record_unit": "one source participant; conditions and candidates are not independent records",
+    "primary": "record-mean squared gain-corrected population-target selected error",
+    "comparators": [
+      "minimal-fixed",
+      "common-fixed"
+    ],
+    "additional": [
+      "unaltered resting EEG alpha-filter search",
+      "native replay",
+      "exported executable script",
+      "raw ERP error",
+      "conditional realized-trial error",
+      "selection regret within feasible fitted family",
+      "known-duration channel-fault detection"
+    ],
+    "whole_procedure": "The main Standard search is freshly fitted per recording with Presets.searchOptions unchanged, including ICA reseeds and adaptive cutoff/EOG checks. Crossfit is not called independent evaluation.",
+    "expected_records": 10,
+    "bootstrap_draws": 10000,
+    "bootstrap_seed": 510003,
+    "minimum_recommendations_for_pilot_execution": 8,
+    "replay_tolerance_uv": 0.000001,
+    "precision_floor_records": 30,
+    "relative_half_width_target": 0.1,
+    "calibration_agreement_band": [
+      0.8,
+      1.2
+    ],
+    "calibration_agreement_scope": "Pilot diagnostic only. A ratio interval entirely in this band is preliminary agreement; an interval wholly outside is adverse; overlap is not-established. Ten records never establish stable calibration.",
+    "scientific_decision": "Paired MSE difference CI upper <0 supports improvement on this pilot only; CI includes zero is not-established. No improvement gate controls execution or edits the selector.",
+    "interval_rule": "Record bootstrap order statistic ceil((B+1)*q), clipped to [1,B]; retain all draws, including zero-denominator/undefined calibration mass."
+  },
+  "non_goals": [
+    "No PR50 production changes or Balanced recipe",
+    "No optimization on these outcomes",
+    "No use of locked PR50 confirmation seeds or participants",
+    "No clinical/ERP-task validation claim from resting-state EEG",
+    "No claim that natural background is clean neural ground truth",
+    "No automatic merge or release"
+  ]
+}
