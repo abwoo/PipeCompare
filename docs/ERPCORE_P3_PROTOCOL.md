@@ -1,6 +1,6 @@
 # 真实 P3 复测协议（已冻结，2026-11-10）
 
-状态：**已冻结**。跑之前定死，跑完不改标准。本文件是 2026-11-10 用户批准的草稿的冻结版，改动有两处：修订 A1（片段 180 秒改为 300 秒）和修订 A2（修协议自校验，见下）。EEGMMIDB 21–40 号那份草稿已搁置，不执行。
+状态：**已冻结**。跑之前定死，跑完不改标准。本文件是 2026-11-10 用户批准的草稿的冻结版，改动有三处：修订 A1（片段 180 秒改为 300 秒）、修订 A2（修协议自校验，见下）和修订 A3（修导出重放的变量名，见下）。EEGMMIDB 21–40 号那份草稿已搁置，不执行。
 
 机器可读的同一份冻结内容在 `benchmarks/erpcore_protocol.json`，SHA256 为：
 
@@ -27,6 +27,12 @@ bb65c9a522e9f45210e5ee941a669630b75587a5255664aa0f1402b572e89c6b
 修法：`erpcore_pilot.m` 改为运行时用 `sha256sum` 现算 `benchmarks/erpcore_protocol.json` 的哈希，再和 `source.json` 里下载时记下的哈希比对。一个 JSON 文件装不下自己的哈希，所以不往协议文件里加字段。`benchmarks/erpcore_protocol.json` 一个字节没动，冻结哈希仍是 `bb65c9a522e9f45210e5ee941a669630b75587a5255664aa0f1402b572e89c6b`。协议内容、试次下限、主指标、门限、20 人名单一律不变。
 
 同一改动里，`.github/workflows/erpcore.yml` 去掉了 `push:` 触发，只留 `workflow_dispatch`。第一次冻结提交推上去时自动触发了一次跑，今后开跑只用手动触发，不再自动跑。
+
+## 修订 A3（2026-11-10，用户批准“按新错误修，再冻结重跑”）
+
+第二次开跑（run 42803086378，2026-11-10 18:54）约 6 分钟失败。A2 的协议校验已经修好，第 16 步完整跑完，三组估计都算出来了；新卡点在第 17 步记录完整性检查：`benchmarks/erpcore_pilot.m` 第 76 行导出重放那步要算 `X=f(E)`，但这个文件里根本没有叫 `E` 的变量，MATLAB 报“Unrecognized function or variable 'E'”，记录被标成不完整，剩下 19 人没跑。
+
+这是从 PR51 的 `benchmarks/public_pilot.m` 抄过来时留下的变量名：那边 `E` 是注入了已知信号的 EEG（`[E,...]=inject(EEG,...)`），搜索和导出重放都在 `E` 上跑；真实数据没有注入，所以 erpcore 版里没有 `E`，搜索直接在 `EEG` 上跑。修法：`X=f(E)` 改为 `X=f(EEG)`，只改这一处。导出函数的签名本身就是 `function EEG = erpcore_export_001(EEG)`（已从失败那次跑的产物里核对，也与 `pipecompare.PipeCompare.writeScript` 的约定一致），`EEG` 就是搜索跑过的那份起始数据。`benchmarks/erpcore_protocol.json` 一个字节没动，冻结哈希仍是 `bb65c9a522e9f45210e5ee941a669630b75587a5255664aa0f1402b572e89c6b`。协议内容、试次下限、主指标、门限、20 人名单一律不变。
 
 ## 最大的改动：真实数据没有已知真值，主指标换了
 

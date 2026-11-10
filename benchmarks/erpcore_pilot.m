@@ -73,7 +73,7 @@ try
    exportName=sprintf('erpcore_export_%03d',subject);exportFile=fullfile(outDir,[exportName '.m']);
    pipecompare.PipeCompare.writeScript(r,pick,exportFile);
    priorPath=path;cleanPath=onCleanup(@()path(priorPath));addpath(outDir); %#ok<NASGU>
-   f=str2func(exportName);transcript=evalc('X=f(E);');
+   f=str2func(exportName);transcript=evalc('X=f(EEG);');
    saveText(fullfile(outDir,'export.log'),transcript);
    mx=pipecompare.eval.Measure.candidate(X,r.contract,r.ref,r.options);
    result.exportMaxError=max(abs(mx.objectives(1).estimate-r.cands(pick).m.objectives(1).estimate));
