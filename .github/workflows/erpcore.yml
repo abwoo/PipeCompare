@@ -1,13 +1,5 @@
 name: ERP CORE real-P3 validation
 on:
-  push:
-    branches: [codex/pr51-erpcore-20261110]
-    paths:
-      - 'benchmarks/erpcore*'
-      - 'benchmarks/fetch_erpcore.py'
-      - 'benchmarks/compare_erpcore.py'
-      - 'benchmarks/pilot_native_backend.m'
-      - '.github/workflows/erpcore*'
   workflow_dispatch:
 permissions:
   contents: read

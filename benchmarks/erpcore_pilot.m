@@ -13,7 +13,14 @@ assert(ismember(subject,[p.source.files.subject]),'PipeCompare:Erpcore','Unplann
 assert(strcmp(version('-release'),'2026a')&&strcmp(eeg_getversion(),'2026.0.0'),'PipeCompare:Erpcore','Wrong toolchain.');
 source=jsondecode(fileread(fullfile(dataDir,'source.json')));
 assert(source.subject==subject,'PipeCompare:Erpcore','Source subject mismatch.');
-assert(strcmp(source.protocol_sha256,p.protocol_sha256),'PipeCompare:Erpcore','Protocol mismatch.');
+% The protocol JSON cannot pin its own hash (a file cannot contain its own
+% SHA256), so hash the frozen file at runtime and compare against the digest
+% recorded by fetch at download time.
+protocolPath=fullfile(fileparts(mfilename('fullpath')),'erpcore_protocol.json');
+[hashStatus,hashOut]=system(sprintf('sha256sum "%s"',protocolPath));
+assert(hashStatus==0,'PipeCompare:Erpcore','Protocol checksum unavailable.');
+protocolSha256=strtok(hashOut);
+assert(strcmp(source.protocol_sha256,protocolSha256),'PipeCompare:Erpcore','Protocol mismatch.');
 result=struct('subject',subject,'completed',false,'algorithmCommit',p.algorithm_commit, ...
  'executionCommit',getenv('GITHUB_SHA'),'workflowRun',getenv('GITHUB_RUN_ID'), ...
  'runAttempt',getenv('GITHUB_RUN_ATTEMPT'),'matlab',version,'eeglab',eeg_getversion(), ...

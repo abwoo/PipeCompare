@@ -1,6 +1,6 @@
 # 真实 P3 复测协议（已冻结，2026-11-10）
 
-状态：**已冻结**。跑之前定死，跑完不改标准。本文件是 2026-11-10 用户批准的草稿的冻结版，改动只有一处：修订 A1（片段 180 秒改为 300 秒），见下。EEGMMIDB 21–40 号那份草稿已搁置，不执行。
+状态：**已冻结**。跑之前定死，跑完不改标准。本文件是 2026-11-10 用户批准的草稿的冻结版，改动有两处：修订 A1（片段 180 秒改为 300 秒）和修订 A2（修协议自校验，见下）。EEGMMIDB 21–40 号那份草稿已搁置，不执行。
 
 机器可读的同一份冻结内容在 `benchmarks/erpcore_protocol.json`，SHA256 为：
 
@@ -19,6 +19,14 @@ bb65c9a522e9f45210e5ee941a669630b75587a5255664aa0f1402b572e89c6b
 - 300 秒时 20 人全部通过：18–32 个有效目标、95–138 个有效标准。
 
 所以片段改为 **300 秒**，试次下限不变（目标 ≥15、标准 ≥60）。这仍然只是约 8–10 分钟任务里的一小段。除片段长度外，冻结内容没有其他改动。逐人数字见文末的表。
+
+## 修订 A2（2026-11-10，用户批准“按这个修，重新冻结再跑”）
+
+第一次开跑（run 42793438661，2026-11-10 17:45）约 3.5 分钟就失败：`benchmarks/erpcore_pilot.m` 第 16 行要比 `source.protocol_sha256` 和 `p.protocol_sha256`，但冻结的 `benchmarks/erpcore_protocol.json` 里根本没有 `protocol_sha256` 这个字段，MATLAB 一读就报“Unrecognized field name”，EEG 的活还没开始。问题只出在这一行：下载步骤（`fetch_erpcore.py`）算协议哈希、写进 `source.json` 是对的，收集器（`compare_erpcore.py`）自己算文件哈希来比也是对的。
+
+修法：`erpcore_pilot.m` 改为运行时用 `sha256sum` 现算 `benchmarks/erpcore_protocol.json` 的哈希，再和 `source.json` 里下载时记下的哈希比对。一个 JSON 文件装不下自己的哈希，所以不往协议文件里加字段。`benchmarks/erpcore_protocol.json` 一个字节没动，冻结哈希仍是 `bb65c9a522e9f45210e5ee941a669630b75587a5255664aa0f1402b572e89c6b`。协议内容、试次下限、主指标、门限、20 人名单一律不变。
+
+同一改动里，`.github/workflows/erpcore.yml` 去掉了 `push:` 触发，只留 `workflow_dispatch`。第一次冻结提交推上去时自动触发了一次跑，今后开跑只用手动触发，不再自动跑。
 
 ## 最大的改动：真实数据没有已知真值，主指标换了
 
