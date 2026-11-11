@@ -9,8 +9,12 @@ applies the frozen decision gates. No known truth exists in real data, so
 there is no MSE here: precision is compared through bootstrap SEs, and
 calibration through reported SE vs bootstrap SE.
 
-Exit code 0 when all 20 planned records are present and valid, whatever the
-scientific verdict; non-zero on missing/invalid records or identity failure.
+Exit code 0 when all 20 planned records are present and identity-valid and
+a verdict is reached, whatever the scientific verdict — including under
+Amendment A5, where a few complete records are incomplete pairs (listed,
+not dropped) and the paired analysis runs on the remaining pairs. Non-zero
+on missing/invalid records, identity failure, or more than 2 support-floor
+failures.
 The verdict is recorded in summary.json (decision tier) and summary.md.
 """
 import argparse
@@ -108,23 +112,62 @@ def validate_record(r, p, digest):
     opts = r["searchOptions"]
     assert opts["icaSeeds"] == 2 and opts["refineCutoffs"] and opts["eogCheck"] \
         and opts["signalTemplate"] == "data", "Standard options changed"
-    assert finite(r.get("replayMaxError")) and r["replayMaxError"] < p["evaluation"]["replay_tolerance_uv"], "Replay error too large"
-    assert finite(r.get("exportMaxError")) and r["exportMaxError"] < p["evaluation"]["replay_tolerance_uv"], "Export error too large"
+    # Arm availability is NOT an identity failure: a complete record with
+    # an unavailable arm is an incomplete pair under Amendment A5 (see
+    # validate_arms). The replay/export and bootstrap-agreement checks
+    # below only apply when the Standard arm actually produced a pipeline;
+    # when it did not (0 feasible candidates) there is nothing to replay.
+    if r.get("erp", {}).get("available"):
+        assert finite(r.get("replayMaxError")) and r["replayMaxError"] < p["evaluation"]["replay_tolerance_uv"], "Replay error too large"
+        assert finite(r.get("exportMaxError")) and r["exportMaxError"] < p["evaluation"]["replay_tolerance_uv"], "Export error too large"
+        # Support is NOT asserted here: the frozen protocol allows up to 2 pairs
+        # with effective unflagged support < 5 (listed separately, excluded from
+        # the paired analysis); more than 2 makes the batch incomplete. See main().
+        # Independent recomputation: the collector's bootstrap mean must agree
+        # with the MATLAB difference amplitude; the bootstrap SE must be finite.
+        sup = arm_support(r, "erp")
+        assert sup and len(sup) == 2, "erp per-trial support missing"
+        boot = bootstrap_se(sup, r["erp"]["gain"], r["subject"])
+        assert boot is not None and finite(boot["se"]) and boot["se"] > 0, "Bootstrap SE unavailable"
+        assert abs(boot["point"] - r["erp"]["differenceAmplitude"]) <= 1e-6, \
+            f"Point estimate mismatch: collector {boot['point']:.6f} vs MATLAB {r['erp']['differenceAmplitude']:.6f}"
+
+
+def arm_support(r, arm):
+    """Per-trial support rows for an arm. The Standard arm's support lives
+    at the record top level (``selectedSupport``, written by
+    erpcore_pilot.m when a pipeline is selected); the fixed arms carry it
+    on the arm struct. Amendment A5: the collector used to read
+    ``r["erp"]["support"]``, which the pilot never writes, so the A4
+    re-collect rejected all 17 records with a feasible Standard pipeline
+    even though the scores were in the record."""
+    if arm == "erp":
+        return r.get("selectedSupport")
+    return r.get(arm, {}).get("support")
+
+
+def validate_arms(r):
+    """Amendment A5: return None if the record forms a complete pair, else
+    the reason it is an incomplete pair. A complete record with an
+    unavailable arm is listed with its reason and excluded from the paired
+    analysis; it is never silently dropped, never substituted, and never
+    makes the batch incomplete by itself. Only identity failures
+    (validate_record) do that."""
+    erp = r.get("erp", {})
+    if not erp.get("available"):
+        return ("Standard arm unavailable: no feasible pipeline "
+                f"({r.get('feasible')} of {r.get('candidates')} candidates)")
+    for arm in ("minimal", "common"):
+        if not r.get(arm, {}).get("available"):
+            return f"{arm} arm unavailable: fixed readout not finite"
     for arm in ARMS:
         a = r[arm]
-        assert a.get("available"), f"{arm} readout unavailable"
-        assert finite(a.get("differenceAmplitude")) and finite(a.get("reportedDifferenceSE")), f"{arm} difference/SE missing"
-        assert a.get("support"), f"{arm} per-trial support missing"
-        assert len(a["support"]) == 2, f"{arm} support must have two conditions"
-    # Support is NOT asserted here: the frozen protocol allows up to 2 pairs
-    # with effective unflagged support < 5 (listed separately, excluded from
-    # the paired analysis); more than 2 makes the batch incomplete. See main().
-    # Independent recomputation: the collector's bootstrap mean must agree
-    # with the MATLAB difference amplitude; the bootstrap SE must be finite.
-    boot = bootstrap_se(r["erp"]["support"], r["erp"]["gain"], r["subject"])
-    assert boot is not None and finite(boot["se"]) and boot["se"] > 0, "Bootstrap SE unavailable"
-    assert abs(boot["point"] - r["erp"]["differenceAmplitude"]) <= 1e-6, \
-        f"Point estimate mismatch: collector {boot['point']:.6f} vs MATLAB {r['erp']['differenceAmplitude']:.6f}"
+        if not (finite(a.get("differenceAmplitude")) and finite(a.get("reportedDifferenceSE"))):
+            return f"{arm} difference/SE missing"
+        sup = arm_support(r, arm)
+        if not sup or len(sup) != 2:
+            return f"{arm} per-trial support missing"
+    return None
 
 
 def calibration_ratio(actual, reported, draws, seed):
@@ -189,18 +232,24 @@ def main():
 
     valid = []
     problems = []
+    incomplete_pairs = []
     for r in records:
         try:
             validate_record(r, p, digest)
-            valid.append(r)
         except AssertionError as e:
             problems.append({"subject": r["subject"], "problem": str(e)})
+            continue
+        reason = validate_arms(r)
+        if reason is not None:
+            incomplete_pairs.append({"subject": r["subject"], "reason": reason})
+        else:
+            valid.append(r)
     incomplete = [r["subject"] for r in records if not r.get("completed")]
     complete = [r for r in valid if r.get("completed")]
 
     out = {"protocol_sha256": digest, "planned": planned, "present": present,
            "missing": missing, "extra": extra, "incomplete": incomplete,
-           "problems": problems,
+           "problems": problems, "incomplete_pairs": incomplete_pairs,
            "execution_commits": sorted(c for c in exec_commits if c),
            "workflow_runs": sorted(c for c in runs if c),
            "eeglab_shas": sorted(c for c in eeglab_shas if c),
@@ -223,7 +272,7 @@ def main():
     for r in complete:
         bad = []
         for arm in ARMS:
-            for row in r[arm]["support"]:
+            for row in arm_support(r, arm):
                 if row["effectiveUnflaggedN"] < min_sup:
                     bad.append(f"{arm}/{row['condition']}={row['effectiveUnflaggedN']:.2f}")
         if bad:
@@ -246,7 +295,7 @@ def main():
     reported = {arm: [] for arm in ARMS}
     for r in valid:
         for arm in ARMS:
-            boot = bootstrap_se(r[arm]["support"], r[arm]["gain"], r["subject"])
+            boot = bootstrap_se(arm_support(r, arm), r[arm]["gain"], r["subject"])
             se[arm].append(boot["se"])
             diff_amp[arm].append(r[arm]["differenceAmplitude"])
             reported[arm].append(r[arm]["reportedDifferenceSE"])
@@ -310,15 +359,21 @@ def main():
     stab_ok = out["stability"]["gate_pass"]
     reg_ok = all(precision[c]["individual_regressions"] <= gates["individual_regression_max_count"]
                  for c in ("minimal", "common"))
-    if prec_min and prec_com and cal_ok and stab_ok and reg_ok:
+    if prec_min and prec_com and cal_ok and stab_ok and reg_ok and not incomplete_pairs:
         out["decision"] = "established"
     elif reg_ok and ((prec_min and not prec_com)
-                     or (prec_min and prec_com and (not cal_ok or not stab_ok))):
+                     or (prec_min and prec_com and (not cal_ok or not stab_ok or incomplete_pairs))):
+        # Amendment A5: the frozen completeness gate requires 20/20 complete
+        # valid pairs. With incomplete pairs the batch can be at most
+        # partial, however good the remaining pairs' numbers look; the
+        # second disjunct above is what routes that case here instead of
+        # falling through to not-established.
         out["decision"] = "partial"
     else:
         out["decision"] = "not-established"
     out["gates"] = {"precision_vs_minimal": prec_min, "precision_vs_common": prec_com,
-                    "calibration": cal_ok, "stability": stab_ok, "individual_regressions": reg_ok}
+                    "calibration": cal_ok, "stability": stab_ok, "individual_regressions": reg_ok,
+                    "complete_pairs": not incomplete_pairs}
     write_out(args.out, out)
     print(json.dumps(out, indent=2))
     return 0
@@ -334,6 +389,12 @@ def write_out(out_dir, out):
              f"Missing: {out['missing'] or 'none'}; problems: {len(out['problems'])}.",
              f"Excluded pairs (support < 5): {out.get('excluded_pairs') or 'none'}.",
              f"Mixed execution identity: {out['mixed_execution']}.", ""]
+    if out.get("incomplete_pairs"):
+        lines.append(f"Incomplete pairs (Amendment A5, listed not dropped): "
+                     f"{len(out['incomplete_pairs'])} of {len(out['planned'])} planned.")
+        for ip in out["incomplete_pairs"]:
+            lines.append(f"  subject {ip['subject']}: {ip['reason']}.")
+        lines.append("")
     if "paired_precision" in out:
         for ctrl, v in out["paired_precision"].items():
             lines.append(f"Precision Standard vs {ctrl}: mean diff {v['mean_diff_uv']:.3f} uV, "

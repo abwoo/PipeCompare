@@ -53,8 +53,9 @@ def fake_record(subject, gain=1.0, diff=None, reported_se=0.5, seed=1):
                    "source_events_sha256": "EVT", "sampling_rate": 256, "samples": 76800,
                    "n_valid_targets": 20, "n_valid_standards": 80},
         "reference": {"available": True, "differenceAmplitude": diff},
+        "selectedSupport": support,
         "erp": {"available": True, "differenceAmplitude": diff, "reportedDifferenceSE": reported_se,
-                "gain": gain, "support": support},
+                "gain": gain},
         "minimal": {"available": True, "differenceAmplitude": diff, "reportedDifferenceSE": reported_se,
                     "gain": gain, "support": support},
         "common": {"available": True, "differenceAmplitude": diff, "reportedDifferenceSE": reported_se,
@@ -123,7 +124,7 @@ class TestValidation(unittest.TestCase):
         # Support is a pair-validity rule handled by main(), not by
         # validate_record: one low-support pair is excluded, not fatal.
         r = fake_record(1)
-        r["erp"]["support"][0]["effectiveUnflaggedN"] = 3.0
+        r["selectedSupport"][0]["effectiveUnflaggedN"] = 3.0
         ce.validate_record(r, fake_protocol(), "PROTO")
 
     def test_replay_error_fails(self):
@@ -148,6 +149,62 @@ class TestValidation(unittest.TestCase):
         with self.assertRaises(AssertionError):
             ce.validate_record(r, fake_protocol(), "PROTO")
 
+    def test_real_shape_standard_support_at_top_level(self):
+        # Regression test for A5: the real pilot writes the Standard arm's
+        # per-trial support at the record top level (selectedSupport) and
+        # never writes erp.support. A record shaped that way validates and
+        # forms a complete pair. (The A4 fixture put "support" in every arm
+        # including erp, so it never matched real pilot output and the A4
+        # re-collect rejected all 17 records with a feasible Standard
+        # pipeline.)
+        r = fake_record(1)
+        self.assertNotIn("support", r["erp"])
+        self.assertIn("selectedSupport", r)
+        ce.validate_record(r, fake_protocol(), "PROTO")
+        self.assertIsNone(ce.validate_arms(r))
+
+    def test_standard_unavailable_is_incomplete_pair(self):
+        # Amendment A5: a complete record whose Standard search found no
+        # feasible pipeline (subjects 17/18/23) is an incomplete pair, not
+        # an identity failure. Replay/export never ran, so their errors
+        # are null — that must not fail validation either.
+        r = fake_record(1)
+        r["erp"] = {"available": False, "differenceAmplitude": None,
+                    "reportedDifferenceSE": None, "gain": None}
+        r["feasible"] = 0
+        r["candidates"] = 24
+        r["replayMaxError"] = None
+        r["exportMaxError"] = None
+        del r["selectedSupport"]
+        ce.validate_record(r, fake_protocol(), "PROTO")
+        reason = ce.validate_arms(r)
+        self.assertIsNotNone(reason)
+        self.assertIn("Standard", reason)
+        self.assertIn("0 of 24", reason)
+
+    def test_fixed_arm_unavailable_is_incomplete_pair(self):
+        # Amendment A5: subject 4's shape — Standard fine, both fixed arms
+        # unavailable — is an incomplete pair, not an identity failure.
+        r = fake_record(1)
+        r["minimal"] = {"available": False, "differenceAmplitude": None,
+                        "reportedDifferenceSE": None, "gain": None,
+                        "support": r["minimal"]["support"]}
+        r["common"] = {"available": False, "differenceAmplitude": None,
+                       "reportedDifferenceSE": None, "gain": None,
+                       "support": r["common"]["support"]}
+        ce.validate_record(r, fake_protocol(), "PROTO")
+        reason = ce.validate_arms(r)
+        self.assertIsNotNone(reason)
+        self.assertIn("minimal", reason)
+
+    def test_available_standard_without_support_fails_validation(self):
+        # An available Standard arm with no per-trial support anywhere is a
+        # malformed record, not an incomplete pair.
+        r = fake_record(1)
+        del r["selectedSupport"]
+        with self.assertRaises(AssertionError):
+            ce.validate_record(r, fake_protocol(), "PROTO")
+
 
 def build_established_records():
     """20 records where Standard is much more precise and well calibrated."""
@@ -156,7 +213,7 @@ def build_established_records():
     for i, subject in enumerate(range(1, 21)):
         r = fake_record(subject, seed=100 + i)
         rng = np.random.RandomState(200 + i)
-        r["erp"]["support"] = fake_support(seed=300 + i)
+        r["selectedSupport"] = fake_support(seed=300 + i)
         r["minimal"]["support"] = [
             {"condition": "target", "scores": rng.normal(5.0, 12.0, 20).tolist(),
              "weights": [1.0] * 20, "flagged": [False] * 20, "effectiveUnflaggedN": 20.0,
@@ -170,7 +227,7 @@ def build_established_records():
         r["minimal"]["reportedDifferenceSE"] = 2.5
         r["common"]["reportedDifferenceSE"] = 2.5
         for arm in ("erp", "minimal", "common"):
-            boot = ce.bootstrap_se(r[arm]["support"], 1.0, subject)
+            boot = ce.bootstrap_se(ce.arm_support(r, arm), 1.0, subject)
             r[arm]["differenceAmplitude"] = boot["point"]
         r["reference"]["differenceAmplitude"] = r["erp"]["differenceAmplitude"]
         records.append(r)
@@ -228,13 +285,44 @@ class TestGates(unittest.TestCase):
 
     def test_one_low_support_pair_excluded_not_fatal(self):
         records = build_established_records()
-        records[0]["erp"]["support"][0]["effectiveUnflaggedN"] = 3.0
+        records[0]["selectedSupport"][0]["effectiveUnflaggedN"] = 3.0
         p = fake_protocol(tuple(range(1, 21)))
         code, summary = run_collector(records, p)
         self.assertEqual(code, 0)
         self.assertEqual(summary["excluded_pairs"], [1])
         self.assertEqual(summary["n"], 19)
         self.assertEqual(summary["decision"], "established")
+
+    def test_four_incomplete_pairs_cap_verdict_at_partial(self):
+        # Amendment A5 end to end: 16 complete pairs where Standard wins
+        # on precision and calibration, plus 3 Standard failures and 1
+        # comparator failure (the real batch's shape). The run still
+        # produces a verdict (exit 0), the 4 are listed, and the verdict
+        # is partial, never established.
+        records = build_established_records()
+        for r in records[16:19]:
+            r["erp"] = {"available": False, "differenceAmplitude": None,
+                        "reportedDifferenceSE": None, "gain": None}
+            r["feasible"] = 0
+            r["candidates"] = 24
+            r["replayMaxError"] = None
+            r["exportMaxError"] = None
+            del r["selectedSupport"]
+        r = records[19]
+        r["minimal"] = {"available": False, "differenceAmplitude": None,
+                        "reportedDifferenceSE": None, "gain": None,
+                        "support": r["minimal"]["support"]}
+        r["common"] = {"available": False, "differenceAmplitude": None,
+                       "reportedDifferenceSE": None, "gain": None,
+                       "support": r["common"]["support"]}
+        p = fake_protocol(tuple(range(1, 21)))
+        code, summary = run_collector(records, p)
+        self.assertEqual(code, 0)
+        self.assertEqual(summary["n"], 16)
+        self.assertEqual(summary["decision"], "partial")
+        self.assertEqual([ip["subject"] for ip in summary["incomplete_pairs"]],
+                         [17, 18, 19, 20])
+        self.assertFalse(summary["gates"]["complete_pairs"])
 
     def test_three_low_support_pairs_incomplete(self):
         records = build_established_records()
