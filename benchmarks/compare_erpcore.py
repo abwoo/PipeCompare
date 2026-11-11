@@ -86,7 +86,11 @@ def validate_record(r, p, digest):
     assert r["protocolSha256"] == digest, "Protocol mismatch"
     assert r.get("measureSha256") == p["baseline_measure_sha256"], "Measure.m identity mismatch"
     assert r["eeglab"] == p["toolchain"]["eeglab"], "EEGLAB version mismatch"
-    assert r["matlab"].startswith("R2026a"), "MATLAB version mismatch"
+    # MATLAB's `version` returns e.g. "26.1.0.3346908 (R2026a) Update 5", so the
+    # pinned release token must be looked for inside the string, not at its
+    # start. (A3's collect rejected all 20 real records because the old
+    # startswith check assumed the string begins with the release name.)
+    assert p["toolchain"]["matlab"] in r["matlab"], "MATLAB version mismatch"
     entry = next(x for x in p["source"]["files"] if x["subject"] == r["subject"])
     src = r["source"]
     assert src["subject"] == r["subject"], "Source subject mismatch"

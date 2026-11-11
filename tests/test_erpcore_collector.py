@@ -66,7 +66,7 @@ def fake_protocol(subjects=(1, 2)):
     return {
         "algorithm_commit": "ALG",
         "baseline_measure_sha256": "BASELINE",
-        "toolchain": {"eeglab": "2026.0.0"},
+        "toolchain": {"eeglab": "2026.0.0", "matlab": "R2026a"},
         "excerpt": {"duration_seconds": 300, "sampling_rate": 256},
         "trial_rules": {"min_valid_targets": 15, "min_valid_standards": 60},
         "evaluation": {"replay_tolerance_uv": 1e-6, "bootstrap_draws": 1000,
@@ -129,6 +129,22 @@ class TestValidation(unittest.TestCase):
     def test_replay_error_fails(self):
         r = fake_record(1)
         r["replayMaxError"] = 1e-5
+        with self.assertRaises(AssertionError):
+            ce.validate_record(r, fake_protocol(), "PROTO")
+
+    def test_real_matlab_version_string_passes(self):
+        # Regression test for A4: MATLAB's `version` returns
+        # "26.1.0.3346908 (R2026a) Update 5", which the old startswith
+        # check rejected, invalidating all 20 real records in run
+        # 42809789847. The pinned release token must be found inside it.
+        r = fake_record(1)
+        r["matlab"] = "26.1.0.3346908 (R2026a) Update 5"
+        ce.validate_record(r, fake_protocol(), "PROTO")
+
+    def test_other_matlab_release_fails(self):
+        # The gate still rejects a different release.
+        r = fake_record(1)
+        r["matlab"] = "24.2.0.27 (R2024b) Update 3"
         with self.assertRaises(AssertionError):
             ce.validate_record(r, fake_protocol(), "PROTO")
 
