@@ -1,0 +1,61 @@
+name: PR51 real ERP CORE ICA feasible-minimax research (NOT frozen validation)
+on:
+  push:
+    branches: [codex/pr51-ica-feasible-20261112]
+    paths:
+      - +pipecompare/+run/Executor.m
+      - +pipecompare/+eval/IcaRobust.m
+      - .github/workflows/pr51-ica-feasible-record.yml
+      - .github/workflows/pr51-ica-feasible.yml
+      - benchmarks/validate_ica_robust_real.py
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  record:
+    name: Real-P3 ICA feasible-selection subject ${{ matrix.subject }}
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        subject: [11, 15, 21]
+    uses: ./.github/workflows/pr51-ica-feasible-record.yml
+    with:
+      subject: ${{ matrix.subject }}
+  collect:
+    needs: record
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pr51-ica-feasible-*-attempt-*
+          path: evidence
+      - name: Verify no participant is silently omitted and every candidate is scientifically eligible
+        run: |
+          python - <<'PYCODE'
+          import json
+          from pathlib import Path
+          from benchmarks.validate_ica_robust_real import validate
+          paths=sorted(Path('evidence').rglob('result.json'))
+          assert len(paths)==3, f'expect 3 real P3 records, got {paths}'
+          rows=[validate(json.loads(p.read_text())) for p in paths]
+          assert {r['subject'] for r in rows}=={11,15,21}
+          assert all(r['scientificGateChanged'] is False and not r['confirmation'] for r in rows)
+          Path('output').mkdir(exist_ok=True)
+          Path('output/ica_scientific_feasible.json').write_text(json.dumps({
+              'kind':'exploratory-source-backed-ICA-minimax-candidate',
+              'reuses_development_subjects':True,'is_new_frozen_experiment':False,
+              'results':rows},indent=2))
+          for row in rows:
+              print('PR51_ICA_FEASIBLE_RESULT',json.dumps(row))
+          PYCODE
+      - name: Keep all abstentions and per-seed scientific support data
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-ica-feasible-summary-${{ github.run_id }}
+          path: output/
+          retention-days: 90
