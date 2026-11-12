@@ -1,0 +1,29 @@
+name: PR51 stage-3 ICA seed instrumentation validation
+on:
+  push:
+    branches:
+      - codex/pr51-ica-measure-stability-20261112
+    paths:
+      - .github/scripts/pr51-instrument-ica-measure.py
+      - tests/test_ica_measure_instrument.py
+      - .github/workflows/pr51-ica-instrumentation-tests.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify immutable production source, patch anchors and uniqueness
+        run: python -m unittest discover -s tests -p 'test_ica_measure_instrument.py' -v
+      - name: Audit patch diff against production Executor
+        run: |
+          python .github/scripts/pr51-instrument-ica-measure.py .
+          git diff --check -- +pipecompare/+run/Executor.m
+          git diff --stat -- +pipecompare/+run/Executor.m
+          test -f ../result/ica_measure_instrumentation.diff
