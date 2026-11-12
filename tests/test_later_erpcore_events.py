@@ -9,7 +9,8 @@ def events():
     result=[]
     for sec,code in [(10,"11"),(100,"12"),(330,"22"),(415,"31")]:
         result.extend([
-            {"onset":float(sec),"value":code,"trial_type":"stimulus"},
+            {"onset":float(sec),"sample":int(sec*1024)+1,
+             "value":code,"trial_type":"stimulus"},
             {"onset":float(sec)+.5,"value":"201","trial_type":"response"}])
     return result
 
