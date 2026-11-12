@@ -27,8 +27,10 @@ jobs:
         with:
           command: |
             cd PipeCompare;addpath(pwd);addpath(fullfile(pwd,'tests'));
-            r=[runtests(fullfile('tests','test_ica_robust.m'),'OutputDetail',3); ...
-               runtests(fullfile('tests','test_ica_robust_family.m'),'OutputDetail',3)];
-            fprintf('PR51_ICA_FAMILY_TESTS total=%d passed=%d failed=%d\n', ...
-                numel(r),sum([r.Passed]),sum([r.Failed]));
-            assert(numel(r)==21 && all([r.Passed]),'PipeCompare:CI','Original or family-science gate regression failed');
+            r1=runtests(fullfile('tests','test_ica_robust.m'),'OutputDetail',3);
+            r2=runtests(fullfile('tests','test_ica_robust_family.m'),'OutputDetail',3);
+            count=numel(r1)+numel(r2);
+            good=sum([r1.Passed])+sum([r2.Passed]);
+            bad=sum([r1.Failed])+sum([r2.Failed]);
+            fprintf('PR51_ICA_FAMILY_TESTS total=%d passed=%d failed=%d\n',count,good,bad);
+            assert(count==21 && good==21 && bad==0,'PipeCompare:CI','Original or family-science gate regression failed');
