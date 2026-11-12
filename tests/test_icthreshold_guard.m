@@ -40,6 +40,19 @@ verifyGreaterThanOrEqual(tc, limit, max(m)); % keep all data, do not optimize mi
 verifyTrue(tc, contains(info.note, 'non-finite'));
 end
 
+function testIcaTextHandlesNoRecommendedPipeline(tc)
+% A legitimate no-feasible-candidate outcome has ranking.recommended = [].
+% Report formatting must not crash after the search has completed.
+step = struct('type', 'icremove', 'icsTotal', 12, 'icsRemoved', 0, ...
+    'icsBrain', 3, 'icsOther', 1, 'icaPoints', 25000, ...
+    'icsConsidered', 4, 'otherMedian', 0.1);
+candidate = struct('id', 1, 'steps', {{step}});
+result = struct('cands', candidate, 'ranking', struct('recommended', []));
+t = pipecompare.simple.Presets.icaText(result);
+verifyTrue(tc, ischar(t));
+verifyNotEmpty(tc, t);
+end
+
 function testFiniteObjectiveStillChoosesKnownLimit(tc)
 [E, contract, ref, opts] = fixture();
 [f, limit, why] = pipecompare.eval.IcThreshold.score(E, [], [], [], contract, ref, opts, []);
