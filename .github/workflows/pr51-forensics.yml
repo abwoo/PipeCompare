@@ -1,0 +1,37 @@
+name: PR51 frozen ERP CORE log forensics
+on:
+  push:
+    branches:
+      - codex/pr51-rootcause-20261112
+    paths:
+      - benchmarks/diagnose_erpcore_logs.py
+      - tests/test_erpcore_forensics.py
+      - docs/ERP_CORE_ROOTCAUSE_20261112.md
+      - .github/workflows/pr51-forensics.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inspect:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Offline parser and guardrail unit tests
+        run: python -m unittest discover -s tests -p 'test_erpcore_forensics.py' -v
+      - name: Independently re-read the original 20 frozen-run logs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python benchmarks/diagnose_erpcore_logs.py --run-id 42809789847 --out forensics
+      - name: Preserve forensic source identifiers and reasons
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-erpcore-frozen-log-forensics
+          path: forensics/
+          if-no-files-found: warn
+          retention-days: 90
