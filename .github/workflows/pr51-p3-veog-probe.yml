@@ -1,0 +1,62 @@
+name: PR51 P300 per-event VEOG validation against original HMM support
+on:
+  push:
+    branches:
+      - codex/pr51-effective-support-20261112
+    paths:
+      - benchmarks/probe_p3_veog.py
+      - tests/test_p3_veog_probe.py
+      - benchmarks/results/erpcore_support_trial_20261112/**
+      - .github/workflows/pr51-p3-veog-probe.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  unit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Check event matching, baseline windows and frozen provenance
+        run: python -m unittest discover -s tests -p 'test_p3_veog_probe.py' -v
+  probe:
+    needs: unit
+    name: VEOG per-event excerpt subject ${{ matrix.subject }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        subject: [4, 8, 17, 18, 23]
+    env:
+      PILOT_SUBJECT: ${{ matrix.subject }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Download only original protocol-pinned ERP CORE subset
+        timeout-minutes: 14
+        run: python benchmarks/fetch_erpcore.py --subject "$PILOT_SUBJECT" --out input
+      - name: Independently assess VEOG per event and align original selected support
+        run: |
+          ref=$(printf '%03d' "$PILOT_SUBJECT")
+          selected="benchmarks/results/erpcore_support_trial_20261112/selected_${ref}.json"
+          if [ -f "$selected" ]; then
+            python benchmarks/probe_p3_veog.py --subject "$PILOT_SUBJECT" --input input/input.mat --source input/source.json --selected-support "$selected" --out result/veog
+          else
+            python benchmarks/probe_p3_veog.py --subject "$PILOT_SUBJECT" --input input/input.mat --source input/source.json --out result/veog
+          fi
+      - name: Save public-derived scalar diagnostics, never raw EEG
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pr51-p3-veog-proxy-subject-${{ matrix.subject }}
+          path: result/veog/
+          if-no-files-found: error
