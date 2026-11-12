@@ -60,16 +60,32 @@ classdef Threshold
             % the trials (one option: these data; its limit chosen there)
             info = struct('uvBest', NaN, 'uvChosen', NaN, 'limits', U, 'feasible', sum(ok), 'compared', 0, ...
                 'notDistinguished', 0, 'equallyGood', 0, 'objectiveBest', NaN, 'objectiveChosen', NaN, 'rejectedBest', 0, 'rejectedChosen', 0, ...
-                'note', '', 'curves', struct('options', {{C}}, 'ok', true, 'chosen', 1));
+                'note', '', 'curves', struct('options', {{C}}, 'ok', true, 'chosen', 1), ...
+                'limitsWithEnoughTrials', sum(ok));
             nAll = numel([M{:}]);
-            if ~any(ok)
-                % no limit keeps enough trials: reject nothing (the ranking
-                % then reports the trials missing)
-                u = roundIn(v(end), 2 * v(end)); info.uvChosen = u; info.uvBest = u;
-                info.note = 'no limit keeps enough trials; nothing rejected';
+            % A trial-count-feasible limit is not necessarily scoreable:
+            % NaN trial scores must never become an apparent zero-error
+            % optimum (or leave best=[] for the bootstrap below).
+            F = find(ok & isfinite(obj));
+            info.feasible = numel(F);
+            if isempty(F)
+                % No valid objective: do not tune the rejection cutoff from
+                % invalid evidence; leave epochs intact for downstream
+                % ranking/data-quality checks. Never lower the trial floor.
+                finiteLimits = v(isfinite(v));
+                if isempty(finiteLimits)
+                    u = Inf;
+                else
+                    u = roundIn(finiteLimits(end), 2 * finiteLimits(end));
+                end
+                info.uvChosen = u; info.uvBest = u;
+                if any(ok)
+                    info.note = 'no finite selection objective; nothing rejected';
+                else
+                    info.note = 'no limit keeps enough trials; nothing rejected';
+                end
                 return;
             end
-            F = find(ok);
             best = F(find(obj(F) == min(obj(F)), 1, 'last'));   % ties: the higher limit
             pick = F;
             if numel(F) > pipecompare.eval.Threshold.MaxCompared
@@ -143,7 +159,12 @@ classdef Threshold
                         acc = acc + se.^2;
                     else
                         s1 = X{c}(:, o)' * K; s2 = (X{c}(:, o) .^ 2)' * K;
-                        acc = acc + max((s2 - s1 .^ 2 ./ n) ./ (n - 1), 0) ./ n;
+                        trialVariance = (s2 - s1 .^ 2 ./ n) ./ (n - 1);
+                        % Clamp only negative numerical roundoff. MATLAB max
+                        % silently treats NaN as the other operand (zero),
+                        % which falsely gives missing P3 scores zero SME.
+                        trialVariance(trialVariance < 0) = 0;
+                        acc = acc + trialVariance ./ n;
                     end
                     acc = acc + eyeSq(X{c}(:, o), ref, use(o), c, C.loc{c}, K);   % what blinks add (total error)
                 end
