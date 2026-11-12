@@ -67,13 +67,19 @@ def inspect_one(measure,ident,seed):
             continue
         if not set(kept).issubset(set(ids)) or len(set(ids))!=len(ids):
             failures.append(f"epoch-identity-invalid-{idx}")
-        good=np.isfinite(scores)&np.isfinite(wt)&(np.asarray(wt)>0)
+        # MATLAB JSON encodes NaN scores and absent epoch weights as null.
+        # Explicit float coercion maps null -> NaN; NumPy's implicit
+        # object-array coercion cannot safely support isfinite().
+        scalar_scores=np.asarray(scores,dtype=float)
+        weights=np.asarray(wt,dtype=float)
+        waveform_values=np.asarray(waveform,dtype=float)
+        good=np.isfinite(scalar_scores)&np.isfinite(weights)&(weights>0)
         if int(np.count_nonzero(good))<2:
             failures.append(f"insufficient-bootstrap-scores-{idx}")
             continue
-        s=np.asarray(scores,dtype=float)[good];w=np.asarray(wt,dtype=float)[good]
+        s=scalar_scores[good];w=weights[good]
         per_condition.append((s,w))
-        if not np.isfinite(waveform).all():failures.append(f"waveform-nonfinite-{idx}")
+        if not np.isfinite(waveform_values).all():failures.append(f"waveform-nonfinite-{idx}")
     boot=None
     gain=measure.get("gain")
     if len(per_condition)==2 and valid(gain) and gain>0:
