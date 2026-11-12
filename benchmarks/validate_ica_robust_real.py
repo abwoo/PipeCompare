@@ -45,6 +45,8 @@ def validate(r):
     groups = {v[2] for v in all_eligible}
     assert robust["originalRecommendationUnchanged"] is True
     if robust["status"] == "selected":
+        if not all_eligible:
+            raise ValueError("selected candidate fails at least one scientific gate")
         if len(groups) != 1:
             raise ValueError("selected candidate across incomparable scientific strata")
         if robust.get("allSeedsScientificallyFeasible") is not True:
