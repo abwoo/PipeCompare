@@ -59,6 +59,8 @@ def validate(record):
             "noRetrospectiveGateChange":True,
             "isNewFrozenExperiment":False}
     if family["status"]=="selected":
+        if not candidates:
+            raise ValueError("family-constrained minimax selected candidate fails scientific gates")
         if len(groups)!=1:
             raise ValueError("cannot select across incomparable scientific strata")
         best=min(z[1] for z in candidates)
