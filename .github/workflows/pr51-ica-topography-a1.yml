@@ -10,6 +10,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 jobs:
   parser-unit:
     runs-on: ubuntu-latest
@@ -24,3 +25,58 @@ jobs:
           python -m unittest discover -s tests -p test_ica_topography.py -v
           python -m unittest discover -s tests -p test_ica_mechanism.py -v
           git diff --check
+  archived-science:
+    name: Reanalyse frozen raw ICA topology artifacts, without refitting
+    needs: parser-unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - uses: actions/download-artifact@v4
+        with:
+          repository: abwoo/PipeCompare
+          run-id: 43178065954
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: pr51-icthreshold-dev-*-attempt-*
+          path: evidence
+      - name: Pin raw execution and analyze missingness without hiding failures
+        run: |
+          python - <<'PYCODE'
+          import json,sys
+          from pathlib import Path
+          sys.path.insert(0,'benchmarks')
+          from compare_ica_topography import run
+          paths=sorted(Path('evidence').rglob('result.json'))
+          assert len(paths)==3
+          for p in paths:
+              x=json.loads(p.read_text())
+              assert x['executionCommit']=='bee8cf0bd24a439429c46b0075d60382b533ff9d'
+              assert str(x['workflowRun'])=='43178065954'
+              assert x['completed'] and not x['errors']
+          result=run(Path('evidence'))
+          Path('output').mkdir(exist_ok=True)
+          Path('output/topography_A1.json').write_text(json.dumps(result,indent=2))
+          for participant in result['rows']:
+              for c in participant['candidates']:
+                  print('PR51_TOPOLOGY_A1',json.dumps({
+                      'subject':participant['subject'],'role':c['role'],
+                      'candidateId':c['id'],'seed0Removed':c['seed0RemovedCount'],
+                      'seed0Fingerprint':c['seed0FingerprintAvailable'],
+                      'matches':c['matchedStartCount'],
+                      'unseen':[
+                          {'seed':s['seed'],'reason':s['reason'],
+                           'topoMed':s.get('medianMatchedAbsTopologyCorrelation'),
+                           'removedJaccard':s.get('alignedRemovedJaccard')}
+                          for s in c['startComparisons'] if s['seed'] in (3,4,5)]}))
+          PYCODE
+      - name: Preserve independent corrected scientific readout
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-ica-topology-a1-${{ github.run_id }}
+          path: output/
+          retention-days: 90
+          if-no-files-found: warn
