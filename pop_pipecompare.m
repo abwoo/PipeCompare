@@ -78,7 +78,7 @@ if nargin < 2
     opts.progress = [];
 else
     opts = struct('measure', '', 'events', {{}}, 'left', {{}}, 'right', {{}}, 'pool', false, 'window', [], 'band', [], ...
-        'channels', {{}}, 'recipe', 'standard', 'steps', {{}}, 'reference', 'asis', 'segment', 2, 'show', 'on', 'progress', []);
+        'channels', {{}}, 'recipe', 'standard', 'steps', {{}}, 'reference', 'asis', 'segment', 2, 'show', 'on', 'progress', [], 'sciencecapture', false);
     [varargin{:}] = convertStringsToChars(varargin{:});   % "P3" as well as 'P3'
     for k = 1:2:numel(varargin)
         f = lower(char(varargin{k}));
@@ -128,6 +128,14 @@ assert(nTotal > 1, 'PipeCompare:Simple', 'On these data the steps chosen (%s) gi
 % the unit judged from the amplitude scale, as in the panel: rejection
 % thresholds in uV would remove nothing from data stored in V
 runOpts = pipecompare.simple.Presets.searchOptions();
+% Explicit research-only opt-in. A GUI opts struct without this optional
+% field preserves the uninstrumented production-like execution path.
+if isfield(opts,'sciencecapture') && ~isempty(opts.sciencecapture)
+    assert((islogical(opts.sciencecapture) || isnumeric(opts.sciencecapture)) && ...
+        isscalar(opts.sciencecapture) && ismember(double(opts.sciencecapture),[0 1]), ...
+        'PipeCompare:Simple','sciencecapture must be true or false.');
+    runOpts.scienceCapture=logical(opts.sciencecapture);
+end
 runOpts.dataUnit = state.unitGuess;
 if strcmp(state.unitGuess, 'V'), pipecompare.utils.log('The data are in volts (judged from the amplitude scale); they are compared in uV.'); end
 prog = pipecompare.gui.Progress.empty;
