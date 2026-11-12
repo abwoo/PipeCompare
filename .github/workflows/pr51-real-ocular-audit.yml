@@ -1,0 +1,56 @@
+name: PR51 real-P3 trial-level ocular diagnostics
+on:
+  push:
+    branches:
+      - codex/pr51-icremove-fix-20261112
+    paths:
+      - benchmarks/audit_erpcore_eyes.py
+      - .github/workflows/pr51-real-ocular-audit.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  individual:
+    name: Real EEG ocular evidence subject ${{ matrix.subject }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        subject: [4, 8, 18, 23]
+    env:
+      PILOT_SUBJECT: ${{ matrix.subject }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Pin numerical dependencies
+        run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Download and checksum only one frozen ERP CORE P3 source
+        run: python benchmarks/fetch_erpcore.py --subject "$PILOT_SUBJECT" --out input
+      - name: Measure VEOG HEOG and Pz at every original valid event
+        run: python benchmarks/audit_erpcore_eyes.py --input input/input.mat --source input/source.json --out output
+      - name: Validate signal audit provenance
+        run: |
+          python - <<'PYCODE'
+          import json,os
+          from pathlib import Path
+          p=Path('output/audit.json')
+          x=json.loads(p.read_text())
+          assert x['subject']==int(os.environ['PILOT_SUBJECT'])
+          assert x['source_protocol_sha256']=="bb65c9a522e9f45210e5ee941a669630b75587a5255664aa0f1402b572e89c6b"
+          assert x['algorithm_changed'] is False
+          assert x['not_equivalent_to_frozen_MATLAB_rejection'] is True
+          assert x['n_trials']==sum(v['n'] for v in x['by_condition'].values())
+          print('PR51_REAL_EYE_AUDIT_PROVENANCE_PASS',x['subject'])
+          PYCODE
+      - name: Preserve all trial-level outputs or debugging evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-real-ocular-sub-${{ matrix.subject }}
+          path: output/
+          retention-days: 90
+          if-no-files-found: warn
