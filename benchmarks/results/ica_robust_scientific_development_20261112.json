@@ -1,0 +1,155 @@
+{
+  "scope": "exploratory ICA candidate shifts on original development subjects only",
+  "confirmatory": false,
+  "source_run_id": 43162539734,
+  "scientific_gates_changed": false,
+  "subjects": [
+    {
+      "subject": 11,
+      "originalRecommendation": [
+        12,
+        25,
+        25
+      ],
+      "originalP3": 2.991473043386703,
+      "robustId": 25,
+      "allSeedEligibleCount": 20,
+      "robustSeedP3": [
+        2.9348491482641794,
+        2.9348491482641794,
+        2.9348491482641794
+      ],
+      "differenceFromOriginal": [
+        -0.05662389512252375,
+        -0.05662389512252375,
+        -0.05662389512252375
+      ],
+      "robustSME": [
+        [
+          0.9003566531306105,
+          0.4488763623554837
+        ],
+        [
+          0.9003566531306105,
+          0.4488763623554837
+        ],
+        [
+          0.9003566531306105,
+          0.4488763623554837
+        ]
+      ],
+      "robustEffectiveSupport": [
+        [
+          10,
+          23
+        ],
+        [
+          10,
+          23
+        ],
+        [
+          10,
+          23
+        ]
+      ]
+    },
+    {
+      "subject": 15,
+      "originalRecommendation": [
+        5,
+        3,
+        3
+      ],
+      "originalP3": -0.8580223874194215,
+      "robustId": 2,
+      "allSeedEligibleCount": 19,
+      "robustSeedP3": [
+        -0.26380880427794384,
+        -0.2531305272827402,
+        -0.24811276486714195
+      ],
+      "differenceFromOriginal": [
+        0.5942135831414777,
+        0.6048918601366813,
+        0.6099096225522795
+      ],
+      "robustSME": [
+        [
+          1.0100285823519224,
+          0.47701820092790415
+        ],
+        [
+          1.0114337632840331,
+          0.47710853575255924
+        ],
+        [
+          1.0106988131729049,
+          0.47696376446546224
+        ]
+      ],
+      "robustEffectiveSupport": [
+        [
+          24,
+          100
+        ],
+        [
+          24,
+          100
+        ],
+        [
+          24,
+          100
+        ]
+      ]
+    },
+    {
+      "subject": 21,
+      "originalRecommendation": [
+        25,
+        4,
+        4
+      ],
+      "originalP3": 1.6290408521324005,
+      "robustId": 4,
+      "allSeedEligibleCount": 19,
+      "robustSeedP3": [
+        1.6290408521324005,
+        1.6506756956720263,
+        1.6154741736297817
+      ],
+      "differenceFromOriginal": [
+        0,
+        0.02163484353962586,
+        -0.013566678502618723
+      ],
+      "robustSME": [
+        [
+          1.6081685757163895,
+          0.5737855343069194
+        ],
+        [
+          1.6141111839553777,
+          0.5795000360854109
+        ],
+        [
+          1.6172052016901752,
+          0.5826677525676391
+        ]
+      ],
+      "robustEffectiveSupport": [
+        [
+          9,
+          53
+        ],
+        [
+          9,
+          52
+        ],
+        [
+          9,
+          51
+        ]
+      ]
+    }
+  ]
+}
