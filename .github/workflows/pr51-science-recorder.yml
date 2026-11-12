@@ -1,0 +1,77 @@
+name: PR51 research-only six-seed scientific recorder proof
+on:
+  push:
+    branches: [codex/pr51-science-recorder-20261112]
+    paths:
+      - +pipecompare/+eval/ScienceRecorder.m
+      - +pipecompare/+run/Executor.m
+      - +pipecompare/+simple/Presets.m
+      - benchmarks/validate_science_record.py
+      - tests/test_science_record.py
+      - .github/workflows/pr51-science-recorder.yml
+      - .github/workflows/pr51-science-record-worker.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install numpy==2.2.6
+      - name: Verify fail-closed science recording, unchanged source support and bootstrap
+        run: |
+          python -m unittest discover -s tests -p test_science_record.py -v
+          python -m unittest discover -s tests -p test_ica_support_integrity.py -v
+          python -m unittest discover -s tests -p test_ica_unseen_seeds.py -v
+  real:
+    needs: unit
+    name: Research science snapshots subject ${{ matrix.subject }}
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        subject: [11,15,21]
+    uses: ./.github/workflows/pr51-science-record-worker.yml
+    with:
+      subject: ${{ matrix.subject }}
+  collect:
+    needs: real
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pr51-ica-science-*-attempt-*
+          path: evidence
+      - name: Verify all three real science readouts including nonfatal scientific abstentions
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          files=sorted(Path('evidence').rglob('science_record_audit.json'))
+          assert len(files)==3,files
+          rows=[json.loads(f.read_text()) for f in files]
+          assert sorted(x['subject'] for x in rows)==[11,15,21]
+          assert all(x['checked'] and x['checked']==x['available'] and not x['problems'] for x in rows)
+          Path('output').mkdir(exist_ok=True)
+          Path('output/recorder_summary.json').write_text(json.dumps({
+            'study':'read-only science recorder technical validation',
+            'originalPR51Verdict':'PARTIAL','newSubjects':False,
+            'productionPromotionAuthorized':False,
+            'rows':[{'subject':x['subject'],'checked':x['checked'],
+                     'recorded':x['available'],'failures':len(x['problems'])} for x in rows]},indent=2))
+          for x in rows:
+              print('PR51_SCIENCE_RECORD_COLLECT',x['subject'],x['checked'],x['available'])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pr51-science-recorder-summary-${{ github.run_id }}
+          path: output/
+          retention-days: 90
+          if-no-files-found: warn
