@@ -1,0 +1,28 @@
+name: PR51 scientific ICA recorder MATLAB isolated semantics regression
+on:
+  push:
+    branches: [codex/pr51-ica-science-recorder-20261112]
+    paths:
+      - tests/test_ica_science.m
+      - .github/workflows/pr51-ica-science-matlab-unit.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  matlab-unit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+      - name: Prove observer is read-only and fails on misaligned EEG provenance
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'PipeCompare'));
+            r=runtests(fullfile(pwd,'PipeCompare','tests','test_ica_science.m'));
+            assert(all([r.Passed]), 'PipeCompare:ScienceRecorderTest', 'Scientific recorder MATLAB unit regression failed.');
