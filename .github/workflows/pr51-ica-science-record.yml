@@ -32,7 +32,7 @@ jobs:
         run: |
           base=626c6d3bfe6236d3f5d154de02e6985523ebd8dd
           changed=$(git diff --name-only "$base" HEAD -- +pipecompare pop_pipecompare.m)
-          expected=$(printf '+pipecompare/+research/IcaScience.m\n+pipecompare/+run/Executor.m\npop_pipecompare.m')
+          expected=$(printf '+pipecompare/+research/IcaContribution.m\n+pipecompare/+research/IcaScience.m\n+pipecompare/+run/Executor.m\npop_pipecompare.m')
           test "$changed" = "$expected"
           git diff --check "$base" HEAD -- +pipecompare pop_pipecompare.m
           test -z "$(git diff --name-only "$base" HEAD -- +pipecompare/+eval/Measure.m +pipecompare/+eval/Rank.m)"
@@ -113,6 +113,11 @@ jobs:
           PREVIOUS=$(find previous -type f -name result.json)
           test -n "$PREVIOUS"
           python PipeCompare/benchmarks/validate_ica_science.py --new result/result.json --previous "$PREVIOUS" --out result/ica_science_validated.json
+      - name: Check pre-removal component attribution and original final retained IDs
+        run: |
+          python PipeCompare/benchmarks/validate_ica_contribution.py \
+            --new result/result.json --old result/ica_science_validated.json \
+            --out result/ica_contribution_validation.json
       - name: Preserve results and failed scientific checks
         if: always()
         uses: actions/upload-artifact@v4
