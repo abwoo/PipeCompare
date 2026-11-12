@@ -1,5 +1,9 @@
 name: PR51 ICA scientific decomposition and ERP descriptive results (no new fits)
 on:
+  push:
+    branches: [codex/pr51-ica-science-recorder-20261112]
+    paths:
+      - .github/workflows/pr51-ica-science-analysis.yml
   workflow_dispatch:
 permissions:
   contents: read
