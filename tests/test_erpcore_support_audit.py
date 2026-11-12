@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "benchmarks"))
-from audit_erpcore_support import audit, effective
+from audit_erpcore_support import audit, effective, structural_triage
 
 
 def case():
@@ -45,6 +45,22 @@ class SupportAuditTests(unittest.TestCase):
         summaries, _ = audit(case())
         self.assertEqual(sum(x["available"] for x in summaries), 2)
         self.assertTrue(all(not x["available"] for x in summaries[2:]))
+
+    def test_source_trial_bound_is_not_adjusted_to_rescue_invalid_subject(self):
+        rows, _ = audit(case())
+        upper = structural_triage(rows)[0]
+        self.assertEqual(upper["source_unflagged"], {"target": 2, "standard": 3})
+        self.assertFalse(upper["structurally_possible"])
+        self.assertEqual(upper["status"], "source-upper-bound-below-frozen-floor")
+
+    def test_support_presence_does_not_imply_finite_measurement(self):
+        x = case()
+        x["erp"] = {"available": True}
+        x["minimal"] = {"available": False, "support": x["selectedSupport"]}
+        rows, _ = audit(x)
+        self.assertTrue(rows[0]["measurementAvailable"])
+        self.assertTrue(rows[2]["available"])
+        self.assertFalse(rows[2]["measurementAvailable"])
 
     def test_does_not_allow_incomplete_result(self):
         x = case()
