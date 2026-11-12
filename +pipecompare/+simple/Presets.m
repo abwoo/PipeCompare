@@ -746,7 +746,15 @@ classdef Presets
             end
             if isempty(rows), return; end
             r = [];
-            if isfield(result, 'ranking') && isfield(result.ranking, 'recommended'), r = find(rows(:, 1) == result.ranking.recommended, 1); end
+            if isfield(result, 'ranking') && isfield(result.ranking, 'recommended')
+                rec = result.ranking.recommended;
+                % No feasible pipeline legitimately gives recommended = [].
+                % Comparing a nonempty column to [] is a MATLAB dimension
+                % error and must not prevent reporting that result.
+                if isnumeric(rec) && isscalar(rec) && isfinite(rec)
+                    r = find(rows(:, 1) == rec, 1);
+                end
+            end
             if isempty(r), r = 1; end
             poor = rows(r, 4) < P.IcaMinBrain || med(r) > P.IcaMaxOther;   % (NaN: not known, not poor)
             none = all(rows(:, 2) == 0);
