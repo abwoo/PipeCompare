@@ -1,0 +1,211 @@
+{
+  "schema": "pipecompare-erpcore-p3-prospective-holdout-design-v1",
+  "status": "PRE-FREEZE-DESIGN-NOT_EXECUTED",
+  "study_type": "independent-participant development-holdout confirmation, same source site not external validation",
+  "original_protocol": "benchmarks/erpcore_protocol.json",
+  "source_dataset": "ERP CORE",
+  "exclusion_definition": "AR = over 25% trials rejected due to artifact; TC = less than 50% rare trials remaining after artifact rejection; ACC = total accuracy lower than 75%. Source: P3_Subject_Summary.xlsx on the OSF record (sha256 063b26a665e3cf27...). Total usable 34, matching the paper's P3 N=34.",
+  "excluded_subjects": [
+    6,
+    9,
+    10,
+    30,
+    35,
+    40
+  ],
+  "all_34_p3_usable": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    7,
+    8,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    31,
+    32,
+    33,
+    34,
+    36,
+    37,
+    38,
+    39
+  ],
+  "previously_used_20": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    7,
+    8,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23
+  ],
+  "previously_unseen_14": [
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    31,
+    32,
+    33,
+    34,
+    36,
+    37,
+    38,
+    39
+  ],
+  "selection_rule": "All and only the 14 eligible ERP CORE P3 participants not in the original fixed 20-person development cohort, sorted by subject ID; no outcome-based exclusions",
+  "source_manifest": {
+    "status": "UNPINNED",
+    "required_per_subject": [
+      "set sha256 and URL",
+      "fdt sha256 and URL",
+      "events sha256 and URL"
+    ],
+    "must_be_verified_before_eeg_evaluation": true
+  },
+  "algorithm": {
+    "status": "UNSELECTED",
+    "scientific_changes_must_be_frozen_before_any_heldout_eeg": true,
+    "implementation_commit": null,
+    "decision_rule": null,
+    "independent_ICA_seed_sets": "required if claiming recommendation stability beyond a tautological same-seed minimax choice"
+  },
+  "measurement": {
+    "reference": {
+      "epoch_seconds": [
+        -0.2,
+        0.8
+      ],
+      "baseline_seconds": [
+        -0.2,
+        0
+      ],
+      "component": "P3",
+      "window_seconds": [
+        0.3,
+        0.6
+      ],
+      "roi": "Pz",
+      "measure": "target minus standard difference wave, mean amplitude over 300-600 ms at Pz",
+      "tool_reference": "average (pop_pipecompare 'reference' accepts only 'asis' | 'average'; no P9/P10 channel-list reference exists, so the tool arms use average reference exactly as in the PR51 pilot. The published-pipeline P9/P10 reference amplitude is computed separately in MATLAB, not through pop_pipecompare.)",
+      "search": "Full Standard search, Presets.searchOptions unchanged (icaSeeds 2, refineCutoffs, eogCheck, signalTemplate 'data')",
+      "comparators": [
+        "minimal-fixed",
+        "common-fixed"
+      ],
+      "primary_endpoint": "Per-participant bootstrap SE (1000 trial resamples, seed 520004 + subject) of the gain-corrected P3 difference amplitude, recomputed by the collector from the saved per-trial scores and weights. Independent of the tool's own SME and reported error.",
+      "participant_bootstrap": {
+        "draws": 10000,
+        "seed": 510004
+      },
+      "interval_rule": "Record bootstrap order statistic ceil((B+1)*q), clipped to [1,B]; retain all draws."
+    },
+    "trial_rules": {
+      "rt_min_seconds": 0.2,
+      "rt_max_seconds": 1,
+      "correct_only": true,
+      "min_valid_targets": 15,
+      "min_valid_standards": 60,
+      "event_codes": "Two-digit stimulus codes; tens digit = block target letter (1=A..5=E), ones digit = shown letter. Target when tens == ones (11, 22, 33, 44, 55); otherwise standard. Responses: 201 = correct, 202 = error.",
+      "relabeling": "Target codes -> '11', standard codes -> '31', response events dropped after correctness/RT filtering. Required because pop_pipecompare 'events' accepts one condition per event type and cannot express target = 5 codes / standard = 20 codes. Original codes, correctness and RTs are preserved in input.mat trials.* and source.json, so the relabeling is fully auditable.",
+      "epoch_fit_rule": "Stimuli with onset < 0.2 s or > duration - 0.8 s are excluded so the full -200..800 ms epoch fits inside the excerpt.",
+      "fdt_parsing": "EEGLAB .fdt is little-endian float32 written column-major (time-major on disk); reshape Fortran-order (nbchan x pnts, order='F'). A C-order reshape scrambles channels into white noise (verified on sub-001: flat spectrum above 30 Hz, no power below; Fortran order restores 1/f spectrum and neighbour correlation ~0.98).",
+      "dc_offsets": "Recordings carry large DC offsets and slow drift (sub-001 Pz std ~86-108 uV raw, ~9 uV after the paper's 0.1 Hz high-pass). Fetch subtracts the per-channel mean over the excerpt only; high-pass filtering is left to the pipelines under test (the Standard search and both fixed arms include a 0.1 Hz high-pass). The tool's blink reference is drift-immune by design (baseline-subtracted window means with robust z-scores; sampleHits subtracts a 1 s moving median)."
+    },
+    "excerpt": {
+      "offset_seconds": 0,
+      "duration_seconds": 300,
+      "sampling_rate": 256,
+      "channels": [
+        "Fp1",
+        "Fp2",
+        "F7",
+        "F3",
+        "Fz",
+        "F4",
+        "F8",
+        "C3",
+        "Cz",
+        "C4",
+        "P3",
+        "Pz",
+        "P4",
+        "O1",
+        "Oz",
+        "O2"
+      ],
+      "eog_channels": {
+        "veog": "VEOG_lower",
+        "heog": "HEOG_left - HEOG_right (bipolar)"
+      },
+      "reference_channels": [
+        "P9",
+        "P10"
+      ],
+      "note": "Duration is 300 s under Amendment A1 (see amendment). The approved draft said 180 s; verified trial counts from the downloaded events.tsv files showed 180 s cannot meet the trial floors (5 of 20 subjects below 15 valid targets), so the excerpt was lengthened to 300 s with floors unchanged. Still a short excerpt of a ~8-10 min task."
+    }
+  },
+  "frozen_after_algorithm_selection_gates": {
+    "complete_subjects": 14,
+    "matched_pair_subjects": 14,
+    "minimum_effective_unflagged_each_arm_each_condition": 5,
+    "precision": "95% paired participant-bootstrap CI upper bound <0 for robust minus each fixed control; no participant deletion",
+    "calibration_95CI": "fully contained within [0.8, 1.2]",
+    "individual_regression_relative_allowance": 0.2,
+    "individual_regression_absolute_allowance_uv": 0.05,
+    "max_individual_regression_per_control": 1,
+    "seed_stability_target": "At least 13 of 14 participants same robust recommended recipe across two predeclared DISJOINT seed-triplets (>=90%); must first implement and pin this independent replication",
+    "bootstrap_draws": 10000,
+    "bootstrap_seed": 510014
+  },
+  "preflight_required": [
+    "algorithm implementation SHA and immutable workflow pinned",
+    "all 14 source file checksums pinned",
+    "no overlap with original 20",
+    "independent seed batch mechanism implemented and tested",
+    "fixed Minimal/Common controls and ERP CORE measurement/gain definitions unchanged",
+    "collector pre-registered and unable to drop invalid cases",
+    "no inspection of heldout outcomes until all freezes complete"
+  ],
+  "forbidden": [
+    "promoting dev subset 11/15/21 to independent validation",
+    "relabeling original 15/20 as established",
+    "lowering HMM effective support floor",
+    "treating successful workflow jobs as scientific passing",
+    "treating a seed-order-invariant minimax as independent stability evidence"
+  ]
+}
