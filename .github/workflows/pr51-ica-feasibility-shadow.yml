@@ -1,0 +1,74 @@
+name: PR51 ICA scientific feasibility shadow real P3
+on:
+  push:
+    branches: [codex/pr51-ica-feasibility-shadow-20261112]
+    paths:
+      - +pipecompare/+run/Executor.m
+      - benchmarks/ica_feasibility_shadow.py
+      - tests/test_ica_feasibility_shadow.py
+      - .github/workflows/pr51-ica-shadow-record.yml
+      - .github/workflows/pr51-ica-feasibility-shadow.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Scientific constraint/abstention regression
+        run: |
+          python -m unittest discover -s tests -p test_ica_feasibility_shadow.py -v
+          python -m unittest discover -s tests -p test_ica_seed_measurements.py -v
+  real:
+    name: All-seed feasibility participant ${{ matrix.subject }}
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        subject: [11, 15, 21]
+    uses: ./.github/workflows/pr51-ica-shadow-record.yml
+    with:
+      subject: ${{ matrix.subject }}
+  collect:
+    needs: [unit, real]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pr51-icthreshold-dev-*-attempt-*
+          path: evidence
+      - name: Verify three complete, nonconfirmatory real-P3 ICA shadow outcomes
+        run: |
+          python - <<'PYCODE'
+          import json
+          from pathlib import Path
+          paths=sorted(Path('evidence').rglob('ica_shadow.json'))
+          assert len(paths)==3,paths
+          rows=[json.loads(p.read_text())['subjects'][0] for p in paths]
+          assert {r['subject'] for r in rows}=={11,15,21}
+          assert all(r['originalRecommendationUnchanged'] and
+                     r['scientificThresholdsUnchanged'] and
+                     not r['scientificPromotionAuthorized'] for r in rows)
+          Path('output').mkdir(exist_ok=True)
+          Path('output/real_ica_shadow.json').write_text(json.dumps({
+              'exploratory':True,'confirmatory':False,
+              'untouched_original_P3_verdict':'PARTIAL',
+              'subjects':rows},indent=2))
+          for r in rows:
+              print('PR51_REAL_ICA_SHADOW',json.dumps({
+                  'subject':r['subject'],'original':r['sourceRecommended'],
+                  'shadow':r['shadowCandidate'],'eligible':r['eligibleCount'],
+                  'reason':r['reason'],
+                  'p3_range':r.get('shadowP3Range')}))
+          PYCODE
+      - name: Preserve scientific positive and negative cases
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-real-ica-shadow-${{ github.run_id }}
+          path: output/
+          retention-days: 90
