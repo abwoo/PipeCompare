@@ -1,0 +1,30 @@
+name: PR51 science recorder JSON-null compatibility unit and original checks
+on:
+  push:
+    branches: [codex/pr51-science-recorder-json-fix-20261112]
+    paths:
+      - benchmarks/validate_science_record.py
+      - tests/test_science_record.py
+      - .github/workflows/pr51-science-json-unit.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install numpy==2.2.6 scipy==1.15.3
+      - name: Assert no MATLAB or source scientific code changed from original recorder run
+        run: |
+          test -z "$(git diff --name-only 1b7a7a896bdc157d499df8a4e4de179fa38ceb03 HEAD -- +pipecompare)"
+      - name: Test MATLAB null semantics and original bootstrap and ICA gates
+        run: |
+          python -m unittest discover -s tests -p test_science_record.py -v
+          python -m unittest discover -s tests -p test_ica_support_integrity.py -v
+          python -m unittest discover -s tests -p test_ica_unseen_seeds.py -v
+          python -m unittest discover -s tests -p test_science_spatial.py -v
+          python -m unittest discover -s tests -p test_science_noninterference.py -v
