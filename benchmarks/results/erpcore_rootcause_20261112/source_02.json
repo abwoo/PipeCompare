@@ -1,0 +1,918 @@
+{
+  "source_run_id": 42809789847,
+  "method": "parsed markers from connector-read original GitHub Actions job logs, not independent cloud-download",
+  "subjects": [
+    {
+      "subject": 14,
+      "source_job_id": 129820185751,
+      "completed": true,
+      "algorithm_commit": "7151821edf8a5a54c3167d7f18b66c530911b568",
+      "execution_commit": "a5aab337d5f8bbe7f9dbdaa41b4588b80dc91f8b",
+      "workflow_run": "42809789847",
+      "protocol_sha256": "bb65c9a522e9f45210e5ee941a669630b75587a5255664aa0f1402b572e89c6b",
+      "candidate_count": 26,
+      "feasible_count": 20,
+      "primary_diagnostic": "available",
+      "reasons": {},
+      "standard": {
+        "available": true,
+        "kept": [
+          24,
+          107
+        ],
+        "reported_difference_se": 1.1202539162091623,
+        "support": [
+          {
+            "condition": "11",
+            "kept": 24,
+            "reference_trials": 26,
+            "flagged_trials": 9,
+            "effective_unflagged": 16
+          },
+          {
+            "condition": "31",
+            "kept": 107,
+            "reference_trials": 131,
+            "flagged_trials": 72,
+            "effective_unflagged": 55
+          }
+        ]
+      },
+      "minimal": {
+        "available": true,
+        "support": [
+          {
+            "condition": "target",
+            "kept": 14,
+            "reference_trials": 26,
+            "flagged_trials": 9,
+            "effective_unflagged": 11
+          },
+          {
+            "condition": "standard",
+            "kept": 48,
+            "reference_trials": 131,
+            "flagged_trials": 72,
+            "effective_unflagged": 42
+          }
+        ]
+      },
+      "common": {
+        "available": true,
+        "support": [
+          {
+            "condition": "target",
+            "kept": 16,
+            "reference_trials": 26,
+            "flagged_trials": 9,
+            "effective_unflagged": 13
+          },
+          {
+            "condition": "standard",
+            "kept": 63,
+            "reference_trials": 131,
+            "flagged_trials": 72,
+            "effective_unflagged": 47
+          }
+        ]
+      },
+      "ica_seeds": {
+        "available": true,
+        "recommended_candidate_ids": [
+          12,
+          12,
+          12
+        ],
+        "recommended_objective": [
+          0.792139140802285,
+          0.792139140802285,
+          0.792139140802285
+        ],
+        "same": true
+      },
+      "veog_blink_diagnostic": {
+        "available": true,
+        "veogThresholdUv": 50,
+        "nFlagged": 72,
+        "nUnflagged": 59,
+        "flaggedWithVeog": 69,
+        "unflaggedWithVeog": 20,
+        "flaggedMedianMaxVeog": 120.85661885237741,
+        "unflaggedMedianMaxVeog": 41.155556297963116
+      },
+      "errors": []
+    },
+    {
+      "subject": 15,
+      "source_job_id": 129820552310,
+      "completed": true,
+      "algorithm_commit": "7151821edf8a5a54c3167d7f18b66c530911b568",
+      "execution_commit": "a5aab337d5f8bbe7f9dbdaa41b4588b80dc91f8b",
+      "workflow_run": "42809789847",
+      "protocol_sha256": "bb65c9a522e9f45210e5ee941a669630b75587a5255664aa0f1402b572e89c6b",
+      "candidate_count": 25,
+      "feasible_count": 19,
+      "primary_diagnostic": "ica-seed-recommendation-instability",
+      "reasons": {},
+      "standard": {
+        "available": true,
+        "kept": [
+          32,
+          128
+        ],
+        "reported_difference_se": 1.3439582789637814,
+        "support": [
+          {
+            "condition": "11",
+            "kept": 32,
+            "reference_trials": 32,
+            "flagged_trials": 8,
+            "effective_unflagged": 21.858364864849502
+          },
+          {
+            "condition": "31",
+            "kept": 128,
+            "reference_trials": 128,
+            "flagged_trials": 28,
+            "effective_unflagged": 89.66371697512251
+          }
+        ]
+      },
+      "minimal": {
+        "available": true,
+        "support": [
+          {
+            "condition": "target",
+            "kept": 31,
+            "reference_trials": 32,
+            "flagged_trials": 8,
+            "effective_unflagged": 24
+          },
+          {
+            "condition": "standard",
+            "kept": 125,
+            "reference_trials": 128,
+            "flagged_trials": 28,
+            "effective_unflagged": 99
+          }
+        ]
+      },
+      "common": {
+        "available": true,
+        "support": [
+          {
+            "condition": "target",
+            "kept": 31,
+            "reference_trials": 32,
+            "flagged_trials": 8,
+            "effective_unflagged": 24
+          },
+          {
+            "condition": "standard",
+            "kept": 124,
+            "reference_trials": 128,
+            "flagged_trials": 28,
+            "effective_unflagged": 99
+          }
+        ]
+      },
+      "ica_seeds": {
+        "available": true,
+        "recommended_candidate_ids": [
+          5,
+          3,
+          3
+        ],
+        "recommended_objective": [
+          0.9503220126870916,
+          0.9480704202766095,
+          0.9476157829741332
+        ],
+        "same": false
+      },
+      "veog_blink_diagnostic": {
+        "available": true,
+        "veogThresholdUv": 50,
+        "nFlagged": 28,
+        "nUnflagged": 100,
+        "flaggedWithVeog": 24,
+        "unflaggedWithVeog": 36,
+        "flaggedMedianMaxVeog": 95.50792171456196,
+        "unflaggedMedianMaxVeog": 44.937484818986974
+      },
+      "errors": []
+    },
+    {
+      "subject": 16,
+      "source_job_id": 129821491582,
+      "completed": true,
+      "algorithm_commit": "7151821edf8a5a54c3167d7f18b66c530911b568",
+      "execution_commit": "a5aab337d5f8bbe7f9dbdaa41b4588b80dc91f8b",
+      "workflow_run": "42809789847",
+      "protocol_sha256": "bb65c9a522e9f45210e5ee941a669630b75587a5255664aa0f1402b572e89c6b",
+      "candidate_count": 26,
+      "feasible_count": 20,
+      "primary_diagnostic": "available",
+      "reasons": {},
+      "standard": {
+        "available": true,
+        "kept": [
+          29,
+          106
+        ],
+        "reported_difference_se": 1.4000263464024634,
+        "support": [
+          {
+            "condition": "11",
+            "kept": 29,
+            "reference_trials": 29,
+            "flagged_trials": 6,
+            "effective_unflagged": 23
+          },
+          {
+            "condition": "31",
+            "kept": 106,
+            "reference_trials": 116,
+            "flagged_trials": 25,
+            "effective_unflagged": 90
+          }
+        ]
+      },
+      "minimal": {
+        "available": true,
+        "support": [
+          {
+            "condition": "target",
+            "kept": 29,
+            "reference_trials": 29,
+            "flagged_trials": 6,
+            "effective_unflagged": 23
+          },
+          {
+            "condition": "standard",
+            "kept": 110,
+            "reference_trials": 116,
+            "flagged_trials": 25,
+            "effective_unflagged": 89
+          }
+        ]
+      },
+      "common": {
+        "available": true,
+        "support": [
+          {
+            "condition": "target",
+            "kept": 29,
+            "reference_trials": 29,
+            "flagged_trials": 6,
+            "effective_unflagged": 23
+          },
+          {
+            "condition": "standard",
+            "kept": 111,
+            "reference_trials": 116,
+            "flagged_trials": 25,
+            "effective_unflagged": 90
+          }
+        ]
+      },
+      "ica_seeds": {
+        "available": true,
+        "recommended_candidate_ids": [
+          25,
+          25,
+          25
+        ],
+        "recommended_objective": [
+          0.9899681233810084,
+          0.9899681233810084,
+          0.9899681233810084
+        ],
+        "same": true
+      },
+      "veog_blink_diagnostic": {
+        "available": true,
+        "veogThresholdUv": 50,
+        "nFlagged": 25,
+        "nUnflagged": 91,
+        "flaggedWithVeog": 23,
+        "unflaggedWithVeog": 50,
+        "flaggedMedianMaxVeog": 88.62765915054058,
+        "unflaggedMedianMaxVeog": 52.50377950022583
+      },
+      "errors": []
+    },
+    {
+      "subject": 17,
+      "source_job_id": 129823184294,
+      "completed": true,
+      "algorithm_commit": "7151821edf8a5a54c3167d7f18b66c530911b568",
+      "execution_commit": "a5aab337d5f8bbe7f9dbdaa41b4588b80dc91f8b",
+      "workflow_run": "42809789847",
+      "protocol_sha256": "bb65c9a522e9f45210e5ee941a669630b75587a5255664aa0f1402b572e89c6b",
+      "candidate_count": 24,
+      "feasible_count": 0,
+      "primary_diagnostic": "signal-shape-gate",
+      "reasons": {
+        "filters alone: peak latency shifted by 31 ms": 18,
+        "filters alone: component amplitude changed by 17%; filters alone: peak latency shifted by 31 ms; filters alone: artifactual deflection of 6%": 2,
+        "filters alone: component amplitude changed by 18%; filters alone: peak latency shifted by 31 ms; filters alone: artifactual deflection of 7%": 2,
+        "filters alone: component amplitude changed by 17%; filters alone: peak latency shifted by 31 ms; filters alone: artifactual deflection of 7%": 2
+      },
+      "standard": {
+        "available": false,
+        "kept": [],
+        "reported_difference_se": null,
+        "support": []
+      },
+      "minimal": {
+        "available": true,
+        "support": [
+          {
+            "condition": "target",
+            "kept": 26,
+            "reference_trials": 32,
+            "flagged_trials": 28,
+            "effective_unflagged": 4
+          },
+          {
+            "condition": "standard",
+            "kept": 109,
+            "reference_trials": 126,
+            "flagged_trials": 98,
+            "effective_unflagged": 27
+          }
+        ]
+      },
+      "common": {
+        "available": true,
+        "support": [
+          {
+            "condition": "target",
+            "kept": 32,
+            "reference_trials": 32,
+            "flagged_trials": 28,
+            "effective_unflagged": 4
+          },
+          {
+            "condition": "standard",
+            "kept": 126,
+            "reference_trials": 126,
+            "flagged_trials": 98,
+            "effective_unflagged": 28
+          }
+        ]
+      },
+      "ica_seeds": {
+        "available": false,
+        "recommended_candidate_ids": [],
+        "recommended_objective": [],
+        "same": null
+      },
+      "veog_blink_diagnostic": {
+        "available": false
+      },
+      "errors": []
+    },
+    {
+      "subject": 18,
+      "source_job_id": 129823701004,
+      "completed": true,
+      "algorithm_commit": "7151821edf8a5a54c3167d7f18b66c530911b568",
+      "execution_commit": "a5aab337d5f8bbe7f9dbdaa41b4588b80dc91f8b",
+      "workflow_run": "42809789847",
+      "protocol_sha256": "bb65c9a522e9f45210e5ee941a669630b75587a5255664aa0f1402b572e89c6b",
+      "candidate_count": 24,
+      "feasible_count": 0,
+      "primary_diagnostic": "icremove-execution-error-and-other-gates",
+      "reasons": {
+        "icremove(classes={Muscle;Eye;Heart;Line Noise;Channel Noise},threshold=auto): Unable to perform assignment because the left and right sides have a different number of elements.": 18,
+        "filters alone: component amplitude changed by 16%": 6
+      },
+      "standard": {
+        "available": false,
+        "kept": [],
+        "reported_difference_se": null,
+        "support": []
+      },
+      "minimal": {
+        "available": false,
+        "support": [
+          {
+            "condition": "target",
+            "kept": 0,
+            "reference_trials": 26,
+            "flagged_trials": 26,
+            "effective_unflagged": 0
+          },
+          {
+            "condition": "standard",
+            "kept": 9,
+            "reference_trials": 121,
+            "flagged_trials": 111,
+            "effective_unflagged": 9
+          }
+        ]
+      },
+      "common": {
+        "available": false,
+        "support": [
+          {
+            "condition": "target",
+            "kept": 0,
+            "reference_trials": 26,
+            "flagged_trials": 26,
+            "effective_unflagged": 0
+          },
+          {
+            "condition": "standard",
+            "kept": 9,
+            "reference_trials": 121,
+            "flagged_trials": 111,
+            "effective_unflagged": 9
+          }
+        ]
+      },
+      "ica_seeds": {
+        "available": false,
+        "recommended_candidate_ids": [],
+        "recommended_objective": [],
+        "same": null
+      },
+      "veog_blink_diagnostic": {
+        "available": false
+      },
+      "errors": []
+    },
+    {
+      "subject": 19,
+      "source_job_id": 129824046320,
+      "completed": true,
+      "algorithm_commit": "7151821edf8a5a54c3167d7f18b66c530911b568",
+      "execution_commit": "a5aab337d5f8bbe7f9dbdaa41b4588b80dc91f8b",
+      "workflow_run": "42809789847",
+      "protocol_sha256": "bb65c9a522e9f45210e5ee941a669630b75587a5255664aa0f1402b572e89c6b",
+      "candidate_count": 26,
+      "feasible_count": 20,
+      "primary_diagnostic": "available",
+      "reasons": {},
+      "standard": {
+        "available": true,
+        "kept": [
+          31,
+          121
+        ],
+        "reported_difference_se": 0.9281669172872057,
+        "support": [
+          {
+            "condition": "11",
+            "kept": 31,
+            "reference_trials": 31,
+            "flagged_trials": 15,
+            "effective_unflagged": 16
+          },
+          {
+            "condition": "31",
+            "kept": 121,
+            "reference_trials": 127,
+            "flagged_trials": 35,
+            "effective_unflagged": 92
+          }
+        ]
+      },
+      "minimal": {
+        "available": true,
+        "support": [
+          {
+            "condition": "target",
+            "kept": 31,
+            "reference_trials": 31,
+            "flagged_trials": 15,
+            "effective_unflagged": 16
+          },
+          {
+            "condition": "standard",
+            "kept": 127,
+            "reference_trials": 127,
+            "flagged_trials": 35,
+            "effective_unflagged": 92
+          }
+        ]
+      },
+      "common": {
+        "available": true,
+        "support": [
+          {
+            "condition": "target",
+            "kept": 31,
+            "reference_trials": 31,
+            "flagged_trials": 15,
+            "effective_unflagged": 16
+          },
+          {
+            "condition": "standard",
+            "kept": 127,
+            "reference_trials": 127,
+            "flagged_trials": 35,
+            "effective_unflagged": 92
+          }
+        ]
+      },
+      "ica_seeds": {
+        "available": true,
+        "recommended_candidate_ids": [
+          26,
+          26,
+          26
+        ],
+        "recommended_objective": [
+          0.6563131212867965,
+          0.6563131212867965,
+          0.6563131212867965
+        ],
+        "same": true
+      },
+      "veog_blink_diagnostic": {
+        "available": true,
+        "veogThresholdUv": 50,
+        "nFlagged": 35,
+        "nUnflagged": 92,
+        "flaggedWithVeog": 28,
+        "unflaggedWithVeog": 23,
+        "flaggedMedianMaxVeog": 88.40699946952444,
+        "unflaggedMedianMaxVeog": 42.547934846143285
+      },
+      "errors": []
+    },
+    {
+      "subject": 20,
+      "source_job_id": 129824886728,
+      "completed": true,
+      "algorithm_commit": "7151821edf8a5a54c3167d7f18b66c530911b568",
+      "execution_commit": "a5aab337d5f8bbe7f9dbdaa41b4588b80dc91f8b",
+      "workflow_run": "42809789847",
+      "protocol_sha256": "bb65c9a522e9f45210e5ee941a669630b75587a5255664aa0f1402b572e89c6b",
+      "candidate_count": 25,
+      "feasible_count": 19,
+      "primary_diagnostic": "available",
+      "reasons": {},
+      "standard": {
+        "available": true,
+        "kept": [
+          25,
+          91
+        ],
+        "reported_difference_se": 1.1202106061089723,
+        "support": [
+          {
+            "condition": "11",
+            "kept": 25,
+            "reference_trials": 31,
+            "flagged_trials": 9,
+            "effective_unflagged": 20
+          },
+          {
+            "condition": "31",
+            "kept": 91,
+            "reference_trials": 128,
+            "flagged_trials": 50,
+            "effective_unflagged": 59
+          }
+        ]
+      },
+      "minimal": {
+        "available": true,
+        "support": [
+          {
+            "condition": "target",
+            "kept": 17,
+            "reference_trials": 31,
+            "flagged_trials": 9,
+            "effective_unflagged": 17
+          },
+          {
+            "condition": "standard",
+            "kept": 94,
+            "reference_trials": 128,
+            "flagged_trials": 50,
+            "effective_unflagged": 71
+          }
+        ]
+      },
+      "common": {
+        "available": true,
+        "support": [
+          {
+            "condition": "target",
+            "kept": 31,
+            "reference_trials": 31,
+            "flagged_trials": 9,
+            "effective_unflagged": 22
+          },
+          {
+            "condition": "standard",
+            "kept": 128,
+            "reference_trials": 128,
+            "flagged_trials": 50,
+            "effective_unflagged": 78
+          }
+        ]
+      },
+      "ica_seeds": {
+        "available": true,
+        "recommended_candidate_ids": [
+          25,
+          25,
+          25
+        ],
+        "recommended_objective": [
+          0.7921085159367468,
+          0.8305829699714883,
+          0.8309756258466968
+        ],
+        "same": true
+      },
+      "veog_blink_diagnostic": {
+        "available": true,
+        "veogThresholdUv": 50,
+        "nFlagged": 50,
+        "nUnflagged": 78,
+        "flaggedWithVeog": 50,
+        "unflaggedWithVeog": 39,
+        "flaggedMedianMaxVeog": 235.11734617104372,
+        "unflaggedMedianMaxVeog": 49.681338847758916
+      },
+      "errors": []
+    },
+    {
+      "subject": 21,
+      "source_job_id": 129825441103,
+      "completed": true,
+      "algorithm_commit": "7151821edf8a5a54c3167d7f18b66c530911b568",
+      "execution_commit": "a5aab337d5f8bbe7f9dbdaa41b4588b80dc91f8b",
+      "workflow_run": "42809789847",
+      "protocol_sha256": "bb65c9a522e9f45210e5ee941a669630b75587a5255664aa0f1402b572e89c6b",
+      "candidate_count": 25,
+      "feasible_count": 19,
+      "primary_diagnostic": "ica-seed-recommendation-instability",
+      "reasons": {},
+      "standard": {
+        "available": true,
+        "kept": [
+          23,
+          99
+        ],
+        "reported_difference_se": 1.586303614337321,
+        "support": [
+          {
+            "condition": "11",
+            "kept": 23,
+            "reference_trials": 28,
+            "flagged_trials": 17,
+            "effective_unflagged": 9
+          },
+          {
+            "condition": "31",
+            "kept": 99,
+            "reference_trials": 126,
+            "flagged_trials": 58,
+            "effective_unflagged": 53
+          }
+        ]
+      },
+      "minimal": {
+        "available": true,
+        "support": [
+          {
+            "condition": "target",
+            "kept": 12,
+            "reference_trials": 28,
+            "flagged_trials": 17,
+            "effective_unflagged": 11
+          },
+          {
+            "condition": "standard",
+            "kept": 67,
+            "reference_trials": 126,
+            "flagged_trials": 58,
+            "effective_unflagged": 64
+          }
+        ]
+      },
+      "common": {
+        "available": true,
+        "support": [
+          {
+            "condition": "target",
+            "kept": 12,
+            "reference_trials": 28,
+            "flagged_trials": 17,
+            "effective_unflagged": 11
+          },
+          {
+            "condition": "standard",
+            "kept": 66,
+            "reference_trials": 126,
+            "flagged_trials": 58,
+            "effective_unflagged": 63
+          }
+        ]
+      },
+      "ica_seeds": {
+        "available": true,
+        "recommended_candidate_ids": [
+          25,
+          4,
+          4
+        ],
+        "recommended_objective": [
+          1.1216860427186497,
+          1.1267811138221286,
+          1.1328693196839221
+        ],
+        "same": false
+      },
+      "veog_blink_diagnostic": {
+        "available": true,
+        "veogThresholdUv": 50,
+        "nFlagged": 58,
+        "nUnflagged": 68,
+        "flaggedWithVeog": 55,
+        "unflaggedWithVeog": 10,
+        "flaggedMedianMaxVeog": 214.28150965188496,
+        "unflaggedMedianMaxVeog": 29.487670848364537
+      },
+      "errors": []
+    },
+    {
+      "subject": 22,
+      "source_job_id": 129827749776,
+      "completed": true,
+      "algorithm_commit": "7151821edf8a5a54c3167d7f18b66c530911b568",
+      "execution_commit": "a5aab337d5f8bbe7f9dbdaa41b4588b80dc91f8b",
+      "workflow_run": "42809789847",
+      "protocol_sha256": "bb65c9a522e9f45210e5ee941a669630b75587a5255664aa0f1402b572e89c6b",
+      "candidate_count": 26,
+      "feasible_count": 20,
+      "primary_diagnostic": "available",
+      "reasons": {},
+      "standard": {
+        "available": true,
+        "kept": [
+          17,
+          88
+        ],
+        "reported_difference_se": 0.9452471710922623,
+        "support": [
+          {
+            "condition": "11",
+            "kept": 17,
+            "reference_trials": 20,
+            "flagged_trials": 2,
+            "effective_unflagged": 16
+          },
+          {
+            "condition": "31",
+            "kept": 88,
+            "reference_trials": 118,
+            "flagged_trials": 15,
+            "effective_unflagged": 79
+          }
+        ]
+      },
+      "minimal": {
+        "available": true,
+        "support": [
+          {
+            "condition": "target",
+            "kept": 20,
+            "reference_trials": 20,
+            "flagged_trials": 2,
+            "effective_unflagged": 18
+          },
+          {
+            "condition": "standard",
+            "kept": 118,
+            "reference_trials": 118,
+            "flagged_trials": 15,
+            "effective_unflagged": 103
+          }
+        ]
+      },
+      "common": {
+        "available": true,
+        "support": [
+          {
+            "condition": "target",
+            "kept": 20,
+            "reference_trials": 20,
+            "flagged_trials": 2,
+            "effective_unflagged": 18
+          },
+          {
+            "condition": "standard",
+            "kept": 118,
+            "reference_trials": 118,
+            "flagged_trials": 15,
+            "effective_unflagged": 103
+          }
+        ]
+      },
+      "ica_seeds": {
+        "available": true,
+        "recommended_candidate_ids": [
+          26,
+          26,
+          26
+        ],
+        "recommended_objective": [
+          0.6683906845767394,
+          0.6683906845767394,
+          0.6683906845767394
+        ],
+        "same": true
+      },
+      "veog_blink_diagnostic": {
+        "available": true,
+        "veogThresholdUv": 50,
+        "nFlagged": 15,
+        "nUnflagged": 103,
+        "flaggedWithVeog": 5,
+        "unflaggedWithVeog": 20,
+        "flaggedMedianMaxVeog": 43.39102371878158,
+        "unflaggedMedianMaxVeog": 38.6183628603676
+      },
+      "errors": []
+    },
+    {
+      "subject": 23,
+      "source_job_id": 129828270988,
+      "completed": true,
+      "algorithm_commit": "7151821edf8a5a54c3167d7f18b66c530911b568",
+      "execution_commit": "a5aab337d5f8bbe7f9dbdaa41b4588b80dc91f8b",
+      "workflow_run": "42809789847",
+      "protocol_sha256": "bb65c9a522e9f45210e5ee941a669630b75587a5255664aa0f1402b572e89c6b",
+      "candidate_count": 24,
+      "feasible_count": 0,
+      "primary_diagnostic": "icremove-execution-error-and-other-gates",
+      "reasons": {
+        "icremove(classes={Muscle;Eye;Heart;Line Noise;Channel Noise},threshold=auto): Unable to perform assignment because the left and right sides have a different number of elements.": 18,
+        "filters alone: component amplitude changed by 16%": 6
+      },
+      "standard": {
+        "available": false,
+        "kept": [],
+        "reported_difference_se": null,
+        "support": []
+      },
+      "minimal": {
+        "available": false,
+        "support": [
+          {
+            "condition": "target",
+            "kept": 0,
+            "reference_trials": 31,
+            "flagged_trials": 31,
+            "effective_unflagged": 0
+          },
+          {
+            "condition": "standard",
+            "kept": 12,
+            "reference_trials": 135,
+            "flagged_trials": 120,
+            "effective_unflagged": 11
+          }
+        ]
+      },
+      "common": {
+        "available": false,
+        "support": [
+          {
+            "condition": "target",
+            "kept": 0,
+            "reference_trials": 31,
+            "flagged_trials": 31,
+            "effective_unflagged": 0
+          },
+          {
+            "condition": "standard",
+            "kept": 12,
+            "reference_trials": 135,
+            "flagged_trials": 120,
+            "effective_unflagged": 11
+          }
+        ]
+      },
+      "ica_seeds": {
+        "available": false,
+        "recommended_candidate_ids": [],
+        "recommended_objective": [],
+        "same": null
+      },
+      "veog_blink_diagnostic": {
+        "available": false
+      },
+      "errors": []
+    }
+  ]
+}
