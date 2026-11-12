@@ -1,0 +1,26 @@
+name: PR51 ICA topology A1 JSON singleton regression (no EEG refit)
+on:
+  push:
+    branches: [codex/pr51-ica-topography-readout-a1-20261112]
+    paths:
+      - benchmarks/compare_ica_topography.py
+      - tests/test_ica_topography.py
+      - docs/PR51_ICA_TOPOGRAPHY_READOUT_A1_20261112.md
+      - .github/workflows/pr51-ica-topography-a1.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  parser-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Prove singleton, permutation, sign, no-op and abstention semantics
+        run: |
+          python -m unittest discover -s tests -p test_ica_topography.py -v
+          python -m unittest discover -s tests -p test_ica_mechanism.py -v
+          git diff --check
