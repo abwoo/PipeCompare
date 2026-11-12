@@ -171,6 +171,9 @@ def main():
                 "subject":z["subject"],"candidateId":cand["candidateId"],
                 "weakMatchedComponentsTraining":bad,
                 "weakComponentsWithRemovalDiscordanceTraining":affected,
+                "weakBothKeptTraining":sum(s["lowCorrelationBothKept"] for s in train),
+                "weakBothRemovedTraining":sum(s["lowCorrelationBothRemoved"] for s in train),
+                "weakICLabelClassDiscordantTraining":sum(s["lowCorrelationClassDiscordant"] for s in train),
                 "lowestCorrelationTraining":min(s["minimumCorrelation"] for s in train),
                 "allSeedWeakComponents":sum(s["belowPoint90"] for s in cand["starts"])}))
     print("PR51_COMPONENT_OUTLIER_DECISION",json.dumps({
