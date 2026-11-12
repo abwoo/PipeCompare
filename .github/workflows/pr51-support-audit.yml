@@ -3,6 +3,7 @@ on:
   push:
     branches: [codex/pr51-support-audit-20261112]
     paths:
+      - benchmarks/erpcore_pilot.m
       - benchmarks/audit_erpcore_support.py
       - tests/test_erpcore_support_audit.py
       - benchmarks/validate_veog_support.py
@@ -17,8 +18,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Pin EOG diagnostic scientific dependencies
-        run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Pin EOG diagnostic scientific dependencies to binary distributions
+        run: python -m pip install --only-binary=:all: numpy==2.2.6 scipy==1.15.3
       - name: Check support accounting without EEG or threshold changes
         run: |
           python -m unittest discover -s tests -p test_erpcore_support_audit.py -v
