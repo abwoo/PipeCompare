@@ -1223,6 +1223,18 @@ obj = [T.objective(ids) nan(numel(ids), n)]; rec = [k nan(1, n)];
 % to candidate scoring, ranking, tie-breaking, or the random seed schedule.
 measurements = cell(1, n + 1);
 measurements{1} = seedMeasureOfRecommendation(allc, k, ref, 0, R.table);
+% The original Rank.run status enforces shape/latency/retention/eye-bias
+% constraints. The independent P3 effective-unflagged support floor is
+% stored separately, so a finite objective alone can never qualify.
+seedStatus = [T.status(ids) repmat({''}, numel(ids), n)];
+seedStratum = [T.stratum(ids) repmat({''}, numel(ids), n)];
+seedSupportPass = false(numel(ids), n + 1);
+allMeasures = cell(numel(ids), n + 1);
+for j = 1:numel(ids)
+    z = seedMeasureOfRecommendation(allc, ids(j), ref, 0, R.table);
+    allMeasures{j,1} = z;
+    seedSupportPass(j,1) = isSeedSupportEligible(z);
+end
 ro = opts; ro.nSplits = 0;
 for seed = 1:n
     c2 = allc; cx = ctx; cx.icaSeed = seed;
@@ -1236,11 +1248,27 @@ for seed = 1:n
     end
     R2 = pipecompare.eval.Rank.run(c2, ref, ro, levelsOf(env.leaves));
     obj(:, seed + 1) = R2.table.objective(ids);
+    seedStatus(:,seed + 1) = R2.table.status(ids);
+    seedStratum(:,seed + 1) = R2.table.stratum(ids);
+    for j = 1:numel(ids)
+        z = seedMeasureOfRecommendation(c2, ids(j), ref, seed, R2.table);
+        allMeasures{j,seed + 1} = z;
+        seedSupportPass(j,seed + 1) = isSeedSupportEligible(z);
+    end
     if ~isempty(R2.recommended), rec(seed + 1) = R2.recommended; end
     measurements{seed + 1} = seedMeasureOfRecommendation(c2, R2.recommended, ref, seed, R2.table);
 end
+robust = pipecompare.eval.IcaRobust.select(ids, obj, seedStatus, seedStratum, seedSupportPass);
+if strcmp(robust.status,'selected')
+    j = find(ids == robust.candidateId,1);
+    robust.seedMeasurements = allMeasures(j,:);
+else
+    robust.seedMeasurements = {};
+end
 out = struct('seeds', 1:n, 'ids', ids(:)', 'objective', obj, 'recommended', rec, ...
-    'same', all(rec == k), 'measurements', {measurements});
+    'same', all(rec == k), 'measurements', {measurements}, ...
+    'statusBySeed', {seedStatus}, 'stratumBySeed', {seedStratum}, ...
+    'supportPassBySeed', seedSupportPass, 'robust', robust);
 ch = max(abs(obj(:, 2:end) ./ obj(:, 1) - 1), [], 2);
 if out.same
     pipecompare.utils.log(['ICA check: with ICA started in %d other way(s), the same pipeline (%d) is recommended; ', ...
@@ -1252,6 +1280,14 @@ else
     pipecompare.utils.log(['ICA check: with ICA started in another way, %s would be recommended instead of %d: ', ...
         'this recommendation depends on where ICA starts.'], alt, k);
 end
+end
+
+function yes = isSeedSupportEligible(z)
+% Same original >=5 effective HMM-unflagged epochs PER condition; an
+% unavailable or NaN result must not be promoted to a valid P3 pair.
+eff = z.effectiveUnflagged;
+yes = z.hasMeasurement && isnumeric(eff) && ~isempty(eff) && ...
+    all(isfinite(eff)) && all(eff >= 5);
 end
 
 function z = seedMeasureOfRecommendation(cands, idx, ref, seed, rankTable)
