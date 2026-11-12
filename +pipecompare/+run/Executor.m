@@ -1281,6 +1281,15 @@ if strcmp(familyRobust.status,'selected')
 else
     familyRobust.seedMeasurements = {};
 end
+% Research-only independent replication: two NONOVERLAPPING groups of
+% ICA starts {0,1,2} and {3,4,5}, using all original science gates.
+% The original simple-mode n=2 and original recommendation remain unchanged.
+independentGroups = [];
+if n == 5 && strcmp(getenv('PR51_DEV_SIX_SEED_AUDIT'),'1')
+    independentGroups = pipecompare.eval.IcaIndependentGroups.compare( ...
+        ids,obj,seedStatus,seedStratum,seedSupportPass, ...
+        estimatorFamilies,rec,allMeasures);
+end
 % MATLAB JSON encoding flattens 2-D cell arrays of text. Emit one
 % structured record per candidate so each seed's status stays aligned with
 % the same source candidate and support mask, independent of serializer.
@@ -1300,7 +1309,7 @@ out = struct('seeds', 1:n, 'ids', ids(:)', 'objective', obj, 'recommended', rec,
     'statusBySeed', {seedStatus}, 'stratumBySeed', {seedStratum}, ...
     'supportPassBySeed', seedSupportPass, ...
     'candidateSeedAudit', {candidateSeedAudit}, 'robust', robust, ...
-    'familyRobust', familyRobust);
+    'familyRobust', familyRobust, 'independentGroups', independentGroups);
 ch = max(abs(obj(:, 2:end) ./ obj(:, 1) - 1), [], 2);
 if out.same
     pipecompare.utils.log(['ICA check: with ICA started in %d other way(s), the same pipeline (%d) is recommended; ', ...
