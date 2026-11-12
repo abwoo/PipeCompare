@@ -1,0 +1,82 @@
+name: PR51 scientific ICA six-start real EEG readout with original-run parity
+on:
+  push:
+    branches: [codex/pr51-ica-science-recorder-20261112]
+    paths:
+      - .github/workflows/pr51-ica-science-real.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned scientific analysis dependencies
+        run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Verify observer code before reading new EEG outputs
+        run: |
+          python -m unittest discover -s tests -p test_ica_science.py -v
+          python -m unittest discover -s tests -p test_ica_unseen_seeds.py -v
+          python -m unittest discover -s tests -p test_ica_support_integrity.py -v
+  real:
+    needs: unit
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        subject: [11,15,21]
+    uses: ./.github/workflows/pr51-ica-science-record.yml
+    with:
+      subject: ${{ matrix.subject }}
+  collect:
+    if: always()
+    needs: real
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download preserved scientific and failure artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pr51-ica-science-dev-*-attempt-*
+          path: evidence
+      - name: Audit complete science evidence across predefined development subjects
+        run: |
+          python - <<'PYCODE'
+          import json
+          from pathlib import Path
+          files=sorted(Path('evidence').rglob('ica_science_validated.json'))
+          rows=[json.loads(p.read_text()) for p in files]
+          subject_ids={r['subject'] for r in rows}
+          verdict={
+            'study':'development-only ICA six-start read-only science recorder',
+            'original20SubjectVerdict':'PARTIAL',
+            'original20SubjectPairs':15,
+            'sourceRun':43169562528,
+            'originalProductionChanged':False,
+            'newParticipantsEvaluated':False,
+            'confirmationAuthorized':False,
+            'allExpectedRecordsPresent':len(rows)==3 and subject_ids=={11,15,21},
+            'subjects':[{k:r[k] for k in ('subject','identityErrors','scienceFailures',
+                       'unalteredFrozenRankAndEstimates',
+                       'allPredeclaredFeasibleScienceComplete')}
+                       for r in rows]}
+          Path('summary').mkdir(exist_ok=True)
+          Path('summary/ica_science_collection.json').write_text(json.dumps(verdict,indent=2))
+          print('PR51_ICA_SCIENCE_COLLECT',json.dumps(verdict))
+          assert verdict['allExpectedRecordsPresent'],'Scientific recorder source incomplete'
+          assert all(r['unalteredFrozenRankAndEstimates'] and
+                     r['allPredeclaredFeasibleScienceComplete'] for r in rows),                      'Scientific recorder did not preserve original data or complete selected science'
+          PYCODE
+      - name: Archive scientific pass/fail verdict
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-ica-science-collection-${{ github.run_id }}
+          path: summary/
+          if-no-files-found: warn
+          retention-days: 90
