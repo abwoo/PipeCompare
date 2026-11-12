@@ -1,0 +1,40 @@
+name: PR51 original ERP CORE trial-support audit
+on:
+  push:
+    branches:
+      - codex/pr51-icremove-fix-20261112
+    paths:
+      - benchmarks/audit_erpcore_support.py
+      - .github/workflows/pr51-support-audit.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify exact original 20-subject support evidence, no EEG recomputation
+        run: |
+          python benchmarks/audit_erpcore_support.py \
+            --source-dir benchmarks/results/erpcore_rootcause_20261112 \
+            --out support-audit
+          python - <<'PYCODE'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('support-audit/support_audit.json').read_text())
+          assert r['n_valid']==15
+          assert len(r['records'])==20
+          assert sorted([x['subject'] for x in r['records'] if not x['supports_complete_comparison']]) == [4,8,17,18,23]
+          print('PR51_SUPPORT_AUDIT_PASS 20 original records, 15 valid pairs')
+          PYCODE
+      - name: Upload descriptive support report
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-original-trial-support-audit
+          path: support-audit/
+          retention-days: 90
