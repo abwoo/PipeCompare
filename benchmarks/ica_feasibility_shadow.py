@@ -18,6 +18,24 @@ def isfinite(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
+def seed_grid(values, candidates, label):
+    """Accept MATLAB jsonencode's column-major flattened cell arrays.
+
+    Numeric objective tables are true Nx3 arrays, but MATLAB encodes Nx3
+    cell arrays as a flat list (seed0 candidates, seed1, seed2). Do not
+    reshape row-major or cross candidate/seed scientific verdicts.
+    """
+    if not isinstance(values, list):
+        raise ValueError(f"{label} must be a JSON array")
+    if (len(values)==candidates
+            and all(isinstance(row,list) and len(row)==SEEDS for row in values)):
+        return values
+    if len(values)==candidates*SEEDS:
+        return [[values[seed*candidates+i] for seed in range(SEEDS)]
+                for i in range(candidates)]
+    raise ValueError(f"{label} candidate/seed alignment mismatch")
+
+
 def shadow(study):
     if not study.get("completed") or study.get("errors"):
         raise ValueError("incomplete MATLAB source run")
@@ -25,14 +43,14 @@ def shadow(study):
     if not isinstance(check, dict):
         raise ValueError("seed-check data unavailable")
     ids, scores = check["ids"], check["objective"]
-    statuses, strata = check["rankStatus"], check["strata"]
-    measure = check["candidateMeasurements"]
     n = len(ids)
-    if n == 0 or len(set(ids)) != n or not all(len(a)==n for a in (scores,statuses,strata,measure)):
+    if n == 0 or len(set(ids)) != n or len(scores) != n:
         raise ValueError("misaligned candidate IDs")
-    if not all(all(isinstance(r,list) and len(r)==SEEDS for r in arr)
-               for arr in (scores,statuses,strata,measure)):
-        raise ValueError("expected three aligned seed columns")
+    if not all(isinstance(row,list) and len(row)==SEEDS for row in scores):
+        raise ValueError("objective must have three aligned seed columns")
+    statuses = seed_grid(check["rankStatus"], n, "rankStatus")
+    strata = seed_grid(check["strata"], n, "strata")
+    measure = seed_grid(check["candidateMeasurements"], n, "candidateMeasurements")
     initial = check["recommended"][0]
     if initial is None:
         raise ValueError("baseline recommendation absent")
