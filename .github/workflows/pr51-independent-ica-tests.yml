@@ -1,0 +1,38 @@
+name: PR51 two disjoint ICA seed-triplets science and reproducibility tests
+on:
+  push:
+    branches: [codex/pr51-independent-ica-triplets-20261112]
+    paths:
+      - +pipecompare/+eval/IcaIndependentGroups.m
+      - +pipecompare/+run/Executor.m
+      - +pipecompare/+simple/Presets.m
+      - tests/test_ica_independent_groups.m
+      - .github/workflows/pr51-independent-ica-tests.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  matlab-unit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+          products: Signal_Processing_Toolbox
+      - name: Run scientific feasibility and independent seed-triplet MATLAB regressions
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            cd PipeCompare;addpath(pwd);addpath(fullfile(pwd,'tests'));
+            r1=runtests(fullfile('tests','test_ica_robust.m'),'OutputDetail',3);
+            r2=runtests(fullfile('tests','test_ica_robust_family.m'),'OutputDetail',3);
+            r3=runtests(fullfile('tests','test_ica_independent_groups.m'),'OutputDetail',3);
+            count=numel(r1)+numel(r2)+numel(r3);
+            good=sum([r1.Passed])+sum([r2.Passed])+sum([r3.Passed]);
+            bad=sum([r1.Failed])+sum([r2.Failed])+sum([r3.Failed]);
+            fprintf('PR51_INDEPENDENT_SEED_TESTS total=%d passed=%d failed=%d\n',count,good,bad);
+            assert(count==28 && good==28 && bad==0,'PipeCompare:CI','Independent seed science-gate regression failed');
