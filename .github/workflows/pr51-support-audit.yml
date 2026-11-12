@@ -1,0 +1,51 @@
+name: PR51 exploratory condition and trial support audit
+on:
+  push:
+    branches: [codex/pr51-support-audit-20261112]
+    paths:
+      - benchmarks/audit_erpcore_support.py
+      - tests/test_erpcore_support_audit.py
+      - .github/workflows/pr51-support-audit.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test-auditor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check support accounting without EEG or threshold changes
+        run: python -m unittest discover -s tests -p test_erpcore_support_audit.py -v
+  record:
+    needs: test-auditor
+    name: Real P3 support diagnostic subject ${{ matrix.subject }}
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        subject: [4, 8]
+    uses: ./.github/workflows/pr51-icthreshold-dev-record.yml
+    with:
+      subject: ${{ matrix.subject }}
+  audit:
+    needs: record
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pr51-icthreshold-dev-*-attempt-*
+          path: evidence
+      - name: Reconcile per-trial support; never impute missing Standard arms
+        shell: bash
+        run: |
+          mapfile -t files < <(find evidence -name result.json | sort)
+          test "${#files[@]}" = 2 || { echo "expected 2 distinct subject records"; exit 1; }
+          python benchmarks/audit_erpcore_support.py --inputs "${files[@]}" --out output
+          cat output/summary.json
+      - name: Preserve trial-level evidence as exploratory artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-support-audit-${{ github.run_id }}
+          path: output/
+          retention-days: 90
