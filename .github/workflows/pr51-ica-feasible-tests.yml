@@ -1,0 +1,31 @@
+name: PR51 scientific-feasibility ICA robust selector MATLAB tests
+on:
+  push:
+    branches: [codex/pr51-ica-feasible-20261112]
+    paths:
+      - +pipecompare/+eval/IcaRobust.m
+      - tests/test_ica_robust.m
+      - .github/workflows/pr51-ica-feasible-tests.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  matlab-tests:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+          products: Signal_Processing_Toolbox
+      - name: Verify all scientific and missingness gates before promotion
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            cd PipeCompare;addpath(pwd);addpath(fullfile(pwd,'tests'));
+            r=runtests(fullfile('tests','test_ica_robust.m'),'OutputDetail',3);
+            fprintf('PR51_ICA_ROBUST_TESTS total=%d passed=%d failed=%d\n',numel(r),sum([r.Passed]),sum([r.Failed]));
+            assert(numel(r)==13 && all([r.Passed]),'PipeCompare:CI','Scientific ICA selector failed tests');
