@@ -1,0 +1,126 @@
+name: PR51 fixed ICA PCA rank across starts — subject 11 development stress
+on:
+  push:
+    branches: [codex/pr51-ica-ranklock-20261112]
+    paths:
+      - +pipecompare/+run/IcaRankLock.m
+      - +pipecompare/+run/Steps.m
+      - tests/test_ica_rank_lock.m
+      - docs/PR51_ICA_RANKLOCK_PREDEFINED_20261112.md
+      - .github/workflows/pr51-ica-ranklock.yml
+      - .github/workflows/pr51-ica-unseen-record.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  unit:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Original ICA selection isolation tests
+        run: |
+          python -m unittest discover -s tests -p test_ica_unseen_seeds.py -v
+          python -m unittest discover -s tests -p test_ica_feasibility_shadow.py -v
+          git diff --check
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+      - name: Prove 3000-sample PCA rank can change after permutation
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(pwd);results=runtests(fullfile(pwd,'tests','test_ica_rank_lock.m'));
+            disp(results);assert(all([results.Passed]),'PR51:RankLock','Rank-lock numeric tests failed.');
+      - name: Scientific fingerprint regression remains unchanged
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(pwd);results=runtests(fullfile(pwd,'tests','test_ica_fingerprint.m'));
+            disp(results);assert(all([results.Passed]),'PR51:RankLock','ICA fingerprint tests failed.');
+  real:
+    needs: unit
+    name: Subject 11 six-start rank-controlled development EEG
+    uses: ./.github/workflows/pr51-ica-unseen-record.yml
+    with:
+      subject: 11
+  collect:
+    needs: real
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pr51-icthreshold-dev-11-attempt-1
+          path: evidence-new
+      - uses: actions/download-artifact@v4
+        with:
+          repository: abwoo/PipeCompare
+          run-id: 43178065954
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: pr51-icthreshold-dev-11-attempt-1
+          path: evidence-original
+      - name: Require unchanged seed 0 and assess rank-lock effect per actual fit
+        run: |
+          python - <<'PYCODE'
+          import json,os,sys,math
+          from pathlib import Path
+          sys.path.insert(0,'benchmarks')
+          from validate_ica_unseen_seeds import grid
+          newfiles=list(Path('evidence-new').rglob('result.json'))
+          oldfiles=list(Path('evidence-original').rglob('result.json'))
+          assert len(newfiles)==len(oldfiles)==1, (newfiles,oldfiles)
+          new=json.loads(newfiles[0].read_text())
+          old=json.loads(oldfiles[0].read_text())
+          assert new['completed'] and not new['errors']
+          assert new['executionCommit']==os.environ['GITHUB_SHA']
+          assert old['executionCommit']=='bee8cf0bd24a439429c46b0075d60382b533ff9d'
+          assert new['subject']==old['subject']==11
+          assert new['protocolSha256']==old['protocolSha256']
+          for key in ('source_set_sha256','source_fdt_sha256','source_events_sha256'):
+              assert new['source'][key]==old['source'][key], key
+          ni=new['icaSeedCheck'];oi=old['icaSeedCheck']
+          assert ni['recommended'][0]==oi['recommended'][0]==12
+          baseline_diff=new['erp']['differenceAmplitude']-old['erp']['differenceAmplitude']
+          assert abs(baseline_diff)<1e-8,baseline_diff
+          n=len(ni['ids'])
+          grids=grid(ni['icaComponentFingerprints'],n,'icaComponentFingerprints')
+          dims={}
+          for cid in (12,25):
+              at=ni['ids'].index(cid)
+              mapshapes=[]
+              for s,z in enumerate(grids[at]):
+                  assert z['available'],f'{cid},seed{s}:{z["reason"]}'
+                  arr=z['maps']
+                  shape=[len(arr),len(arr[0])]
+                  mapshapes.append(shape)
+              dims[str(cid)]=mapshapes
+              print('PR51_ICA_FIXED_RANK',json.dumps({
+                  'subject':11,'candidate':cid,'seedMapShapes':mapshapes,
+                  'allEqual':len({tuple(v) for v in mapshapes})==1}))
+          res={'subject':11,'newExecutionCommit':new['executionCommit'],
+               'priorRun':43178065954,'priorSHA':old['executionCommit'],
+               'baselineSameCandidate':True,'baselineP300AbsDifferenceUv':abs(baseline_diff),
+               'rankLockedDimensions':dims,
+               'rankStable12':len({tuple(x) for x in dims['12']})==1,
+               'rankStable25':len({tuple(x) for x in dims['25']})==1,
+               'allSixRankScientificFeasibilityNotProven':True,
+               'originalPR51Verdict':'PARTIAL','promote':False,
+               'newHeldoutSubjects':0}
+          Path('output').mkdir(exist_ok=True)
+          Path('output/ica_ranklock_dev11.json').write_text(json.dumps(res,indent=2))
+          PYCODE
+      - name: Preserve negative or positive rank-lock evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-ranklock-dev11-${{ github.run_id }}
+          path: output/
+          retention-days: 90
+          if-no-files-found: warn
