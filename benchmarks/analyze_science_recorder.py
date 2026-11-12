@@ -85,6 +85,8 @@ def examine(result,science_report):
     subj=int(result["subject"])
     c=result["icaSeedCheck"];ids=c["ids"]
     ms=grid(c["candidateMeasurements"],len(ids),"candidateMeasurements")
+    bootstrap_by_pair={(x["candidateId"],x["seed"]):x.get("bootstrap")
+                       for x in science_report["rows"] if x["valid"]}
     rows=[]
     for name,ident in RECIPES[subj].items():
         if ident not in ids:raise ValueError("Named recipe not present in ICA candidate roster")
@@ -92,6 +94,9 @@ def examine(result,science_report):
         first=values[0].get("science")
         if not isinstance(first,dict) or not first.get("available"):
             raise ValueError("Baseline seed ICA science unavailable")
+        seed_zero_boot=bootstrap_by_pair.get((ident,0))
+        if not isinstance(seed_zero_boot,dict):
+            raise ValueError("Seed-zero bootstrap SME missing")
         seeds=[]
         for seed in (3,4,5):
             z=values[seed].get("science")
@@ -103,9 +108,16 @@ def examine(result,science_report):
                 problems=[]
             except (ValueError,KeyError,TypeError) as exc:
                 ic=None;wp=None;problems=[str(exc)]
-            seeds.append({"seed":seed,"topology":ic,"waveform":wp,"unavailable":problems})
+            bootstrap=bootstrap_by_pair.get((ident,seed))
+            if not isinstance(bootstrap,dict) or not isinstance(bootstrap.get("se"),(int,float)):
+                problems.append("independent-seed-bootstrap-unavailable")
+            seeds.append({"seed":seed,"topology":ic,"waveform":wp,
+                          "bootstrapSMEuv":bootstrap.get("se") if bootstrap else None,
+                          "bootstrapEffectiveCounts":bootstrap.get("sampleCounts") if bootstrap else None,
+                          "unavailable":problems})
         rows.append({"recipe":name,"candidateId":ident,
-                     "baseSeed":0,"independentSeeds":seeds})
+                     "baseSeed":0,"seedZeroBootstrapSMEuv":seed_zero_boot["se"],
+                     "independentSeeds":seeds})
     return {"subject":subj,"candidateStudies":rows,
             "selectionAlgorithmChanged":False,
             "newParticipantsUsed":False}
@@ -142,6 +154,8 @@ def main():
                     "medianAbsTopoCorrelation":s["topology"]["medianAbsTopoCorrelation"] if s["topology"] else None,
                     "removedJaccard":s["topology"]["removedMatchJaccard"] if s["topology"] else None,
                     "fullEpochRmsDifference":s["waveform"]["fullEpochRmsDifferenceUv"] if s["waveform"] else None,
+                    "seedZeroBootstrapSMEuv":rec["seedZeroBootstrapSMEuv"],
+                    "unseenBootstrapSMEuv":s["bootstrapSMEuv"],
                     "unavailable":s["unavailable"]}))
 
 
