@@ -1,0 +1,30 @@
+name: PR51 stage-2 corrected HMM VEOG MATLAB diagnostic (v2)
+on:
+  push:
+    branches:
+      - codex/pr51-effective-support-20261112
+    paths:
+      - benchmarks/p3_hmm_veog_diagnostic.m
+      - tests/test_p3_hmm_veog_diagnostic.m
+      - .github/workflows/pr51-hmm-veog-matlab-v2.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+      - name: Confirm target and standard both represented in v2 diagnostic
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'benchmarks'));addpath(fullfile(pwd,'tests'));
+            r=runtests(fullfile('tests','test_p3_hmm_veog_diagnostic.m'),'OutputDetail',3);
+            fprintf('PR51_HMM_VEOG_V2_TESTS total=%d passed=%d failed=%d\n', ...
+                numel(r),sum([r.Passed]),sum([r.Failed]));
+            assert(numel(r)==6 && all([r.Passed]),'PR51:CI','Versioned VEOG target/standard diagnostic regression failed.');
