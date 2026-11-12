@@ -1,0 +1,40 @@
+name: PR51 later task-event support inventory — no EEG processed
+on:
+  push:
+    branches: [codex/pr51-support-extension-diagnostic-20261112]
+    paths:
+      - benchmarks/audit_later_erpcore_events.py
+      - tests/test_later_erpcore_events.py
+      - docs/PR51_LATER_EVENT_SUPPORT_PREDEFINED_20261112.md
+      - .github/workflows/pr51-later-event-support.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  events:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Prove task-event rules remain distinct from EEG eligibility
+        run: |
+          python -m unittest discover -s tests -p test_later_erpcore_events.py -v
+          python -m py_compile benchmarks/audit_later_erpcore_events.py
+          git diff --check
+      - name: Inspect source metadata and SHA-pinned correct task-event counts
+        timeout-minutes: 15
+        run: |
+          python benchmarks/audit_later_erpcore_events.py \
+            --out output/later_event_support.json
+      - name: Preserve positive and negative support evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-later-event-support-${{ github.run_id }}
+          path: output/
+          retention-days: 90
+          if-no-files-found: warn
