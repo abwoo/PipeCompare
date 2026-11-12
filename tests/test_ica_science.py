@@ -23,12 +23,12 @@ def synth():
     cond=[
       {"name":"target","referenceIds":[12,13,14],"retainedIds":[12,13,14],
        "referenceFlagged":[False,False,False],
-       "trialScores":[score0,score0,score0],"trialWeights":[1,1,1],
+       "trialScores":[score0-.2,score0,score0+.2],"trialWeights":[1,1,1],
        "usedCount":3,"effectiveN":3,"meanWaveform":wave0.tolist(),
        "windowMean":score0,"originalEstimate":score0},
       {"name":"standard","referenceIds":[21,22,23],"retainedIds":[21,22,23],
        "referenceFlagged":[False,False,False],
-       "trialScores":[0,0,0],"trialWeights":[1,1,1],
+       "trialScores":[-.1,0,.1],"trialWeights":[1,1,1],
        "usedCount":3,"effectiveN":3,"meanWaveform":wave1.tolist(),
        "windowMean":0,"originalEstimate":0}]
     measure={"candidateId":4,"seed":0,"gain":1.,
@@ -42,7 +42,7 @@ class ScienceRecorderTest(unittest.TestCase):
     def test_finite_science_snapshot_and_bootstrap(self):
         x=validate_science(synth(),11,4,0)
         self.assertTrue(x["complete"],x["errors"])
-        self.assertAlmostEqual(x["bootstrapSE"],0.)
+        self.assertGreater(x["bootstrapSE"],0.)
     def test_modified_p3_waveform_rejected(self):
         x=synth();x["science"]["conditions"][0]["meanWaveform"][60]+=999.
         got=validate_science(x,11,4,0)
