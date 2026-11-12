@@ -50,6 +50,9 @@ def inspect(study):
     d["strata"]=[r[:3] for r in strata]
     d["candidateMeasurements"]=[r[:3] for r in measures]
     d["recommended"]=c["recommended"][:3]
+    # Do not carry a six-start recommendation-stability flag into the
+    # selection-only three-start report (reporting leakage).
+    d["same"]=len(set(d["recommended"]))==1
     chosen=shadow(first)
     target=chosen["shadowCandidate"]
     original=c["recommended"][0]
