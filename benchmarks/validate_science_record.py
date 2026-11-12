@@ -37,6 +37,8 @@ def inspect_one(measure,ident,seed):
     if len(times)<10 or len(diff)!=len(times) or not np.isfinite(times).all() or not np.isfinite(diff).all():
         failures.append("full-waveform-shape-invalid")
     ica=science.get("ica",[])
+    # MATLAB jsonencode emits scalar 1x1 structs as objects, not arrays.
+    if isinstance(ica,dict): ica=[ica]
     if not isinstance(ica,list) or not ica:
         failures.append("ica-decomposition-missing")
     else:
@@ -47,6 +49,7 @@ def inspect_one(measure,ident,seed):
             if W.ndim!=2 or sphere.ndim!=2 or mix.ndim!=2 or W.shape[0]!=mix.shape[1] or not np.isfinite(mix).all():
                 failures.append("ica-topography-shape-invalid")
             ids=comp.get("removedIndices",[])
+            if isinstance(ids,(int,float)) and math.isfinite(ids):ids=[ids]
             if not isinstance(ids,list) or any(not isinstance(k,int) or k<1 or k>W.shape[0] for k in ids):
                 failures.append("removed-component-id-invalid")
     per_condition=[]
