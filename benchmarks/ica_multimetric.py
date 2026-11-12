@@ -152,6 +152,13 @@ def evaluate(source, science):
     orig=candidates[baseline_id]
     results=[]
     if not orig["eligible"]:
+        # A failed baseline is an outcome, not a reason to hide independently
+        # observed candidate eligibility. Never choose a candidate here.
+        for ident in COHORT[sid][1:]:
+            x=candidates[ident]
+            results.append({"candidateId":ident,"passesTrainingConstraints":False,
+                            "failures":["ineligible-original-comparator",*x["failures"]],
+                            "trainingMetrics":x["metrics"]})
         decision={"kind":"abstain","candidateId":None,"reason":"ineligible-original-baseline"}
     else:
         eligible=[]
@@ -231,6 +238,8 @@ def main():
     for row in result["results"]:
         print("PR51_MULTI_ICA_SUBJECT",json.dumps({
             "subject":row["subject"],"decision":row["decision"],
+            "originalTrainingFailures":row["originalTraining"]["failures"],
+            "originalTrainingMetrics":row["originalTraining"]["metrics"],
             "alternativeTraining":[{"candidateId":x["candidateId"],"passes":x["passesTrainingConstraints"],"failures":x["failures"]} for x in row["alternativeTraining"]],
             "assessmentPass":row["assessment"]["passesProtectedNonregression"],
             "assessmentFailures":row["assessment"]["failureReasons"]}))
