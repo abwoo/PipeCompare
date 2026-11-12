@@ -14,7 +14,7 @@ def sample():
          "differenceEstimate":1.2, "gain":0.8, "correctedDifferenceEstimate":1.5}
         for j in range(3)
     ]
-    return {"subject":21,"completed":True,"errors":[],"notRun":0,
+    data = {"subject":21,"completed":True,"errors":[],"notRun":0,
             "icaSeedCheck":{
                 "recommended":[25,4,4],"same":False,
                 "measurements":[{"seed":i} for i in range(3)],
@@ -30,6 +30,14 @@ def sample():
                     "reason":"all-seed-Rank-run-feasible-and-finite",
                     "seedMeasurements":ms}
             }}
+    c=data["icaSeedCheck"]
+    c["candidateSeedAudit"]=[
+        {"candidateId":idx,"objective":objective,
+         "status":status,"supportPass":support,"stratum":group}
+        for idx,objective,status,support,group in zip(
+            c["ids"],c["objective"],c["statusBySeed"],
+            c["supportPassBySeed"],c["stratumBySeed"])]
+    return data
 
 
 class GateAuditTests(unittest.TestCase):
@@ -41,13 +49,13 @@ class GateAuditTests(unittest.TestCase):
 
     def test_single_failed_shape_gate_invalidates_recommendation(self):
         x=sample()
-        x["icaSeedCheck"]["statusBySeed"][0][2]="rejected"
+        x["icaSeedCheck"]["candidateSeedAudit"][0]["status"][2]="rejected"
         with self.assertRaisesRegex(ValueError,"scientific gate"):
             validate(x)
 
     def test_single_insufficient_support_gate_invalidates_recommendation(self):
         x=sample()
-        x["icaSeedCheck"]["supportPassBySeed"][0][2]=False
+        x["icaSeedCheck"]["candidateSeedAudit"][0]["supportPass"][2]=False
         with self.assertRaisesRegex(ValueError,"scientific gate"):
             validate(x)
 
@@ -59,13 +67,14 @@ class GateAuditTests(unittest.TestCase):
 
     def test_ambiguous_strata_cannot_be_ranked_together(self):
         x=sample()
-        x["icaSeedCheck"]["stratumBySeed"][1]=["OTHER"]*3
+        x["icaSeedCheck"]["candidateSeedAudit"][1]["stratum"]=["OTHER"]*3
         with self.assertRaisesRegex(ValueError,"incomparable"):
             validate(x)
 
     def test_all_failed_support_abstain(self):
         x=sample()
-        x["icaSeedCheck"]["supportPassBySeed"]=[[False]*3,[False]*3]
+        x["icaSeedCheck"]["candidateSeedAudit"][0]["supportPass"]=[False]*3
+        x["icaSeedCheck"]["candidateSeedAudit"][1]["supportPass"]=[False]*3
         x["icaSeedCheck"]["robust"].update({
             "status":"abstain","candidateId":None,"reason":"no-common-feasible-candidate",
             "worstObjective":None,"seedMeasurements":[],
@@ -75,7 +84,8 @@ class GateAuditTests(unittest.TestCase):
 
     def test_scientific_failed_but_selected_fails(self):
         x=sample()
-        x["icaSeedCheck"]["statusBySeed"]=[["failed"]*3,["rejected"]*3]
+        x["icaSeedCheck"]["candidateSeedAudit"][0]["status"]=["failed"]*3
+        x["icaSeedCheck"]["candidateSeedAudit"][1]["status"]=["rejected"]*3
         with self.assertRaisesRegex(ValueError,"scientific gate"):
             validate(x)
 
@@ -88,6 +98,18 @@ class GateAuditTests(unittest.TestCase):
     def test_incomplete_run_never_valid(self):
         x=sample();x["completed"]=False
         with self.assertRaisesRegex(ValueError,"incomplete"):
+            validate(x)
+
+    def test_flattened_matlab_status_without_explicit_records_fails(self):
+        x=sample()
+        del x["icaSeedCheck"]["candidateSeedAudit"]
+        with self.assertRaisesRegex(ValueError,"explicit seed audit missing"):
+            validate(x)
+
+    def test_swapped_scientific_record_order_fails(self):
+        x=sample()
+        x["icaSeedCheck"]["candidateSeedAudit"].reverse()
+        with self.assertRaisesRegex(ValueError,"not aligned"):
             validate(x)
 
     def test_different_objective_minimum_fails(self):
