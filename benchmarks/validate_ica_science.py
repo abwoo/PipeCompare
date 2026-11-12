@@ -140,6 +140,21 @@ def validate_science(m,subject,candidate,seed):
             neff=weights[good].sum()**2/np.sum(weights[good]**2)
             if not approx(neff,cond.get("effectiveN")):
                 errors.append(f"effective-support-mismatch:{j}")
+            # Verify *actual* HMM-unflagged source and effective support
+            # against the original Rank snapshot, not only an inequality.
+            raw_support=serial(m.get("sourceUnflagged"))
+            effective_support=serial(m.get("effectiveUnflagged"))
+            if len(raw_support)!=2 or len(effective_support)!=2:
+                errors.append(f"original-unflagged-support-missing:{j}")
+            else:
+                unflagged=~np.asarray(flags,dtype=bool)
+                wclean=weights[good & unflagged]
+                actual_effective=(float(wclean.sum()**2/np.sum(wclean**2))
+                                  if wclean.size>0 else 0.0)
+                if not approx(int(unflagged.sum()),raw_support[j]):
+                    errors.append(f"physical-hmm-support-disagrees-with-source:{j}")
+                if not approx(actual_effective,effective_support[j]):
+                    errors.append(f"weighted-hmm-support-disagrees-with-source:{j}")
             p3=(times>=300-1e-7)&(times<=600+1e-7)
             if not p3.any() or not approx(wave[p3].mean(),cond.get("originalEstimate")):
                 errors.append(f"p3-window-waveform-does-not-reproduce-score:{j}")
