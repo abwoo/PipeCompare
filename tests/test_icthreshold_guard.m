@@ -25,6 +25,21 @@ verifyTrue(tc, isscalar(limit) && isnan(limit), 'NaN objective must not produce 
 verifyTrue(tc, contains(why, 'non-finite'), 'Diagnostic must distinguish invalid objective from too few trials.');
 end
 
+function testAutoRejectThresholdRejectsNonfiniteObjectiveAsEvidence(tc)
+% The default rejection search can retain enough trials while all P3
+% scores are invalid. Never fit a rejection threshold to NaN as zero SME.
+[E, contract, ref, opts] = fixture();
+pz = strcmpi({E.chanlocs.labels}, 'Pz');
+E.data(pz, :, :) = NaN;
+m = 1:E.trials;
+ctx = struct('contract', contract, 'ref', ref, 'rank', opts);
+[limit, info] = pipecompare.eval.Threshold.choose(E, m, ctx);
+verifyEqual(tc, info.feasible, 0);
+verifyGreaterThan(tc, info.limitsWithEnoughTrials, 0);
+verifyGreaterThanOrEqual(tc, limit, max(m)); % keep all data, do not optimize missing scores
+verifyTrue(tc, contains(info.note, 'non-finite'));
+end
+
 function testFiniteObjectiveStillChoosesKnownLimit(tc)
 [E, contract, ref, opts] = fixture();
 [f, limit, why] = pipecompare.eval.IcThreshold.score(E, [], [], [], contract, ref, opts, []);
