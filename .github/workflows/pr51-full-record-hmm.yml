@@ -1,0 +1,124 @@
+name: PR51 same-source full-record HMM support, development only
+on:
+  push:
+    branches: [codex/pr51-support-full-hmm-20261112]
+    paths:
+      - benchmarks/fetch_erpcore.py
+      - benchmarks/pr51_later_hmm_support.m
+      - benchmarks/validate_later_hmm_support.py
+      - tests/test_later_hmm_support.py
+      - docs/PR51_FULL_RECORD_HMM_PREDEFINED_20261112.md
+      - .github/workflows/pr51-full-record-hmm.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Original support and new full-source scientific abstention checks
+        run: |
+          python -m unittest discover -s tests -p test_later_hmm_support.py -v
+          python -m unittest discover -s tests -p test_later_erpcore_events.py -v
+          git diff --check
+      - name: Frozen Measure unchanged
+        run: |
+          python - <<'PYCODE'
+          import hashlib,json
+          from pathlib import Path
+          p=json.loads(Path('benchmarks/erpcore_protocol.json').read_text())
+          assert p['excerpt']['duration_seconds']==300
+          assert hashlib.sha256(Path('+pipecompare/+eval/Measure.m').read_bytes()).hexdigest()==p['baseline_measure_sha256']
+          PYCODE
+  measure:
+    needs: unit
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - subject: 4
+            seconds: 544
+          - subject: 8
+            seconds: 460
+    runs-on: ubuntu-22.04
+    timeout-minutes: 55
+    env:
+      DISPLAY: ':99'
+      PILOT_SUBJECT: ${{ matrix.subject }}
+      EXTRA_DURATION: ${{ matrix.seconds }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Fetch and check full source file hashes, with no invented data
+        timeout-minutes: 15
+        run: |
+          python PipeCompare/benchmarks/fetch_erpcore.py \
+            --subject "$PILOT_SUBJECT" --duration-seconds "$EXTRA_DURATION" --out full_input
+          mkdir -p "cache/sub-$(printf '%03d' "$PILOT_SUBJECT")"
+          cp -a full_input/raw/. "cache/sub-$(printf '%03d' "$PILOT_SUBJECT")/"
+          python PipeCompare/benchmarks/fetch_erpcore.py \
+            --subject "$PILOT_SUBJECT" --cache cache --out baseline_input
+      - name: Checkout pinned EEGLAB
+        run: git clone --depth 1 --branch 2026.0.0 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
+      - name: Bound Linux dependencies
+        run: bash PipeCompare/.github/scripts/pilot-prepare-matlab.sh
+      - name: Start graphical backend for native EEGLAB
+        run: bash PipeCompare/.github/scripts/start-display.sh
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+          products: Signal_Processing_Toolbox
+      - name: Reproduce original 300 s and re-evaluate complete HMM reference
+        timeout-minutes: 25
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab'));eeglab nogui;
+            addpath(fullfile(pwd,'PipeCompare'));
+            addpath(fullfile(pwd,'PipeCompare','benchmarks'));
+            pr51_later_hmm_support();
+            pr51_later_hmm_support(fullfile(pwd,'baseline_input'),fullfile(pwd,'full_input'),fullfile(pwd,'result'),str2double(getenv('PILOT_SUBJECT')));
+      - name: Preserve full scientific evidence and failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-later-hmm-${{ matrix.subject }}-attempt-${{ github.run_attempt }}
+          path: result/
+          retention-days: 90
+          if-no-files-found: warn
+  collect:
+    needs: measure
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pr51-later-hmm-*-attempt-*
+          path: evidence
+      - name: Prove historical HMM masks reproduced and quantify full support
+        run: |
+          python benchmarks/validate_later_hmm_support.py \
+            --evidence evidence --out output/full_hmm_support.json
+      - name: Archive both scientifically positive and negative decisions
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-later-hmm-collect-${{ github.run_id }}
+          path: output/
+          retention-days: 90
+          if-no-files-found: warn
