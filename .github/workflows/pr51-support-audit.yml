@@ -5,6 +5,9 @@ on:
     paths:
       - benchmarks/audit_erpcore_support.py
       - tests/test_erpcore_support_audit.py
+      - benchmarks/validate_veog_support.py
+      - tests/test_erpcore_veog_support.py
+      - .github/workflows/pr51-support-record.yml
       - .github/workflows/pr51-support-audit.yml
   workflow_dispatch:
 permissions:
@@ -14,8 +17,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Pin EOG diagnostic scientific dependencies
+        run: python -m pip install numpy==2.2.6 scipy==1.15.3
       - name: Check support accounting without EEG or threshold changes
-        run: python -m unittest discover -s tests -p test_erpcore_support_audit.py -v
+        run: |
+          python -m unittest discover -s tests -p test_erpcore_support_audit.py -v
+          python -m unittest discover -s tests -p test_erpcore_veog_support.py -v
   record:
     needs: test-auditor
     name: Real P3 support diagnostic subject ${{ matrix.subject }}
@@ -24,7 +31,7 @@ jobs:
       max-parallel: 2
       matrix:
         subject: [4, 8]
-    uses: ./.github/workflows/pr51-icthreshold-dev-record.yml
+    uses: ./.github/workflows/pr51-support-record.yml
     with:
       subject: ${{ matrix.subject }}
   audit:
@@ -43,6 +50,25 @@ jobs:
           test "${#files[@]}" = 2 || { echo "expected 2 distinct subject records"; exit 1; }
           python benchmarks/audit_erpcore_support.py --inputs "${files[@]}" --out output
           cat output/summary.json
+      - name: Verify both-condition EOG cross-check outputs exist and match subjects
+        shell: bash
+        run: |
+          python - <<'PYCODE'
+          import json
+          from pathlib import Path
+          found = sorted(Path('evidence').rglob('veog_summary.json'))
+          assert len(found)==2, f'need two real-data VEOG records, got {len(found)}'
+          records = [json.loads(p.read_text()) for p in found]
+          assert {r['source_subject'] for r in records} == {4,8}
+          assert all(r['proxy_is_ground_truth'] is False and
+                     r['scientific_gates_changed'] is False for r in records)
+          assert all(len(r['conditions'])==6 for r in records)
+          dest=Path('output')/'eye_proxy_reconciliation.json'
+          dest.write_text(json.dumps({'diagnostic_only':True,'subjects':records},indent=2))
+          print('PR51_EYE_PROXY_RECONCILIATION',json.dumps({
+              'subjects': [r['source_subject'] for r in records],
+              'matched_condition_rows': sum(len(r['conditions']) for r in records)}))
+          PYCODE
       - name: Preserve trial-level evidence as exploratory artifact
         uses: actions/upload-artifact@v4
         with:
