@@ -1,0 +1,68 @@
+name: PR51 exploratory EOG regression support comparison
+on:
+  push:
+    branches: [codex/pr51-eog-support-exploratory-20261112]
+    paths:
+      - benchmarks/pr51_eog_trial_support.m
+      - .github/workflows/pr51-eog-support-record.yml
+      - .github/workflows/pr51-eog-support.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  run-p3:
+    name: Fixed-arm EOG experiment subject ${{ matrix.subject }}
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        subject: [4, 8]
+    uses: ./.github/workflows/pr51-eog-support-record.yml
+    with:
+      subject: ${{ matrix.subject }}
+  collect:
+    needs: run-p3
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pr51-icthreshold-dev-*-attempt-*
+          path: evidence
+      - name: Verify every exploratory arm without treating execution as scientific pass
+        run: |
+          python - <<'PYCODE'
+          import json
+          from pathlib import Path
+          paths=sorted(Path('evidence').rglob('eog_experiment.json'))
+          assert len(paths)==2, f'missing real EOG experiment record: {paths}'
+          records=[json.loads(path.read_text()) for path in paths]
+          assert {x['subject'] for x in records}=={4,8}
+          for x in records:
+              assert x['completed'] and not x['errors'], x
+              assert x['protocolUnchanged'] and x['thresholdsUnchanged']
+              assert set(x['arms'])=={'minimal','eog_regressed'}
+          Path('output').mkdir(exist_ok=True)
+          data={'purpose':'EXPLORATORY_ONLY_NOT_VALIDATION','studied_subjects':[4,8],
+                'immutable_scientific_gates':True,'records':records}
+          Path('output/eog_experiment_summary.json').write_text(json.dumps(data,indent=2))
+          for x in records:
+              for arm, r in x['arms'].items():
+                  print('PR51_EOG_ARM',json.dumps({
+                      'subject':x['subject'],'arm':arm,
+                      'candidate_status':r['candidateStatus'],
+                      'scientific_status':r['scientificStatus'],
+                      'P3_difference':r['differenceAmplitude'],
+                      'support':[{
+                          'condition':z['condition'],
+                          'kept':z['kept'],
+                          'source_unflagged':z['sourceUnflaggedN'],
+                          'effective_unflagged':z['effectiveUnflaggedN']
+                      } for z in r['support']]}))
+          PYCODE
+      - name: Preserve exploratory results and negative findings
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-eog-support-summary-${{ github.run_id }}
+          path: output/
+          retention-days: 90
