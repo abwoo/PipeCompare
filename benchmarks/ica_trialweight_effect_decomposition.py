@@ -61,7 +61,7 @@ def weighted_mean(x,w):
 def bootstrap_decomposition(old, new, old_gain, new_gain, draws=BOOTSTRAP_DRAWS, seed=BOOTSTRAP_SEED):
     if not (math.isfinite(old_gain) and math.isfinite(new_gain) and old_gain>0 and new_gain>0):
         raise ValueError("invalid candidate gain")
-    if len(old)!=len(new)!=2:
+    if len(old) != 2 or len(new) != 2:
         raise ValueError("two ERP conditions required")
     rng=np.random.default_rng(seed)
     diff_old=np.zeros(draws,dtype=float)
@@ -76,7 +76,6 @@ def bootstrap_decomposition(old, new, old_gain, new_gain, draws=BOOTSTRAP_DRAWS,
         mn=weighted_mean(new_x,new_w)
         cross=weighted_mean(new_x,old_w)
         old_means.append(mo);new_means.append(mn);cross_means.append(cross)
-        a=old_x[:,None];b=new_x[:,None]
         valid=(old_w>0) & (new_w>0)
         shared_delta=float(np.max(np.abs(old_x[valid]-new_x[valid]))) if any(valid) else None
         per_condition.append({
