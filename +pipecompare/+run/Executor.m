@@ -1222,7 +1222,7 @@ obj = [T.objective(ids) nan(numel(ids), n)]; rec = [k nan(1, n)];
 % Read-only: record scientific measurements under each ICA start. No change
 % to candidate scoring, ranking, tie-breaking, or the random seed schedule.
 measurements = cell(1, n + 1);
-measurements{1} = seedMeasureOfRecommendation(allc, k, ref, 0);
+measurements{1} = seedMeasureOfRecommendation(allc, k, ref, 0, R.table);
 ro = opts; ro.nSplits = 0;
 for seed = 1:n
     c2 = allc; cx = ctx; cx.icaSeed = seed;
@@ -1237,7 +1237,7 @@ for seed = 1:n
     R2 = pipecompare.eval.Rank.run(c2, ref, ro, levelsOf(env.leaves));
     obj(:, seed + 1) = R2.table.objective(ids);
     if ~isempty(R2.recommended), rec(seed + 1) = R2.recommended; end
-    measurements{seed + 1} = seedMeasureOfRecommendation(c2, R2.recommended, ref, seed);
+    measurements{seed + 1} = seedMeasureOfRecommendation(c2, R2.recommended, ref, seed, R2.table);
 end
 out = struct('seeds', 1:n, 'ids', ids(:)', 'objective', obj, 'recommended', rec, ...
     'same', all(rec == k), 'measurements', {measurements});
@@ -1254,11 +1254,12 @@ else
 end
 end
 
-function z = seedMeasureOfRecommendation(cands, idx, ref, seed)
+function z = seedMeasureOfRecommendation(cands, idx, ref, seed, rankTable)
 % Snapshot of actual, recommended per-seed estimates. The source EOG/HMM
 % flags are NEVER changed here. Absence stays NaN, not zero or a pass.
 z = struct('seed', seed, 'candidateId', NaN, 'hasMeasurement', false, ...
     'conditionEstimates', [], 'differenceEstimate', NaN, 'sme', [], ...
+    'gain', NaN, 'correctedConditionEstimates', [], 'correctedDifferenceEstimate', NaN, ...
     'sourceUnflagged', [], 'effectiveUnflagged', []);
 if isempty(idx) || ~isscalar(idx) || ~isfinite(idx) || idx < 1 || idx > numel(cands)
     return;
@@ -1276,6 +1277,24 @@ if isfield(o,'sme'), z.sme = o.sme; end
 z.hasMeasurement = all(isfinite(o.estimate));
 if numel(o.estimate)==2 && z.hasMeasurement
     z.differenceEstimate = o.estimate(1)-o.estimate(2);
+end
+% The ERP CORE report's differenceAmplitude is GAIN-CORRECTED. Keep both
+% the raw estimate (above) and the calibration-matched report estimate.
+% Do not compare these distinct estimands or silently use a different gain
+% for an alternate ICA seed.
+if isfield(ref,'objectives') && ~isempty(ref.objectives)
+    gainColumn = matlab.lang.makeValidName(['gain_' ref.objectives{1}]);
+    if isfield(rankTable,gainColumn) && numel(rankTable.(gainColumn)) >= idx
+        g = rankTable.(gainColumn)(idx);
+        if isfinite(g) && g > 0 && z.hasMeasurement
+            z.gain = g;
+            z.correctedConditionEstimates = o.estimate / g;
+            if numel(o.estimate)==2
+                z.correctedDifferenceEstimate = ...
+                    z.correctedConditionEstimates(1)-z.correctedConditionEstimates(2);
+            end
+        end
+    end
 end
 if ~isfield(ref,'ids') || ~isfield(o,'X') || isempty(o.X), return; end
 nC = numel(ref.ids);
