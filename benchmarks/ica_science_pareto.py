@@ -184,6 +184,8 @@ def main():
             "minimaxId":r["minimaxId"],
             "trainCommonFeasible":r["training"]["originalCommonFeasibleCandidates"],
             "scienceComplete":r["training"]["scienceCompleteCandidates"],
+            "scienceExclusionExamples":[v for v in r["training"]["scienceExcluded"]
+                                        if not v["scienceEligible"]][:5],
             "paretoFrontier":r["training"]["frontierCount"],
             "researchCandidate":r["training"]["candidateId"],
             "reason":r["training"]["reason"],
