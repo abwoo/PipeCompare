@@ -1,0 +1,69 @@
+name: PR51 ICA seed-resolved real-P3 scientific measurement audit
+on:
+  push:
+    branches: [codex/pr51-ica-measurement-20261112]
+    paths:
+      - +pipecompare/+run/Executor.m
+      - .github/workflows/pr51-ica-measure-record.yml
+      - .github/workflows/pr51-ica-measurement.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  record:
+    name: ICA readout subject ${{ matrix.subject }}
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        subject: [11, 15, 21]
+    uses: ./.github/workflows/pr51-ica-measure-record.yml
+    with:
+      subject: ${{ matrix.subject }}
+  collect:
+    needs: record
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pr51-icthreshold-dev-*-attempt-*
+          path: evidence
+      - name: Check seed-invariance of first-seed P3 measurement identity
+        run: |
+          python - <<'PYCODE'
+          import json,math
+          from pathlib import Path
+          files=sorted(Path('evidence').rglob('result.json'))
+          assert len(files)==3, f'expected 3 ERP CORE records, got {len(files)}'
+          records=[json.loads(p.read_text()) for p in files]
+          assert {x['subject'] for x in records}=={11,15,21}
+          summary=[]
+          for x in records:
+              assert x['completed'] and not x['errors'],x['errors']
+              c=x['icaSeedCheck']
+              assert len(c['measurements'])==3
+              assert len(c['recommended'])==3
+              assert all(z['seed']==i for i,z in enumerate(c['measurements']))
+              assert all(z['candidateId']==q for z,q in zip(c['measurements'],c['recommended']))
+              assert math.isclose(c['measurements'][0]['differenceEstimate'],
+                     x['erp']['differenceAmplitude'],rel_tol=0,abs_tol=1e-8)
+              ds=[z['differenceEstimate'] for z in c['measurements']]
+              out={'subject':x['subject'],'recommended':c['recommended'],
+                   'same_id':c['same'],'p3_differences':ds,
+                   'delta_from_first_seed':[v-ds[0] if v is not None else None for v in ds],
+                   'sme':[z['sme'] for z in c['measurements']],
+                   'effective_unflagged':[z['effectiveUnflagged'] for z in c['measurements']]}
+              summary.append(out)
+              print('PR51_ICA_MEASUREMENT_COMPARE',json.dumps(out))
+          Path('output').mkdir(exist_ok=True)
+          Path('output/seed_measurements.json').write_text(json.dumps({
+              'exploratory':True,'no_ranking_or_threshold_change':True,
+              'not_confirmatory_validation':True,'subjects':summary},indent=2))
+          PYCODE
+      - name: Preserve all negative and positive ICA seed measurements
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-ica-seed-measurements-${{ github.run_id }}
+          path: output/
+          retention-days: 90
