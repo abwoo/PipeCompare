@@ -159,6 +159,12 @@ classdef Presets
             % recommended pipeline also run with the eye channels regressed
             % out (Executor eogCheck: when there is an EOG channel).
             o = struct('refineCutoffs', true, 'icaSeeds', 2, 'signalTemplate', 'data', 'eogCheck', true);
+            % Development-only explicit opt-in for TWO DISJOINT ICA seed groups:
+            % initial+2 starts (0,1,2), and unseen starts (3,4,5).
+            % Never set this on the frozen 20-subject production protocol.
+            if strcmp(getenv('PR51_DEV_SIX_SEED_AUDIT'),'1')
+                o.icaSeeds = 5;
+            end
         end
 
         function steps = recipeSteps(name)
