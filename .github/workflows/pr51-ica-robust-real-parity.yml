@@ -1,0 +1,37 @@
+name: PR51 MATLAB Python real ERP CORE ICA shadow parity (no EEG rerun)
+on:
+  push:
+    branches: [codex/pr51-ica-robust-matlab-20261112]
+    paths:
+      - .github/workflows/pr51-ica-robust-real-parity.yml
+      - benchmarks/pr51_ica_robust_real_parity.m
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  parity:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+      - name: Read original archived cloud EEG calculations without refitting
+        uses: actions/download-artifact@v4
+        with:
+          repository: abwoo/PipeCompare
+          run-id: 43167030899
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: pr51-icthreshold-dev-*-attempt-1
+          path: evidence
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+      - name: Independently reproduce 11 15 21 ICA all-seed robust IDs in MATLAB
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'PipeCompare'));
+            addpath(fullfile(pwd,'PipeCompare','benchmarks'));
+            pr51_ica_robust_real_parity(fullfile(pwd,'evidence'));
