@@ -1,0 +1,15 @@
+name: PR51 scientific recorder reusable
+on:
+  workflow_call:
+    inputs:
+      subject:
+        required: true
+        type: number
+permissions:
+  contents: read
+jobs:
+  record:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo 'Scientific recorder workflow staging'
