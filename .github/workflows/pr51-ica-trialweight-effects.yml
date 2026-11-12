@@ -1,0 +1,58 @@
+name: PR51 three-subject real P3 trial weighting and signal-effect forensics
+on:
+  push:
+    branches: [codex/pr51-ica-trialweight-audit-20261112]
+    paths:
+      - benchmarks/ica_trialweight_effect_decomposition.py
+      - tests/test_ica_trialweight_effect_decomposition.py
+      - .github/workflows/pr51-ica-trialweight-effects.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  forensics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Pin reproducible scientific Python binary dependencies
+        run: python -m pip install --only-binary=:all: numpy==2.2.6 scipy==1.15.3
+      - name: Regression-test paired effect decomposition
+        run: python -m unittest discover -s tests -p test_ica_trialweight_effect_decomposition.py -v
+      - name: Download three successful source-backed development EEG scoring audit artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for subject in 11 15 21; do
+            mkdir -p "evidence/$subject"
+            gh run download 43162539734 --repo "$GITHUB_REPOSITORY" \
+              --name "pr51-ica-feasible-$subject-attempt-1" --dir "evidence/$subject"
+            test -s "evidence/$subject/scoring_audit.mat" || exit 1
+            test -s "evidence/$subject/result.json" || exit 1
+          done
+      - name: Quantify candidate P300 change from per-trial signals weights and calibration
+        run: |
+          python benchmarks/ica_trialweight_effect_decomposition.py \
+            --evidence-root evidence --subjects 11 15 21 \
+            --out output/real_ica_trialweight_effect_decomposition.json
+          python - <<'PYCODE'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('output/real_ica_trialweight_effect_decomposition.json').read_text())
+          assert d['sourceRun']==43162539734 and d['notConfirmatory'] is True
+          assert {r['subject'] for r in d['rows']}=={11,15,21}
+          assert all(not r['establishesSuperiority'] for r in d['rows'])
+          assert all(not r['scientificGatesChanged'] for r in d['rows'])
+          PYCODE
+      - name: Preserve full nonconfirmatory evidence including negative findings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-ica-trialweight-effect-audit-${{ github.run_id }}
+          path: output/
+          retention-days: 90
+          if-no-files-found: warn
