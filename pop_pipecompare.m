@@ -78,7 +78,7 @@ if nargin < 2
     opts.progress = [];
 else
     opts = struct('measure', '', 'events', {{}}, 'left', {{}}, 'right', {{}}, 'pool', false, 'window', [], 'band', [], ...
-        'channels', {{}}, 'recipe', 'standard', 'steps', {{}}, 'reference', 'asis', 'segment', 2, 'show', 'on', 'progress', [], 'sciencecapture', false);
+        'channels', {{}}, 'recipe', 'standard', 'steps', {{}}, 'reference', 'asis', 'segment', 2, 'show', 'on', 'progress', [], 'sciencecapture', false, 'icarankstable', false);
     [varargin{:}] = convertStringsToChars(varargin{:});   % "P3" as well as 'P3'
     for k = 1:2:numel(varargin)
         f = lower(char(varargin{k}));
@@ -135,6 +135,14 @@ if isfield(opts,'sciencecapture') && ~isempty(opts.sciencecapture)
         isscalar(opts.sciencecapture) && ismember(double(opts.sciencecapture),[0 1]), ...
         'PipeCompare:Simple','sciencecapture must be true or false.');
     runOpts.scienceCapture=logical(opts.sciencecapture);
+end
+% Separate sample-order initialization from auto-rank sampling in
+% explicitly requested development runs. Default stays untouched.
+if isfield(opts,'icarankstable') && ~isempty(opts.icarankstable)
+    assert((islogical(opts.icarankstable) || isnumeric(opts.icarankstable)) && ...
+        isscalar(opts.icarankstable) && ismember(double(opts.icarankstable),[0 1]), ...
+        'PipeCompare:Simple','icarankstable must be true or false.');
+    runOpts.icaRankStable=logical(opts.icarankstable);
 end
 runOpts.dataUnit = state.unitGuess;
 if strcmp(state.unitGuess, 'V'), pipecompare.utils.log('The data are in volts (judged from the amplitude scale); they are compared in uV.'); end
