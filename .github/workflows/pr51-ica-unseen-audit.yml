@@ -4,12 +4,14 @@ on:
     branches: [codex/pr51-ica-unseen-audit-20261112]
     paths:
       - benchmarks/validate_ica_unseen_seeds.py
+      - benchmarks/reaudit_ica_unseen.py
       - tests/test_ica_unseen_seeds.py
       - docs/PR51_ICA_UNSEEN_AUDIT_A1_20261112.md
       - .github/workflows/pr51-ica-unseen-audit.yml
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 jobs:
   audit-unit:
     name: Test independent scientific gates without refitting EEG
@@ -30,3 +32,32 @@ jobs:
           python -m unittest discover -s tests -p test_ica_feasibility_shadow.py -v
           python -m unittest discover -s tests -p test_ica_unseen_seeds.py -v
           python -m py_compile benchmarks/validate_ica_unseen_seeds.py
+  evidence-reaudit:
+    name: Reanalyse archived six-start scientific records, no EEG refit
+    needs: audit-unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Download immutable prior development EEG artifacts
+        uses: actions/download-artifact@v4
+        with:
+          repository: abwoo/PipeCompare
+          run-id: 43169562528
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: pr51-icthreshold-dev-*-attempt-1
+          path: evidence
+      - name: Recheck all original scientific constraints on unseen seeds
+        run: |
+          python benchmarks/reaudit_ica_unseen.py \
+            --evidence evidence --out audit/ica_unseen_A1.json
+      - name: Archive complete amended scientific interpretation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-ica-unseen-a1-reanalysis-${{ github.run_id }}
+          path: audit/
+          if-no-files-found: warn
+          retention-days: 90
