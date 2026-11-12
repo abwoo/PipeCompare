@@ -1,0 +1,32 @@
+name: PR51 ICA unseen-start independent audit amendment A1
+on:
+  push:
+    branches: [codex/pr51-ica-unseen-audit-20261112]
+    paths:
+      - benchmarks/validate_ica_unseen_seeds.py
+      - tests/test_ica_unseen_seeds.py
+      - docs/PR51_ICA_UNSEEN_AUDIT_A1_20261112.md
+      - .github/workflows/pr51-ica-unseen-audit.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit-unit:
+    name: Test independent scientific gates without refitting EEG
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify no MATLAB production edits in the audit amendment
+        run: |
+          test -z "$(git diff --name-only 5c9388562974c8305da95cb59e7249982788d589 HEAD -- +pipecompare)"
+          git diff --check
+      - name: Test selection isolation and held-out scientific failure conditions
+        run: |
+          python -m unittest discover -s tests -p test_ica_feasibility_shadow.py -v
+          python -m unittest discover -s tests -p test_ica_unseen_seeds.py -v
+          python -m py_compile benchmarks/validate_ica_unseen_seeds.py
