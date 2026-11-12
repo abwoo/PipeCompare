@@ -1,0 +1,65 @@
+name: PR51 reuse already-recorded ICA real-P3 evidence (no MATLAB rerun)
+on:
+  push:
+    branches: [codex/pr51-ica-feasibility-shadow-20261112]
+    paths:
+      - .github/workflows/pr51-shadow-recover.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test exact MATLAB-cell serialization and scientific-gate eligibility
+        run: |
+          python -m unittest discover -s tests -p test_ica_feasibility_shadow.py -v
+          python -m unittest discover -s tests -p test_ica_seed_measurements.py -v
+      - name: Download source EEG Matlab results from completed run 43167030899
+        uses: actions/download-artifact@v4
+        with:
+          repository: abwoo/PipeCompare
+          run-id: 43167030899
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: pr51-icthreshold-dev-*-attempt-1
+          path: evidence
+      - name: Validate source result identities and run gate-preserving ICA shadow
+        run: |
+          mapfile -t files < <(find evidence -name result.json | sort)
+          if test "${#files[@]}" != 3; then echo 'Need all three unchanged MATLAB source files'; exit 1; fi
+          python - <<'PYCODE'
+          import json
+          from pathlib import Path
+          files=sorted(Path('evidence').rglob('result.json'))
+          records=[json.loads(p.read_text()) for p in files]
+          assert {x['subject'] for x in records}=={11,15,21}
+          assert all(x['completed'] and not x['errors'] for x in records)
+          assert all(len(x['icaSeedCheck']['recommended'])==3 for x in records)
+          print('PR51_REUSED_MATLAB_EVIDENCE', [x['subject'] for x in records])
+          PYCODE
+          python benchmarks/ica_feasibility_shadow.py \
+            --inputs "${files[@]}" --out output/real_ica_shadow_recovered.json
+          python - <<'PYCODE'
+          import json
+          from pathlib import Path
+          o=json.loads(Path('output/real_ica_shadow_recovered.json').read_text())
+          assert {x['subject'] for x in o['subjects']}=={11,15,21}
+          assert all(x['scientificThresholdsUnchanged'] for x in o['subjects'])
+          assert all(not x['scientificPromotionAuthorized'] for x in o['subjects'])
+          for x in o['subjects']:
+              print('PR51_REAL_ICA_RECOVERED',json.dumps({
+                  'subject':x['subject'],'eligible':x['eligibleCount'],
+                  'original':x['sourceRecommended'],'shadow':x['shadowCandidate'],
+                  'p3Range':x.get('shadowP3Range'),'reason':x['reason']}))
+          PYCODE
+      - name: Persist reanalysis of immutable existing real-P3 source results
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-ica-feasibility-recovered-${{ github.run_id }}
+          path: output/
+          retention-days: 90
