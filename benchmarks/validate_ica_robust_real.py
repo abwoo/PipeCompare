@@ -23,19 +23,26 @@ def validate(r):
     if not isinstance(s, dict):
         raise ValueError("missing ICA check")
     ids, obj = s["ids"], s["objective"]
-    statuses, mask, strata = s["statusBySeed"], s["supportPassBySeed"], s["stratumBySeed"]
+    audit_rows = s.get("candidateSeedAudit")
     robust = s["robust"]
-    if not (len(ids) == len(obj) == len(statuses) == len(mask) == len(strata)):
-        raise ValueError("ICA candidate axes differ")
+    # MATLAB jsonencode flattens 2-D cells of strings; never try to
+    # reconstruct seed status from those ambiguous legacy arrays.
+    if not isinstance(audit_rows, list) or len(ids) != len(obj) or len(ids) != len(audit_rows):
+        raise ValueError("ICA candidate axes differ or explicit seed audit missing")
     if len(ids) != len(set(ids)):
         raise ValueError("duplicate candidate IDs")
     nseed = len(s["recommended"])
     if nseed != 3 or len(s["measurements"]) != nseed:
         raise ValueError("expected original plus two ICA initialization seeds")
     all_eligible = []
-    for idx, objective, status, support, group in zip(ids, obj, statuses, mask, strata):
-        if any(len(x) != nseed for x in (objective, status, support, group)):
+    for idx, objective, row in zip(ids, obj, audit_rows):
+        if row["candidateId"] != idx or row["objective"] != objective:
+            raise ValueError("ICA per-candidate seed record is not aligned to objectives")
+        status, support, group = row["status"], row["supportPass"], row["stratum"]
+        if any(not isinstance(x,list) or len(x)!=nseed for x in (objective,status,support,group)):
             raise ValueError(f"misaligned seed axes for candidate {idx}")
+        if not all(type(x) is bool for x in support):
+            raise ValueError("support pass vector must be explicit booleans")
         is_good = (all(x == "feasible" for x in status)
                    and all(x is True for x in support)
                    and all(finite(v) and v >= 0 for v in objective)
