@@ -72,6 +72,12 @@ class MatchConfidence(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"electrode"):
             assignment(a,b)
 
+    def test_json_artifact_is_lossless_and_serializable(self):
+        import json
+        z=assignment(test_maps(),deepcopy(test_maps()))
+        blob=json.dumps(z,allow_nan=False)
+        self.assertEqual(json.loads(blob)["lowCorrelationComponents"],0)
+
     def test_missing_class_probabilities_are_unknown(self):
         a=test_maps();b=deepcopy(a)
         b["classProbabilities"]=[]
