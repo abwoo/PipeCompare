@@ -1,0 +1,35 @@
+name: PR51 ICA scientific decomposition and ERP descriptive results (no new fits)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Download completed real EEG recorder evidence only
+        uses: actions/download-artifact@v4
+        with:
+          repository: abwoo/PipeCompare
+          run-id: 43184910782
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: pr51-ica-science-dev-*-attempt-1
+          path: evidence
+      - name: Analyze matched ICA scalp maps, removal decisions, full P3 waves and bootstrap SME
+        run: |
+          INPUTS=$(find evidence -name ica_science_validated.json | sort)
+          test "$(echo "$INPUTS" | wc -l)" -eq 3
+          python benchmarks/analyze_ica_science.py --inputs $INPUTS --out output/ica_science_summary.json
+      - name: Archive descriptive findings without changing production decisions
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-ica-science-descriptive-${{ github.run_id }}
+          path: output/
+          if-no-files-found: warn
+          retention-days: 90
