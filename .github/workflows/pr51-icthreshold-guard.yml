@@ -32,4 +32,5 @@ jobs:
             cd PipeCompare;addpath(pwd);addpath(fullfile(pwd,'tests'));
             r=runtests(fullfile('tests','test_icthreshold_guard.m'),'OutputDetail',3);
             disp(table(r));
-            assert(all([r.Passed]),'PipeCompare:CI','A score regression failed.');
+            fprintf('PR51_GUARD_TESTS total=%d passed=%d failed=%d\n',numel(r),sum([r.Passed]),sum([r.Failed]));
+            assert(numel(r)==2 && all([r.Passed]),'PipeCompare:CI','A score regression failed or a planned test did not run.');
