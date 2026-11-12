@@ -746,7 +746,13 @@ classdef Presets
             end
             if isempty(rows), return; end
             r = [];
-            if isfield(result, 'ranking') && isfield(result.ranking, 'recommended'), r = find(rows(:, 1) == result.ranking.recommended, 1); end
+            % A completed search may have no viable recommendation. Empty
+            % [] is a valid outcome, not a scalar candidate ID; comparing
+            % rows(:,1) == [] raises a size mismatch in newer MATLAB.
+            if isfield(result, 'ranking') && isfield(result.ranking, 'recommended') && ...
+                    isscalar(result.ranking.recommended) && isfinite(result.ranking.recommended)
+                r = find(rows(:, 1) == result.ranking.recommended, 1);
+            end
             if isempty(r), r = 1; end
             poor = rows(r, 4) < P.IcaMinBrain || med(r) > P.IcaMaxOther;   % (NaN: not known, not poor)
             none = all(rows(:, 2) == 0);
