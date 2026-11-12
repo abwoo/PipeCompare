@@ -1,4 +1,5 @@
 name: PR51 four-axis scientific ICA Pareto development shadow
+# Recheck and log individual science exclusion reasons before interpretation.
 on:
   push:
     branches: [codex/pr51-ica-science-pareto-20261112]
