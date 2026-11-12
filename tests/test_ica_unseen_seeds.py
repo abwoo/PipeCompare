@@ -66,6 +66,38 @@ class UnseenStarts(unittest.TestCase):
         self.assertEqual(z["trainingShadow"]["shadowCandidate"],4)
         self.assertFalse(z["shadowUnseen"]["validAllThree"])
 
+    def test_unseen_nonfinite_objective_fails_closed(self):
+        x=fixture()
+        x["icaSeedCheck"]["objective"][0][4]=float("nan")
+        z=inspect(x)
+        self.assertEqual(z["trainingShadow"]["shadowCandidate"],4)
+        self.assertFalse(z["shadowUnseen"]["validAllThree"])
+        self.assertIn("nonfinite-objective",
+                      z["shadowUnseen"]["seeds"][1]["failureReasons"])
+        self.assertTrue(z["originalBaseline"]["validAllThree"])
+
+    def test_unseen_cross_stratum_drift_fails_closed(self):
+        x=fixture()
+        x["icaSeedCheck"]["strata"][0][5]="different-reference"
+        z=inspect(x)
+        self.assertEqual(z["trainingShadow"]["shadowCandidate"],4)
+        self.assertFalse(z["shadowUnseen"]["validAllThree"])
+        self.assertIn("stratum-drift",
+                      z["shadowUnseen"]["seeds"][2]["failureReasons"])
+        self.assertTrue(z["originalBaseline"]["validAllThree"])
+
+    def test_invalid_unseen_seed_cannot_reselect_training_recipe(self):
+        x=fixture()
+        x["icaSeedCheck"]["rankStatus"][0][4]="rejected"
+        x["icaSeedCheck"]["objective"][0][4]=float("inf")
+        x["icaSeedCheck"]["strata"][0][4]="other-stratum"
+        result=inspect(x)
+        self.assertEqual(result["trainingShadow"]["shadowCandidate"],4)
+        self.assertFalse(result["shadowUnseen"]["validAllThree"])
+        self.assertEqual(result["shadowUnseen"]["seeds"][1]["failureReasons"],
+                         ["rank-not-feasible","stratum-drift","nonfinite-objective"])
+        self.assertFalse(result["scientificPromotionAuthorized"])
+
     def test_bad_dimensions_are_rejected(self):
         x=fixture()
         x["icaSeedCheck"]["objective"][1].pop()
