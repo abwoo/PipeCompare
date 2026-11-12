@@ -24,6 +24,8 @@ SOURCE_SHA = "5c9388562974c8305da95cb59e7249982788d589"
 def elements(obj):
     if isinstance(obj, np.ndarray):
         return list(obj.flat)
+    if isinstance(obj, (list, tuple)):
+        return list(obj)
     return [obj] if obj is not None else []
 
 
