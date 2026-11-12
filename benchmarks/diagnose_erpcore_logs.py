@@ -191,27 +191,59 @@ def main():
     parser.add_argument("--run-id", type=int, default=RUN_ID)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--offline-dir", type=Path)
+    parser.add_argument("--snapshot-dir", type=Path,
+                        help="Audit connector-captured job marker snapshots offline; not an independent re-download")
     args = parser.parse_args()
-    if args.offline_dir is None:
-        token = os.environ.get("GH_TOKEN")
-        if not token:
-            parser.error("GH_TOKEN required when fetching GitHub Actions logs")
-        jobs = fetch_jobs(args.run_id, token)
-        pairs = []
-        for j in jobs:
-            match = re.search(r"ERP CORE P3 participant (\d+)", j["name"])
-            if match:
-                pairs.append((int(match.group(1)), fetch_log(j["id"], token)))
-    else:
-        pairs = [(int(p.stem), p.read_text()) for p in sorted(args.offline_dir.glob("*.log"))]
     by_subject = {}
-    for subject, content in pairs:
-        record = result_from_log(content)
-        if record["subject"] != subject:
-            raise ValueError(f"subject mismatch in job {subject}")
-        if subject in by_subject:
-            raise ValueError(f"duplicate subject job {subject}; no silent replacement")
-        by_subject[subject] = summarize(record, hashlib.sha256(content.encode()).hexdigest())
+    if args.snapshot_dir is not None:
+        if args.offline_dir is not None:
+            parser.error("--snapshot-dir and --offline-dir are mutually exclusive")
+        paths = sorted(args.snapshot_dir.glob("source_*.json"))
+        if len(paths) != 2:
+            raise ValueError(f"expect two separately captured source snapshots, got {len(paths)}")
+        for path in paths:
+            evidence = json.loads(path.read_text())
+            if evidence.get("source_run_id") != args.run_id:
+                raise ValueError(f"wrong run identity in {path}")
+            for row in evidence["subjects"]:
+                subject = row["subject"]
+                if subject in by_subject:
+                    raise ValueError(f"duplicate snapshot subject {subject}")
+                if not isinstance(row.get("source_job_id"), int) or row["source_job_id"] <= 0:
+                    raise ValueError(f"missing provenance job for subject {subject}")
+                if row["candidate_count"] < row["feasible_count"] or row["feasible_count"] < 0:
+                    raise ValueError(f"invalid candidate counts subject {subject}")
+                if row["feasible_count"] == 0 and sum(row["reasons"].values()) != row["candidate_count"]:
+                    raise ValueError(f"candidate failure reason coverage mismatch subject {subject}")
+                if row["feasible_count"] == 0 and row["standard"]["available"]:
+                    raise ValueError(f"zero candidates but Standard available subject {subject}")
+                if row["workflow_run"] != str(args.run_id):
+                    raise ValueError(f"snapshot references wrong execution run for subject {subject}")
+                if row["protocol_sha256"] != "bb65c9a522e9f45210e5ee941a669630b75587a5255664aa0f1402b572e89c6b":
+                    raise ValueError(f"snapshot protocol mismatch for subject {subject}")
+                if row["algorithm_commit"] != "7151821edf8a5a54c3167d7f18b66c530911b568":
+                    raise ValueError(f"snapshot production identity mismatch for subject {subject}")
+                by_subject[subject] = row
+    else:
+        if args.offline_dir is None:
+            token = os.environ.get("GH_TOKEN")
+            if not token:
+                parser.error("GH_TOKEN required when fetching GitHub Actions logs")
+            jobs = fetch_jobs(args.run_id, token)
+            pairs = []
+            for j in jobs:
+                match = re.search(r"ERP CORE P3 participant (\\d+)", j["name"])
+                if match:
+                    pairs.append((int(match.group(1)), fetch_log(j["id"], token)))
+        else:
+            pairs = [(int(p.stem), p.read_text()) for p in sorted(args.offline_dir.glob("*.log"))]
+        for subject, content in pairs:
+            record = result_from_log(content)
+            if record["subject"] != subject:
+                raise ValueError(f"subject mismatch in job {subject}")
+            if subject in by_subject:
+                raise ValueError(f"duplicate subject job {subject}; no silent replacement")
+            by_subject[subject] = summarize(record, hashlib.sha256(content.encode()).hexdigest())
     expected = [1, 2, 3, 4, 5, 7, 8, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]
     if sorted(by_subject) != expected:
         raise ValueError(f"coverage mismatch; expected {expected}, found {sorted(by_subject)}")
@@ -222,7 +254,7 @@ def main():
     if any(not r["completed"] or r["errors"] for r in rows):
         raise ValueError("at least one frozen run failed; do not treat as complete")
     args.out.mkdir(parents=True, exist_ok=True)
-    output = {"run_id": args.run_id, "source": "original GitHub Actions job logs",
+    output = {"run_id": args.run_id, "source": ("connector-captured result-marker snapshots; cloud independently checks fixed source rows, not raw log re-download"\n                                           if args.snapshot_dir is not None else "original GitHub Actions job logs"),
               "subjects": rows}
     (args.out / "forensics.json").write_text(json.dumps(output, indent=2, allow_nan=True) + "\n")
     (args.out / "forensics.md").write_text(build_report(rows, args.run_id) + "\n")
