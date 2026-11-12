@@ -52,8 +52,17 @@ def one_pair(old,new):
         for key in ("correctedDifferenceEstimate","gain"):
             if not close(x.get(key),y.get(key)):
                 reasons.append(f"seed-{j}-{key}-changed")
+    numerical=[]
+    for seed,(x,y) in enumerate(zip(a["measurements"],b["measurements"])):
+        left=x.get("correctedDifferenceEstimate")
+        right=y.get("correctedDifferenceEstimate")
+        delta=(right-left) if isinstance(left,(int,float)) and isinstance(right,(int,float)) and math.isfinite(left) and math.isfinite(right) else None
+        numerical.append({"seed":seed,"originalP300":left,"recorderP300":right,"p300DeltaUv":delta,
+                          "originalCandidate":x.get("candidateId"),
+                          "recorderCandidate":y.get("candidateId")})
     return {"subject":s,"noninterventionPassed":not reasons,"reasons":sorted(set(reasons)),
-            "originalIds":a["recommended"],"recorderIds":b["recommended"]}
+            "originalIds":a["recommended"],"recorderIds":b["recommended"],
+            "seedP300Comparison":numerical}
 
 
 def main():
