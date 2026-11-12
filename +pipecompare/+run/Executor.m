@@ -64,7 +64,7 @@ classdef Executor
         function result = run(plan, contract, opts)
             if nargin < 3, opts = struct(); end
             opts = pipecompare.utils.withDefaults(opts, struct('dryRun', false, 'injectUv', 5, 'filterCheck', true, ...
-                'refineCutoffs', false, 'eogCheck', false, 'icaSeeds', 0, 'signalTemplate', 'bump', 'dataUnit', 'uV', 'checkpoint', '', 'parallel', false, 'verbose', 'normal', 'progress', []));
+                'refineCutoffs', false, 'eogCheck', false, 'icaSeeds', 0, 'scienceRecord', false, 'icaRecordSeed', 0, 'signalTemplate', 'bump', 'dataUnit', 'uV', 'checkpoint', '', 'parallel', false, 'verbose', 'normal', 'progress', []));
             assert(isnumeric(opts.icaSeeds) && isscalar(opts.icaSeeds) && opts.icaSeeds >= 0 && opts.icaSeeds == round(opts.icaSeeds), ...
                 'PipeCompare:Options', 'icaSeeds must be a whole number >= 0.');
             assert(any(strcmp(opts.signalTemplate, {'bump', 'data'})), 'PipeCompare:Options', ...
@@ -763,7 +763,7 @@ function c = emptyCand()
 % Rank.run reads status, m, signal, interpolatedFraction and stratum.
 c = struct('id', 0, 'key', '', 'stratum', '', 'status', 'pending', 'message', '', 'm', [], 'signal', [], ...
     'interpolatedFraction', NaN, 'icsRemoved', 0, 'rejectedEpochs', 0, 'coms', {{}}, 'seconds', 0, 'unmatched', {{}}, ...
-    'notes', {{}}, 'ica', {{}}, 'overLimit', noOverLimit(), 'steps', {{}});
+    'notes', {{}}, 'ica', {{}}, 'overLimit', noOverLimit(), 'steps', {{}}, 'science', []);
 end
 
 function o = noOverLimit()
@@ -978,6 +978,17 @@ try
     c.status = 'ok';
 catch ME
     c.status = 'failed'; c.message = ['evaluation: ' ME.message];
+end
+% Experimental observability is strictly non-interventional: recorder errors
+% cannot change the evaluated scientific candidate or recommendation.
+if strcmp(c.status,'ok') && pipecompare.utils.fieldOr(env.opts,'scienceRecord',false)
+    try
+        c.science=pipecompare.eval.ScienceRecorder.capture(E,c,env.contract, ...
+            env.ref,pipecompare.utils.fieldOr(env.opts,'icaRecordSeed',0));
+    catch recorderException
+        c.science=struct('available',false,'reason', ...
+            ['recorder-error:' recorderException.identifier ':' recorderException.message]);
+    end
 end
 el = toc(env.tStart);
 if strcmp(c.status, 'ok')
@@ -1236,6 +1247,7 @@ measurements{1} = seedMeasureOfRecommendation(allc, k, ref, 0, R.table);
 ro = opts; ro.nSplits = 0;
 for seed = 1:n
     c2 = allc; cx = ctx; cx.icaSeed = seed;
+    e2.opts.icaRecordSeed = seed;
     cands = pipecompare.run.Executor.runSubtree(e2, 1, root, S, cx, acc);
     if tick(e2, 0), return; end   % stopped
     for j = 1:numel(cands), c2(cands(j).id) = cands(j); end
@@ -1278,11 +1290,14 @@ function z = seedMeasureOfRecommendation(cands, idx, ref, seed, rankTable)
 z = struct('seed', seed, 'candidateId', NaN, 'hasMeasurement', false, ...
     'conditionEstimates', [], 'differenceEstimate', NaN, 'sme', [], ...
     'gain', NaN, 'correctedConditionEstimates', [], 'correctedDifferenceEstimate', NaN, ...
-    'sourceUnflagged', [], 'effectiveUnflagged', []);
+    'sourceUnflagged', [], 'effectiveUnflagged', [], 'science', []);
 if isempty(idx) || ~isscalar(idx) || ~isfinite(idx) || idx < 1 || idx > numel(cands)
     return;
 end
 z.candidateId = idx;
+if isfield(cands(idx),'science') && ~isempty(cands(idx).science)
+    z.science=cands(idx).science;
+end
 if ~strcmp(cands(idx).status,'ok') || ~isfield(cands(idx),'m') || isempty(cands(idx).m)
     return;
 end
