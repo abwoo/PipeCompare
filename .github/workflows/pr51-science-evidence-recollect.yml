@@ -1,5 +1,8 @@
 name: PR51 science recorder immutable EEG artifact reanalysis and noninterference
 on:
+  push:
+    branches: [codex/pr51-science-recorder-json-fix-20261112]
+    paths: [.github/workflows/pr51-science-evidence-recollect.yml]
   workflow_dispatch:
 permissions:
   contents: read
@@ -49,7 +52,7 @@ jobs:
         run: |
           python benchmarks/verify_science_noninterference.py \
             --original baseline --recorder recorder \
-            --out audit/noninterference.json
+            --out audit/noninterference.json || true
       - name: Compare ICA component topology and complete ERP waveforms
         run: |
           python - <<'PY'
@@ -62,6 +65,14 @@ jobs:
           PY
           python benchmarks/analyze_science_recorder.py \
             --evidence recorder --out audit/component_waveform.json
+      - name: Gate non-interference without discarding the component audit
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          z=json.loads(Path('audit/noninterference.json').read_text())
+          assert z['allNonInterventional'], 'Differences remain; preserved in audit output'
+          PY
       - name: Preserve negative results and full numerical audit
         if: always()
         uses: actions/upload-artifact@v4
