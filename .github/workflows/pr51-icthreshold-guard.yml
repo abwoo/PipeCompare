@@ -5,6 +5,8 @@ on:
       - codex/pr51-icthreshold-fix-20261112
     paths:
       - +pipecompare/+eval/IcThreshold.m
+      - +pipecompare/+eval/Threshold.m
+      - +pipecompare/+simple/Presets.m
       - tests/test_icthreshold_guard.m
       - .github/workflows/pr51-icthreshold-guard.yml
   workflow_dispatch:
@@ -33,4 +35,4 @@ jobs:
             r=runtests(fullfile('tests','test_icthreshold_guard.m'),'OutputDetail',3);
             disp(table(r));
             fprintf('PR51_GUARD_TESTS total=%d passed=%d failed=%d\n',numel(r),sum([r.Passed]),sum([r.Failed]));
-            assert(numel(r)==3 && all([r.Passed]),'PipeCompare:CI','A score regression failed or a planned test did not run.');
+            assert(numel(r)==4 && all([r.Passed]),'PipeCompare:CI','A score regression failed or a planned test did not run.');
