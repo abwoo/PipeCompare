@@ -1,0 +1,35 @@
+name: PR51 IcThreshold nonfinite-score MATLAB regression
+on:
+  push:
+    branches:
+      - codex/pr51-icthreshold-fix-20261112
+    paths:
+      - +pipecompare/+eval/IcThreshold.m
+      - tests/test_icthreshold_guard.m
+      - .github/workflows/pr51-icthreshold-guard.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+      - name: Pin EEGLAB version for regression
+        run: git clone --depth 1 --branch 2026.0.0 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+          products: Signal_Processing_Toolbox
+      - name: Run targeted score regression in MATLAB
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab'));eeglab nogui;
+            cd PipeCompare;addpath(pwd);addpath(fullfile(pwd,'tests'));
+            r=runtests(fullfile('tests','test_icthreshold_guard.m'),'OutputDetail',3);
+            disp(table(r));
+            assert(all([r.Passed]),'PipeCompare:CI','A score regression failed.');
