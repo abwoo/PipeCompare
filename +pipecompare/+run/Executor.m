@@ -766,7 +766,7 @@ function c = emptyCand()
 % Rank.run reads status, m, signal, interpolatedFraction and stratum.
 c = struct('id', 0, 'key', '', 'stratum', '', 'status', 'pending', 'message', '', 'm', [], 'signal', [], ...
     'interpolatedFraction', NaN, 'icsRemoved', 0, 'rejectedEpochs', 0, 'coms', {{}}, 'seconds', 0, 'unmatched', {{}}, ...
-    'notes', {{}}, 'ica', {{}}, 'overLimit', noOverLimit(), 'steps', {{}});
+    'notes', {{}}, 'ica', {{}}, 'overLimit', noOverLimit(), 'steps', {{}}, 'science', []);
 end
 
 function o = noOverLimit()
@@ -1306,7 +1306,7 @@ if isempty(idx) || ~isscalar(idx) || ~isfinite(idx) || idx < 1 || idx > numel(ca
     return;
 end
 z.candidateId = idx;
-if isfield(cands(idx),'science')
+if isfield(cands(idx),'science') && ~isempty(cands(idx).science)
     z.science = cands(idx).science;
 end
 if ~strcmp(cands(idx).status,'ok') || ~isfield(cands(idx),'m') || isempty(cands(idx).m)
