@@ -64,9 +64,12 @@ classdef Executor
         function result = run(plan, contract, opts)
             if nargin < 3, opts = struct(); end
             opts = pipecompare.utils.withDefaults(opts, struct('dryRun', false, 'injectUv', 5, 'filterCheck', true, ...
-                'refineCutoffs', false, 'eogCheck', false, 'icaSeeds', 0, 'signalTemplate', 'bump', 'dataUnit', 'uV', 'checkpoint', '', 'parallel', false, 'verbose', 'normal', 'progress', []));
+                'refineCutoffs', false, 'eogCheck', false, 'icaSeeds', 0, 'signalTemplate', 'bump', 'dataUnit', 'uV', 'checkpoint', '', 'parallel', false, 'verbose', 'normal', 'progress', [], 'scienceCapture', false));
             assert(isnumeric(opts.icaSeeds) && isscalar(opts.icaSeeds) && opts.icaSeeds >= 0 && opts.icaSeeds == round(opts.icaSeeds), ...
                 'PipeCompare:Options', 'icaSeeds must be a whole number >= 0.');
+            assert((islogical(opts.scienceCapture) || isnumeric(opts.scienceCapture)) && ...
+                isscalar(opts.scienceCapture) && ismember(double(opts.scienceCapture), [0 1]), ...
+                'PipeCompare:Options','scienceCapture must be a scalar boolean.');
             assert(any(strcmp(opts.signalTemplate, {'bump', 'data'})), 'PipeCompare:Options', ...
                 'signalTemplate must be ''bump'' or ''data''.');
             [EEG, live] = pipecompare.live.Session.current();
@@ -979,6 +982,19 @@ try
 catch ME
     c.status = 'failed'; c.message = ['evaluation: ' ME.message];
 end
+% Explicit development-only observer: capture AFTER the evaluated scores.
+% Failure is reported as missing science evidence, never as a candidate
+% rejection or a change in its ranking/epoch decisions.
+if pipecompare.utils.fieldOr(env.opts, 'scienceCapture', false) && ...
+        strcmp(c.status,'ok') && ~isempty(c.ica)
+    try
+        c.science = pipecompare.research.IcaScience.capture(E,c,env.ref,env.contract);
+    catch ME
+        c.science = struct('status','failed','reason', ...
+            sprintf('%s: %s',ME.identifier,ME.message));
+        pipecompare.utils.log('SCIENCE_RECORDER_FAILURE candidate=%d %s', li, ME.message);
+    end
+end
 el = toc(env.tStart);
 if strcmp(c.status, 'ok')
     pipecompare.utils.log('candidate %d: objectives %s, retention %s, %.0f s elapsed', li, ...
@@ -1283,6 +1299,9 @@ if isempty(idx) || ~isscalar(idx) || ~isfinite(idx) || idx < 1 || idx > numel(ca
     return;
 end
 z.candidateId = idx;
+if isfield(cands(idx),'science')
+    z.science = cands(idx).science;
+end
 if ~strcmp(cands(idx).status,'ok') || ~isfield(cands(idx),'m') || isempty(cands(idx).m)
     return;
 end
