@@ -1219,6 +1219,16 @@ if isfield(env.opts, 'progress') && ~isempty(env.opts.progress)
     e2.opts.progress = @(varargin) callProgress(f0, [{0} varargin(2:end)]);
 end
 obj = [T.objective(ids) nan(numel(ids), n)]; rec = [k nan(1, n)];
+% Separate numerical score from the existing Rank feasibility verdict.
+% No candidate is rescued by a low score if any seed rejects it.
+seedStatus = cell(numel(ids),n+1);
+seedStatus(:,1) = T.status(ids);
+seedStratum = cell(numel(ids),n+1);
+seedStratum(:,1) = T.stratum(ids);
+candidateMeasurements = cell(numel(ids),n+1);
+for q = 1:numel(ids)
+    candidateMeasurements{q,1} = seedMeasureOfRecommendation(allc,ids(q),ref,0,T);
+end
 % Read-only: record scientific measurements under each ICA start. No change
 % to candidate scoring, ranking, tie-breaking, or the random seed schedule.
 measurements = cell(1, n + 1);
@@ -1236,11 +1246,19 @@ for seed = 1:n
     end
     R2 = pipecompare.eval.Rank.run(c2, ref, ro, levelsOf(env.leaves));
     obj(:, seed + 1) = R2.table.objective(ids);
+    seedStatus(:,seed+1) = R2.table.status(ids);
+    seedStratum(:,seed+1) = R2.table.stratum(ids);
+    for q = 1:numel(ids)
+        candidateMeasurements{q,seed+1} = ...
+            seedMeasureOfRecommendation(c2,ids(q),ref,seed,R2.table);
+    end
     if ~isempty(R2.recommended), rec(seed + 1) = R2.recommended; end
     measurements{seed + 1} = seedMeasureOfRecommendation(c2, R2.recommended, ref, seed, R2.table);
 end
 out = struct('seeds', 1:n, 'ids', ids(:)', 'objective', obj, 'recommended', rec, ...
-    'same', all(rec == k), 'measurements', {measurements});
+    'same', all(rec == k), 'measurements', {measurements}, ...
+    'rankStatus', {seedStatus}, 'strata', {seedStratum}, ...
+    'candidateMeasurements', {candidateMeasurements});
 ch = max(abs(obj(:, 2:end) ./ obj(:, 1) - 1), [], 2);
 if out.same
     pipecompare.utils.log(['ICA check: with ICA started in %d other way(s), the same pipeline (%d) is recommended; ', ...
