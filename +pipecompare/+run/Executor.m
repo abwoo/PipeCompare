@@ -1226,8 +1226,13 @@ seedStatus(:,1) = T.status(ids);
 seedStratum = cell(numel(ids),n+1);
 seedStratum(:,1) = T.stratum(ids);
 candidateMeasurements = cell(numel(ids),n+1);
+% Scientific instrumentation only: the actual fitted ICA scalp-map matrix
+% and removed component indices for each candidate at each start.
+% Capturing diagnostics does not enter ranking, fitting, or thresholding.
+icaFingerprints = cell(numel(ids),n+1);
 for q = 1:numel(ids)
     candidateMeasurements{q,1} = seedMeasureOfRecommendation(allc,ids(q),ref,0,T);
+    icaFingerprints{q,1} = pipecompare.eval.IcaFingerprint.snapshot(allc(ids(q)));
 end
 % Read-only: record scientific measurements under each ICA start. No change
 % to candidate scoring, ranking, tie-breaking, or the random seed schedule.
@@ -1251,6 +1256,7 @@ for seed = 1:n
     for q = 1:numel(ids)
         candidateMeasurements{q,seed+1} = ...
             seedMeasureOfRecommendation(c2,ids(q),ref,seed,R2.table);
+        icaFingerprints{q,seed+1} = pipecompare.eval.IcaFingerprint.snapshot(c2(ids(q)));
     end
     if ~isempty(R2.recommended), rec(seed + 1) = R2.recommended; end
     measurements{seed + 1} = seedMeasureOfRecommendation(c2, R2.recommended, ref, seed, R2.table);
@@ -1258,7 +1264,8 @@ end
 out = struct('seeds', 1:n, 'ids', ids(:)', 'objective', obj, 'recommended', rec, ...
     'same', all(rec == k), 'measurements', {measurements}, ...
     'rankStatus', {seedStatus}, 'strata', {seedStratum}, ...
-    'candidateMeasurements', {candidateMeasurements});
+    'candidateMeasurements', {candidateMeasurements}, ...
+    'icaComponentFingerprints', {icaFingerprints});
 ch = max(abs(obj(:, 2:end) ./ obj(:, 1) - 1), [], 2);
 if out.same
     pipecompare.utils.log(['ICA check: with ICA started in %d other way(s), the same pipeline (%d) is recommended; ', ...
