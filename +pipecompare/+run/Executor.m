@@ -1284,7 +1284,8 @@ end
 % for an alternate ICA seed.
 if isfield(ref,'objectives') && ~isempty(ref.objectives)
     gainColumn = matlab.lang.makeValidName(['gain_' ref.objectives{1}]);
-    if isfield(rankTable,gainColumn) && numel(rankTable.(gainColumn)) >= idx
+    if istable(rankTable) && ismember(gainColumn, rankTable.Properties.VariableNames) ...
+            && height(rankTable) >= idx
         g = rankTable.(gainColumn)(idx);
         if isfinite(g) && g > 0 && z.hasMeasurement
             z.gain = g;
