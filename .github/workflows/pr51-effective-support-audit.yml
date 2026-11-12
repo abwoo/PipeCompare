@@ -1,0 +1,45 @@
+name: PR51 P300 stage-2 frozen effective-support evidence audit
+on:
+  push:
+    branches:
+      - codex/pr51-effective-support-20261112
+    paths:
+      - benchmarks/audit_p3_effective_support.py
+      - tests/test_effective_support_audit.py
+      - .github/workflows/pr51-effective-support-audit.yml
+      - benchmarks/results/erpcore_rootcause_20261112/**
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  support:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify snapshot provenance and numeric support auditing
+        run: python -m unittest discover -s tests -p 'test_effective_support_audit.py' -v
+      - name: Build read-only 20-subject effective support evidence
+        run: |
+          python benchmarks/audit_p3_effective_support.py --snapshot-dir benchmarks/results/erpcore_rootcause_20261112 --out result/p3-support
+      - name: Validate audit result and floor invariance
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          x=json.loads(Path('result/p3-support/effective_support.json').read_text())
+          assert x['unique_subjects']==20
+          assert len(x['arm_condition_rows'])==60
+          assert x['preexisting_effective_trial_floor']==5
+          assert x['source_run_id']=='42809789847'
+          print('PR51_SUPPORT_AUDIT_VERIFIED subjects=20 arms=60 floor=5')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pr51-original-p3-effective-support-audit
+          path: result/p3-support/
+          if-no-files-found: error
