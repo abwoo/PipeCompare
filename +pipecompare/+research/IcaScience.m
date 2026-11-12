@@ -6,7 +6,8 @@ classdef IcaScience
         function z = capture(EEG, candidate, ref, contract)
             z = struct('status','unavailable','reason','', ...
                 'decompositions',{{}},'timeMs',[], 'conditions',{{}}, ...
-                'measurementKind','','srate',NaN,'channel','');
+                'measurementKind','','srate',NaN,'channel','', ...
+                'preRemovalContributions',{{}});
             assert(strcmp(contract.analysis,'erp') && numel(ref.ids)==2, ...
                 'PipeCompare:IcaScience','This readout is only for two-condition ERP.');
             assert(isfield(candidate,'ica') && ~isempty(candidate.ica), ...
@@ -122,6 +123,15 @@ classdef IcaScience
                     'originalEstimate',double(o.estimate(c)));
             end
             z.conditions=conditions;
+            % Copy only observer evidence already recorded by the search;
+            % never replay, infer, or alter any IC cleaning decision here.
+            for step=1:numel(candidate.steps)
+                info=candidate.steps{step};
+                if strcmp(info.type,'icremove') && ...
+                        isfield(info,'icaContribution')
+                    z.preRemovalContributions{end+1}=info.icaContribution;
+                end
+            end
             z.status='complete';z.reason='';
         end
     end
