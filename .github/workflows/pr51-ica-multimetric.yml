@@ -1,0 +1,73 @@
+name: PR51 multi-metric ICA research-only cloud development comparison
+on:
+  push:
+    branches: [codex/pr51-ica-multimetric-20261112]
+    paths:
+      - benchmarks/ica_multimetric.py
+      - tests/test_ica_multimetric.py
+      - docs/PR51_ICA_MULTIMETRIC_PROTOCOL_20261112.md
+      - docs/PR51_ICA_MULTIMETRIC_RESULTS_20261112.md
+      - .github/workflows/pr51-ica-multimetric.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  unit:
+    name: Scientific gates and training-only multi-metric selection tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Confirm no production MATLAB file changed
+        run: |
+          test -z "$(git diff --name-only 347ed4363116158b1870fdb3356671e3983a8374 HEAD -- +pipecompare pop_pipecompare.m eegplugin_pipecompare.m)"
+          git diff --check
+      - name: Python scientific screen and existing integrity regressions
+        run: |
+          python -m unittest discover -s tests -p test_ica_multimetric.py -v
+          python -m unittest discover -s tests -p test_ica_support_integrity.py -v
+          python -m unittest discover -s tests -p test_ica_science.py -v
+          python -m unittest discover -s tests -p test_ica_unseen_seeds.py -v
+  development:
+    needs: unit
+    name: Replay original/science archived subjects 11 15 21 (no EEG refit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Download exact frozen original six-start ERP CORE records
+        uses: actions/download-artifact@v4
+        with:
+          repository: abwoo/PipeCompare
+          run-id: 43169562528
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: pr51-icthreshold-dev-*-attempt-1
+          path: evidence/raw
+      - name: Download exact previously verified ICA science readouts
+        uses: actions/download-artifact@v4
+        with:
+          repository: abwoo/PipeCompare
+          run-id: 43184910782
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: pr51-ica-science-dev-*-attempt-1
+          path: evidence/science
+      - name: Run training-only multi-metric selection and report remaining starts
+        run: |
+          python benchmarks/ica_multimetric.py \
+            --raw evidence/raw --science evidence/science \
+            --out output/multimetric_development.json
+      - name: Archive all scientific exclusions, abstentions and outcomes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-ica-multimetric-development-${{ github.run_id }}
+          path: output/
+          retention-days: 90
+          if-no-files-found: warn
