@@ -1219,6 +1219,10 @@ if isfield(env.opts, 'progress') && ~isempty(env.opts.progress)
     e2.opts.progress = @(varargin) callProgress(f0, [{0} varargin(2:end)]);
 end
 obj = [T.objective(ids) nan(numel(ids), n)]; rec = [k nan(1, n)];
+% Read-only: record scientific measurements under each ICA start. No change
+% to candidate scoring, ranking, tie-breaking, or the random seed schedule.
+measurements = cell(1, n + 1);
+measurements{1} = seedMeasureOfRecommendation(allc, k, ref, 0);
 ro = opts; ro.nSplits = 0;
 for seed = 1:n
     c2 = allc; cx = ctx; cx.icaSeed = seed;
@@ -1233,8 +1237,10 @@ for seed = 1:n
     R2 = pipecompare.eval.Rank.run(c2, ref, ro, levelsOf(env.leaves));
     obj(:, seed + 1) = R2.table.objective(ids);
     if ~isempty(R2.recommended), rec(seed + 1) = R2.recommended; end
+    measurements{seed + 1} = seedMeasureOfRecommendation(c2, R2.recommended, ref, seed);
 end
-out = struct('seeds', 1:n, 'ids', ids(:)', 'objective', obj, 'recommended', rec, 'same', all(rec == k));
+out = struct('seeds', 1:n, 'ids', ids(:)', 'objective', obj, 'recommended', rec, ...
+    'same', all(rec == k), 'measurements', {measurements});
 ch = max(abs(obj(:, 2:end) ./ obj(:, 1) - 1), [], 2);
 if out.same
     pipecompare.utils.log(['ICA check: with ICA started in %d other way(s), the same pipeline (%d) is recommended; ', ...
@@ -1245,6 +1251,55 @@ else
     if isempty(alt), alt = 'no pipeline'; end
     pipecompare.utils.log(['ICA check: with ICA started in another way, %s would be recommended instead of %d: ', ...
         'this recommendation depends on where ICA starts.'], alt, k);
+end
+end
+
+function z = seedMeasureOfRecommendation(cands, idx, ref, seed)
+% Snapshot of actual, recommended per-seed estimates. The source EOG/HMM
+% flags are NEVER changed here. Absence stays NaN, not zero or a pass.
+z = struct('seed', seed, 'candidateId', NaN, 'hasMeasurement', false, ...
+    'conditionEstimates', [], 'differenceEstimate', NaN, 'sme', [], ...
+    'sourceUnflagged', [], 'effectiveUnflagged', []);
+if isempty(idx) || ~isscalar(idx) || ~isfinite(idx) || idx < 1 || idx > numel(cands)
+    return;
+end
+z.candidateId = idx;
+if ~strcmp(cands(idx).status,'ok') || ~isfield(cands(idx),'m') || isempty(cands(idx).m)
+    return;
+end
+m = cands(idx).m;
+if ~isfield(m,'objectives') || isempty(m.objectives), return; end
+o = m.objectives(1);
+if ~isfield(o,'estimate') || isempty(o.estimate), return; end
+z.conditionEstimates = o.estimate;
+if isfield(o,'sme'), z.sme = o.sme; end
+z.hasMeasurement = all(isfinite(o.estimate));
+if numel(o.estimate)==2 && z.hasMeasurement
+    z.differenceEstimate = o.estimate(1)-o.estimate(2);
+end
+if ~isfield(ref,'ids') || ~isfield(o,'X') || isempty(o.X), return; end
+nC = numel(ref.ids);
+z.sourceUnflagged = nan(1,nC);
+z.effectiveUnflagged = nan(1,nC);
+for c = 1:nC
+    if ~isfield(ref,'blink') || isempty(ref.blink) || isempty(ref.blink{1}) ...
+            || numel(ref.blink{1}) < c || isempty(ref.blink{1}{c})
+        continue;
+    end
+    if numel(o.X) < c || isempty(o.X{c}), continue; end
+    flags = logical(ref.blink{1}{c}(:));
+    vals = o.X{c}(:,1);
+    if numel(flags)~=numel(vals), continue; end
+    w = ones(size(vals));
+    if isfield(o,'w') && ~isempty(o.w)
+        if numel(o.w)<c || isempty(o.w{c}), continue; end
+        w = o.w{c}(:);
+    end
+    if numel(w)~=numel(vals), continue; end
+    good = isfinite(vals) & isfinite(w) & w>0; w(~good)=0;
+    clean = w(~flags);
+    z.sourceUnflagged(c) = nnz(~flags);
+    z.effectiveUnflagged(c) = sum(clean)^2 / max(sum(clean.^2),eps);
 end
 end
 
