@@ -1,0 +1,50 @@
+name: PR51 icremove finite-objective regression
+on:
+  push:
+    branches:
+      - codex/pr51-icremove-fix-20261112
+    paths:
+      - +pipecompare/+eval/IcThreshold.m
+      - tests/test_icthreshold_nonfinite.m
+      - .github/workflows/pr51-icremove-fix-test.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  matlab-regression:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      DISPLAY: ':99'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+      - name: Verify production diff restricted to one MATLAB file
+        working-directory: PipeCompare
+        run: |
+          base=$(python -c "import json; print(json.load(open('benchmarks/erpcore_protocol.json'))['algorithm_commit'])")
+          files=$(git diff --name-only "$base" HEAD -- +pipecompare pop_pipecompare.m eegplugin_pipecompare.m fallback pcomp.m pipecompare_setup.m)
+          test "$files" = '+pipecompare/+eval/IcThreshold.m' || { printf 'Unexpected production changes:\n%s\n' "$files"; exit 1; }
+          git diff --check "$base" HEAD -- +pipecompare/+eval/IcThreshold.m
+      - name: Checkout pinned EEGLAB 2026.0.0
+        run: git clone --depth 1 --branch 2026.0.0 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
+      - name: Bound Linux MATLAB dependencies
+        run: bash PipeCompare/.github/scripts/pilot-prepare-matlab.sh
+      - name: Start virtual display
+        run: bash PipeCompare/.github/scripts/start-display.sh
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+          products: Signal_Processing_Toolbox
+      - name: Run two MATLAB regression tests on the fixed branch
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab')); eeglab nogui;
+            addpath(fullfile(pwd,'PipeCompare')); addpath(fullfile(pwd,'PipeCompare','tests'));
+            result = runtests(fullfile(pwd,'PipeCompare','tests','test_icthreshold_nonfinite.m'));
+            disp(result);
+            assert(numel(result)==2,'PR51:Regression','Expected exactly two tests');
+            assert(all([result.Passed]),'PR51:Regression','ICA non-finite guard tests failed');
+            fprintf('PR51_IC_NONFINITE_TESTS_PASS %d/%d\n',sum([result.Passed]),numel(result));
