@@ -4,8 +4,10 @@ classdef IcaRobust
 % If no candidate is feasible under every start, abstain. Never retroactively
 % change the original acceptance constraints, scientific gate, or PR51 ranking.
 methods (Static)
-    function out = select(ids, obj, status, stratum)
-        if nargin < 4, stratum = repmat({'default'},size(status)); end
+    function out = select(ids, obj, status, stratum, supportPass)
+        % supportPass is a mandatory independently checked HMM-unflagged
+        % effective-n floor for each candidate and each ICA seed.
+        if nargin ~= 5, error('PipeCompare:IcaRobust','Independent support mask is required'); end
         if ~isnumeric(ids) || numel(unique(ids))~=numel(ids) ...
                 || any(~isfinite(ids)) || any(ids<1) || any(ids~=floor(ids))
             error('PipeCompare:IcaRobust','Candidate IDs must be distinct positive integers');
@@ -13,13 +15,14 @@ methods (Static)
         ids=ids(:);
         if ~isnumeric(obj) || ndims(obj)>2 || size(obj,1)~=numel(ids) ...
                 || size(obj,2)<2 || ~iscell(status) || ~isequal(size(status),size(obj)) ...
-                || ~iscell(stratum) || ~isequal(size(stratum),size(obj))
+                || ~iscell(stratum) || ~isequal(size(stratum),size(obj)) ...
+                || ~islogical(supportPass) || ~isequal(size(supportPass),size(obj))
             error('PipeCompare:IcaRobust','Seed objective/status/stratum matrices are misaligned');
         end
         out=struct('status','abstain','candidateId',NaN,'worstObjective',NaN, ...
             'eligibleIds',zeros(1,0),'eligibleWorst',zeros(1,0), ...
             'nEligible',0,'reason','no-common-feasible-candidate', ...
-            'allSeedsScientificallyFeasible',false, ...
+            'allSeedsScientificallyFeasible',false, 'allSeedsSupportFloorPassed',false, ...
             'originalRecommendationUnchanged',true);
         valid=false(numel(ids),1);
         for i=1:numel(ids)
@@ -29,7 +32,7 @@ methods (Static)
                 && strcmp(char(s),'feasible'),row));
             consistentStratum=all(cellfun(@(s) (ischar(s)||isstring(s)) ...
                 && strcmp(char(s),char(stratum{i,1})),stratum(i,:)));
-            valid(i)=isFeasible && consistentStratum ...
+            valid(i)=isFeasible && all(supportPass(i,:)) && consistentStratum ...
                 && all(isfinite(obj(i,:))) && all(obj(i,:)>=0);
         end
         feas=find(valid);
@@ -52,6 +55,7 @@ methods (Static)
         out.candidateId=ids(feas(ties));
         out.worstObjective=best;
         out.allSeedsScientificallyFeasible=true;
+        out.allSeedsSupportFloorPassed=true;
     end
 end
 end
