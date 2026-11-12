@@ -449,11 +449,21 @@ else
     if ~ischar(rej.params.uv), v = rej.params.uv; end
 end
 [v, ok, obj, X, M, C] = pipecompare.eval.Threshold.curve(Ek, m, contract, ref, opts, g, v);
-if ~any(ok)
-    if isempty(why), why = 'too few trials kept'; end
+% Retention-feasible limits can still have a non-finite total error:
+% Measure.eyeBias intentionally returns NaN when all retained trials are
+% blink-flagged (no artifact-free reference). Such a limit cannot be
+% ranked, and must never produce an empty argmin/threshold assignment.
+F = find(ok & isfinite(obj));
+if isempty(F)
+    if isempty(why)
+        if any(ok)
+            why = 'no finite objective at a retention-feasible limit';
+        else
+            why = 'too few trials kept';
+        end
+    end
     return;
 end
-F = find(ok);
 b = F(find(obj(F) == min(obj(F)), 1, 'last'));
 u = v(b);
 if isempty(why), f = obj(b); end
