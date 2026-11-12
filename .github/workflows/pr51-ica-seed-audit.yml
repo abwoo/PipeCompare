@@ -1,0 +1,31 @@
+name: PR51 frozen ICA seed-choice audit
+on:
+  push:
+    branches:
+      - codex/pr51-icremove-fix-20261112
+    paths:
+      - benchmarks/audit_ica_seed_choices.py
+      - .github/workflows/pr51-ica-seed-audit.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Independently check 17 source ICA fit records and 16 complete comparator arms
+        run: |
+          python benchmarks/audit_ica_seed_choices.py \
+             --source-dir benchmarks/results/erpcore_rootcause_20261112 \
+             --out ica-audit
+      - name: Publish descriptive selected IDs and objective differences
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-frozen-ica-seed-audit
+          path: ica-audit/
+          retention-days: 90
