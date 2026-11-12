@@ -449,11 +449,18 @@ else
     if ~ischar(rej.params.uv), v = rej.params.uv; end
 end
 [v, ok, obj, X, M, C] = pipecompare.eval.Threshold.curve(Ek, m, contract, ref, opts, g, v);
-if ~any(ok)
-    if isempty(why), why = 'too few trials kept'; end
+% Retention alone does not make an objective usable: non-finite
+% trial scores can leave ok=true while obj is NaN. Choosing among
+% these values gives an empty best index and breaks scalar outputs
+% in choose()/chooseBySme(). Keep the original trial-count gate.
+F = find(ok & isfinite(obj));
+if isempty(F)
+    if isempty(why)
+        if any(ok), why = 'non-finite selection objective';
+        else, why = 'too few trials kept'; end
+    end
     return;
 end
-F = find(ok);
 b = F(find(obj(F) == min(obj(F)), 1, 'last'));
 u = v(b);
 if isempty(why), f = obj(b); end
