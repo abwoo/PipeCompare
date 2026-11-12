@@ -46,12 +46,16 @@ jobs:
               assert len(c['recommended'])==3
               assert all(z['seed']==i for i,z in enumerate(c['measurements']))
               assert all(z['candidateId']==q for z,q in zip(c['measurements'],c['recommended']))
-              assert math.isclose(c['measurements'][0]['differenceEstimate'],
+              assert math.isclose(c['measurements'][0]['correctedDifferenceEstimate'],
                      x['erp']['differenceAmplitude'],rel_tol=0,abs_tol=1e-8)
               ds=[z['differenceEstimate'] for z in c['measurements']]
+              corrected=[z['correctedDifferenceEstimate'] for z in c['measurements']]
               out={'subject':x['subject'],'recommended':c['recommended'],
-                   'same_id':c['same'],'p3_differences':ds,
-                   'delta_from_first_seed':[v-ds[0] if v is not None else None for v in ds],
+                   'same_id':c['same'],'p3_raw_differences':ds,
+                   'p3_gain_corrected_differences':corrected,
+                   'gain':[z['gain'] for z in c['measurements']],
+                   'delta_raw_from_first_seed':[v-ds[0] if v is not None else None for v in ds],
+                   'delta_corrected_from_first_seed':[v-corrected[0] if v is not None else None for v in corrected],
                    'sme':[z['sme'] for z in c['measurements']],
                    'effective_unflagged':[z['effectiveUnflagged'] for z in c['measurements']]}
               summary.append(out)
