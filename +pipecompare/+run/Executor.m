@@ -1408,6 +1408,16 @@ try
                 end
             end
         end
+        preContribution = [];
+        if strcmp(in.type,'icremove') && ...
+                pipecompare.utils.fieldOr(env.opts,'scienceCapture',false)
+            try
+                preContribution = pipecompare.research.IcaContribution.capturePreRemove(E,env.contract);
+            catch observerError
+                preContribution = struct('status','failed','reason', ...
+                    sprintf('%s: %s',observerError.identifier,observerError.message));
+            end
+        end
         if isempty(d)
             cx = pathContext(path, q, ctx, S, env.truth);
             [E, coms, info] = runStep(in, E, cx, env.opts.verbose);
@@ -1417,6 +1427,7 @@ try
             E = eeg_checkset(E);
             coms = d.coms; info = struct('ica', d);
         end
+        if ~isempty(preContribution), info.icaContribution = preContribution; end
         [S, unmatched] = replayCopy(in, S, info, ctx);
         [ctx, acc] = advance(in, ctx, acc, info, coms, unmatched, 0);
     end
