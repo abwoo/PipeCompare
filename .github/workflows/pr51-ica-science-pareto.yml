@@ -1,0 +1,63 @@
+name: PR51 four-axis scientific ICA Pareto development shadow
+on:
+  push:
+    branches: [codex/pr51-ica-science-pareto-20261112]
+    paths:
+      - .github/workflows/pr51-ica-science-pareto.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned scientific packages
+        run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Verify original MATLAB pipeline has not changed
+        run: |
+          test -z "$(git diff --name-only dec058bb64623f5c6307297c2d584f6cdaae4a6e HEAD -- +pipecompare pop_pipecompare.m benchmarks/erpcore_pilot.m)"
+          git diff --check
+      - name: Test actual scientific trial support and Pareto abstention
+        run: |
+          python -m unittest discover -s tests -p test_ica_science.py -v
+          python -m unittest discover -s tests -p test_ica_science_pareto.py -v
+          python -m unittest discover -s tests -p test_ica_unseen_seeds.py -v
+  science-shadow:
+    needs: unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install immutable analysis dependencies
+        run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Read original cloud ICA scientific records, without any EEG refit
+        uses: actions/download-artifact@v4
+        with:
+          repository: abwoo/PipeCompare
+          run-id: 43184910782
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: pr51-ica-science-dev-*-attempt-1
+          path: evidence
+      - name: Reconcile physical trial support before Pareto comparisons
+        run: |
+          python benchmarks/ica_support_integrity.py \
+            --evidence evidence --out output/ica_support_integrity.json
+      - name: Analyze training-only four-axis scientific Pareto dominance
+        run: |
+          python benchmarks/ica_science_pareto.py \
+            --evidence evidence --out output/ica_science_pareto.json
+      - name: Preserve all scientific failure and abstention evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-ica-science-pareto-${{ github.run_id }}
+          path: output/
+          retention-days: 90
+          if-no-files-found: warn
