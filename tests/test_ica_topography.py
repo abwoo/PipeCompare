@@ -33,6 +33,15 @@ class TopographicMatching(unittest.TestCase):
         z=alignment(a,b)
         self.assertEqual(z["alignedRemovedJaccard"],0.5)
 
+    def test_matlab_singleton_removed_indices_are_not_missing(self):
+        a,b=pairs()
+        a["removedIndices"]=3
+        b["removedIndices"]=1.0
+        z=alignment(a,b)
+        self.assertTrue(z["available"])
+        self.assertEqual(z["removedCountBaseline"],1)
+        self.assertEqual(z["alignedRemovedJaccard"],1)
+
     def test_nothing_removed_cannot_be_called_perfect(self):
         a,b=pairs()
         a["removedIndices"]=[];b["removedIndices"]=[]
