@@ -616,7 +616,8 @@ classdef Steps
             % ICA starts; runica resets its own random state, so the order
             % of the samples is what changes its path). Not adopted.
             seed = pipecompare.utils.fieldOr(ctx, 'icaSeed', 0);
-            if fitHp || clean || seed > 0
+            fixedRank = pipecompare.utils.fieldOr(ctx, 'icaRankStable', false);
+            if fitHp || clean || seed > 0 || fixedRank
                 % Fit on a copy: high-passed (stable decomposition) and/or
                 % without the stretches of extreme data (movement, bursts),
                 % which would otherwise claim components of their own; the
@@ -641,6 +642,16 @@ classdef Steps
                     end
                 end
                 if isempty(what), what = {'the data as they are (nothing extreme to leave out)'}; end
+                if fixedRank
+                    [rFit,~] = pipecompare.research.IcaRank.wholeData(tmp.data);
+                    % Supply an *explicit* PCA dimension to either
+                    % pop_runica or the legacy runIca wrapper. Both
+                    % would otherwise estimate rank from first 3000
+                    % samples AFTER seed-specific sample reordering.
+                    opts = [opts {'pca', rFit}];
+                    args = vararg2str(opts);
+                    what{end+1} = sprintf('full-fit-data fixed rank %d before permutation',rFit);
+                end
                 if seed > 0
                     sz = size(tmp.data); x = reshape(tmp.data, sz(1), []);
                     x = x(:, randperm(RandStream('mt19937ar', 'Seed', seed), size(x, 2)));
@@ -1408,11 +1419,18 @@ if ~contains(fileread(which('pop_runica')), 'if ismatlab, g.options')
 end
 o = opts(3:end);
 x = reshape(EEG.data, EEG.nbchan, EEG.pnts * EEG.trials);
-r = icaRank(double(x(:, 1:min(3000, size(x, 2)))), contains(fileread(which('pop_runica')), 'tmprank2 = min('));
+% An explicit PCA dimension is already fixed before any seed permutation
+% in the opt-in rank-controlled research path. Never append another PCA
+% option from the first 3000 shuffled samples in that case.
+explicitPca = any(cellfun(@(v) ischar(v) && strcmpi(v,'pca'),o));
+if ~explicitPca
+    r = icaRank(double(x(:, 1:min(3000, size(x, 2)))), ...
+        contains(fileread(which('pop_runica')), 'tmprank2 = min('));
+end
 x = x - repmat(mean(x, 2), [1 size(x, 2)]);
 x = double(x);
 x = x - repmat(mean(x, 2), [1 size(x, 2)]);
-if r < size(x, 1), o = [o {'pca', r}]; end
+if ~explicitPca && r < size(x, 1), o = [o {'pca', r}]; end
 [EEG.icaweights, EEG.icasphere] = runica(x, 'lrate', 0.001, o{:});
 clear x
 EEG.icachansind = 1:EEG.nbchan; EEG.icaact = [];
