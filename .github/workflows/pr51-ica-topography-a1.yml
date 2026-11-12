@@ -56,6 +56,25 @@ jobs:
               assert x['executionCommit']=='bee8cf0bd24a439429c46b0075d60382b533ff9d'
               assert str(x['workflowRun'])=='43178065954'
               assert x['completed'] and not x['errors']
+          # Exact shape provenance for cases where one-to-one matching
+          # abstains: do not conflate incompatible decompositions with
+          # a numerical correlation of zero.
+          import numpy as np
+          from validate_ica_unseen_seeds import grid
+          for p in paths:
+              q=json.loads(p.read_text())
+              if q['subject']!=11: continue
+              z=q['icaSeedCheck']
+              g=grid(z['icaComponentFingerprints'],len(z['ids']),'icaComponentFingerprints')
+              for cid in (z['recommended'][0],25):
+                  for idx,meta in enumerate(g[z['ids'].index(cid)]):
+                      print('PR51_ICA_SHAPE_FORENSIC',json.dumps({
+                          'subject':11,'id':cid,'seed':idx,
+                          'available':meta.get('available'),
+                          'reason':meta.get('reason'),
+                          'nChannels':len(meta.get('channels',[])),
+                          'mapShape':list(np.shape(meta.get('maps',[]))),
+                          'nRemoved':meta.get('removedCount')}))
           result=run(Path('evidence'))
           Path('output').mkdir(exist_ok=True)
           Path('output/topography_A1.json').write_text(json.dumps(result,indent=2))
