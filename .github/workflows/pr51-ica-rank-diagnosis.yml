@@ -1,0 +1,38 @@
+name: PR51 six-start ICA rank dimensionality scientific diagnosis
+on:
+  push:
+    branches: [codex/pr51-ica-science-pareto-20261112]
+    paths:
+      - .github/workflows/pr51-ica-rank-diagnosis.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Fetch immutable completed scientific recorder evidence
+        uses: actions/download-artifact@v4
+        with:
+          repository: abwoo/PipeCompare
+          run-id: 43184910782
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: pr51-ica-science-dev-*-attempt-1
+          path: evidence
+      - name: Inspect ICA component dimensions and removal decisions per start
+        run: |
+          python benchmarks/diagnose_ica_rank_dimensions.py \
+            --evidence evidence --out output/ica_rank_dimensions.json
+      - name: Archive complete evidence even if discrepancy is found
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-ica-rank-dimensions-${{ github.run_id }}
+          path: output/
+          if-no-files-found: warn
+          retention-days: 90
