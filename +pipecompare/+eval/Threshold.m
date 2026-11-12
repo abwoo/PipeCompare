@@ -80,7 +80,7 @@ classdef Threshold
                 end
                 info.uvChosen = u; info.uvBest = u;
                 if any(ok)
-                    info.note = 'no finite selection objective; nothing rejected';
+                    info.note = 'non-finite selection objective; nothing rejected';
                 else
                     info.note = 'no limit keeps enough trials; nothing rejected';
                 end
