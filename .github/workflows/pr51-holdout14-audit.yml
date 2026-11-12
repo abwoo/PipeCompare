@@ -1,0 +1,33 @@
+name: PR51 pre-frozen unseen ERP CORE P3 cohort integrity
+on:
+  push:
+    branches: [codex/pr51-holdout14-design-20261112]
+    paths:
+      - benchmarks/erpcore_holdout14_preanalysis_20261112.json
+      - benchmarks/validate_holdout14_draft.py
+      - tests/test_holdout14_draft.py
+      - .github/workflows/pr51-holdout14-audit.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  cohort:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test cohort exclusion and no-peeking invariants
+        run: python -m unittest discover -s tests -p test_holdout14_draft.py -v
+      - name: Verify previously unexposed participants without opening their signals
+        run: |
+          python benchmarks/validate_holdout14_draft.py \
+            --draft benchmarks/erpcore_holdout14_preanalysis_20261112.json \
+            --frozen-reference benchmarks/erpcore_protocol.json \
+            --out output/holdout_draft_audit.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pr51-unseen-holdout-design-${{ github.run_id }}
+          path: output/
+          retention-days: 90
