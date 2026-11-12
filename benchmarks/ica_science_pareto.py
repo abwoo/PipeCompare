@@ -52,6 +52,8 @@ def science_profile(ms, subject, ident, seeds):
         t=match_components(z0,audit[k])
         if not t.get("available"):
             return None,"topographic-matching-unavailable:"+t.get("reason","unknown")
+        if t.get("unmatchedComponents",0)!=0:
+            return None,"ica-component-count-changed-between-fits"
         topo.append(t)
         d=np.asarray(z0["p3DifferenceWave"])-np.asarray(audit[k]["p3DifferenceWave"])
         if d.shape!=np.asarray(z0["p3DifferenceWave"]).shape or not np.all(np.isfinite(d)):
