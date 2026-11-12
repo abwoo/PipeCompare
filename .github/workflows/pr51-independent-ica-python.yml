@@ -1,0 +1,23 @@
+name: PR51 disjoint ICA scientific group independent Python auditor regression
+on:
+  push:
+    branches: [codex/pr51-independent-ica-triplets-20261112]
+    paths:
+      - benchmarks/validate_ica_independent_groups.py
+      - tests/test_ica_independent_groups.py
+      - .github/workflows/pr51-independent-ica-python.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify true disjoint seed groups, scientific constraints and abstention
+        run: |
+          python -m unittest discover -s tests -p test_ica_independent_groups.py -v
+          python -m unittest discover -s tests -p test_ica_family_real.py -v
