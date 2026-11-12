@@ -47,10 +47,10 @@ def one_pair(old,new,replay_tolerance_uv=1e-6):
     for j in range(len(a["measurements"])):
         x,y=a["measurements"][j],b["measurements"][j]
         for key in ("candidateId","hasMeasurement","seed"):
-            if not close(x.get(key),y.get(key),tol=replay_tolerance_uv if key=="correctedDifferenceEstimate" else 1e-7):
+            if not close(x.get(key),y.get(key)):
                 reasons.append(f"seed-{j}-{key}-changed")
         for key in ("correctedDifferenceEstimate","gain"):
-            if not close(x.get(key),y.get(key)):
+            if not close(x.get(key),y.get(key),tol=replay_tolerance_uv if key=="correctedDifferenceEstimate" else 1e-7):
                 reasons.append(f"seed-{j}-{key}-changed")
     numerical=[]
     for seed,(x,y) in enumerate(zip(a["measurements"],b["measurements"])):
