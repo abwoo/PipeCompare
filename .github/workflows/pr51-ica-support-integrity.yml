@@ -1,0 +1,57 @@
+name: PR51 ICA trial support physical-bound audit (archived EEG only)
+on:
+  push:
+    branches: [codex/pr51-ica-support-integrity-20261112]
+    paths:
+      - benchmarks/ica_support_integrity.py
+      - tests/test_ica_support_integrity.py
+      - docs/PR51_ICA_SUPPORT_INTEGRITY_20261112.md
+      - .github/workflows/pr51-ica-support-integrity.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Guard production MATLAB implementation identity
+        run: |
+          test -z "$(git diff --name-only 452a5f0b4c5753db14cb99e689f185b0f43e1f0b HEAD -- +pipecompare)"
+      - name: Test effective-trial scientific bounds, original ICA regression
+        run: |
+          python -m unittest discover -s tests -p test_ica_support_integrity.py -v
+          python -m unittest discover -s tests -p test_ica_unseen_seeds.py -v
+          python -m unittest discover -s tests -p test_ica_feasibility_shadow.py -v
+  real-audit:
+    needs: unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Fetch only archived six-start development evidence
+        uses: actions/download-artifact@v4
+        with:
+          repository: abwoo/PipeCompare
+          run-id: 43169562528
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: pr51-icthreshold-dev-*-attempt-1
+          path: evidence
+      - name: Check source-versus-weighted effective support across candidate starts
+        run: |
+          python benchmarks/ica_support_integrity.py \
+            --evidence evidence --out output/ica_support_integrity.json
+      - name: Preserve complete findings including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-ica-support-integrity-${{ github.run_id }}
+          path: output/
+          retention-days: 90
+          if-no-files-found: warn
