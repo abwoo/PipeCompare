@@ -1265,10 +1265,23 @@ if strcmp(robust.status,'selected')
 else
     robust.seedMeasurements = {};
 end
+% MATLAB JSON encoding flattens 2-D cell arrays of text. Emit one
+% structured record per candidate so each seed's status stays aligned with
+% the same source candidate and support mask, independent of serializer.
+candidateSeedAudit = repmat(struct('candidateId',NaN,'status',{{}}, ...
+    'stratum',{{}},'supportPass',[],'objective',[]),1,numel(ids));
+for j = 1:numel(ids)
+    candidateSeedAudit(j).candidateId = ids(j);
+    candidateSeedAudit(j).status = seedStatus(j,:);
+    candidateSeedAudit(j).stratum = seedStratum(j,:);
+    candidateSeedAudit(j).supportPass = seedSupportPass(j,:);
+    candidateSeedAudit(j).objective = obj(j,:);
+end
 out = struct('seeds', 1:n, 'ids', ids(:)', 'objective', obj, 'recommended', rec, ...
     'same', all(rec == k), 'measurements', {measurements}, ...
     'statusBySeed', {seedStatus}, 'stratumBySeed', {seedStratum}, ...
-    'supportPassBySeed', seedSupportPass, 'robust', robust);
+    'supportPassBySeed', seedSupportPass, ...
+    'candidateSeedAudit', {candidateSeedAudit}, 'robust', robust);
 ch = max(abs(obj(:, 2:end) ./ obj(:, 1) - 1), [], 2);
 if out.same
     pipecompare.utils.log(['ICA check: with ICA started in %d other way(s), the same pipeline (%d) is recommended; ', ...
