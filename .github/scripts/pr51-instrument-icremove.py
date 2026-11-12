@@ -1,43 +1,43 @@
 #!/usr/bin/env python3
-"""Instrument a disposable checkout of Executor.m to reveal caught icremove stack traces.
+"""Patch a disposable cloud checkout solely to capture MATLAB exception origins.
 
-Do NOT commit patched production source. This adds stderr logging only; scientific
-outputs from this temporary instrumented run are diagnostic, never confirmation.
+The temporary changed Executor.m is never committed. No scientific parameters,
+rankings, production source or frozen protocol are changed in the Git branch.
+MATLAB evalc captures normal transcript, so stack frames are also attached to
+candidate failure messages in diagnostic result.json (not scientific outputs).
 """
 from pathlib import Path
 import argparse
 import subprocess
 
-ANCHOR = "pipecompare.utils.log('FAILED %s: %s (%d candidate(s) affected)', in.label, ME.message, numel(under));"
-ADDITION = """
-if strcmp(in.type, 'icremove')
-    fprintf(2, 'PR51_ICREMOVE_STACK subject=%s\\n%s\\n', getenv('PILOT_SUBJECT'), ...
-        getReport(ME, 'extended', 'hyperlinks', 'off'));
-end
+ANCHOR = "c.status = failStatus(ME); c.message = sprintf('%s: %s', in.label, ME.message);"
+INJECTION = """
+    if strcmp(in.type, 'icremove') && ~isempty(ME.stack)
+        frames = arrayfun(@(s) sprintf('%s:%d', s.name, s.line), ...
+            ME.stack, 'UniformOutput', false);
+        c.message = sprintf('%s [PR51_STACK %s]', c.message, strjoin(frames, ' > '));
+    end
 """
 
 def patch(src):
     if src.count(ANCHOR) != 1:
-        raise ValueError(f"expected 1 frozen Executor.failUnder anchor, got {src.count(ANCHOR)}")
-    return src.replace(ANCHOR, ANCHOR + ADDITION, 1)
+        raise ValueError(f"Expected one Executor.failUnder message anchor, got {src.count(ANCHOR)}")
+    return src.replace(ANCHOR, ANCHOR + INJECTION, 1)
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("repo", type=Path)
     args = parser.parse_args()
-    root = args.repo
-    target = root / "+pipecompare/+run/Executor.m"
+    target = args.repo / "+pipecompare/+run/Executor.m"
     original = target.read_text()
-    changed = patch(original)
-    assert len(changed) > len(original)
-    target.write_text(changed)
-    source = subprocess.run(["git","diff","--","+pipecompare/+run/Executor.m"],
-                            cwd=root,capture_output=True,text=True,check=True).stdout
-    if source.count("+    fprintf(2, 'PR51_ICREMOVE_STACK") != 1 or source.count("@@") == 0:
-        raise ValueError("unexpected diagnostic patch diff; refuse to run")
-    (root.parent/"result").mkdir(exist_ok=True)
-    (root.parent/"result"/"diagnostic_instrumentation.diff").write_text(source)
-    print("PR51 temporary execution logging instrumentation applied; original branch source unchanged.")
+    target.write_text(patch(original))
+    diff = subprocess.run(["git", "diff", "--", "+pipecompare/+run/Executor.m"],
+                          cwd=args.repo, capture_output=True, text=True, check=True).stdout
+    if diff.count("+    if strcmp(in.type, 'icremove')") != 1 or "PR51_STACK" not in diff:
+        raise ValueError("Unexpected patch; abort before EEG processing")
+    (args.repo.parent / "result").mkdir(exist_ok=True)
+    (args.repo.parent / "result" / "diagnostic_instrumentation.diff").write_text(diff)
+    print("PR51 temporary diagnostic message enrichment applied; no scientific parameter changes.")
 
-if __name__=="__main__":
+if __name__ == "__main__":
     main()
