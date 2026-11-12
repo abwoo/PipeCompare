@@ -1,0 +1,57 @@
+name: PR51 exploratory ICA P300 stability-first comparison (development only)
+on:
+  push:
+    branches: [codex/pr51-ica-stability-first-20261112]
+    paths:
+      - benchmarks/ica_stability_first.py
+      - tests/test_ica_stability_first.py
+      - docs/PR51_ICA_STABILITY_FIRST_20261112.md
+      - .github/workflows/pr51-ica-stability-first.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify production algorithm untouched
+        run: |
+          test -z "$(git diff --name-only 452a5f0b4c5753db14cb99e689f185b0f43e1f0b HEAD -- +pipecompare)"
+      - name: Test train/validation isolation and scientific gates
+        run: |
+          python -m unittest discover -s tests -p test_ica_stability_first.py -v
+          python -m unittest discover -s tests -p test_ica_support_integrity.py -v
+          python -m unittest discover -s tests -p test_ica_unseen_seeds.py -v
+  scientific-compare:
+    needs: unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Reuse exact archived six ICA seed raw results
+        uses: actions/download-artifact@v4
+        with:
+          repository: abwoo/PipeCompare
+          run-id: 43169562528
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: pr51-icthreshold-dev-*-attempt-1
+          path: evidence
+      - name: Compare two shadow selectors and unchanged original pipeline
+        run: |
+          python benchmarks/ica_stability_first.py \
+            --evidence evidence --out output/stability_first_dev.json
+      - name: Preserve positive and negative comparisons
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-ica-stability-first-dev-${{ github.run_id }}
+          path: output/
+          retention-days: 90
+          if-no-files-found: warn
