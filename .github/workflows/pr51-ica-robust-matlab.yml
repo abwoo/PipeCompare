@@ -1,0 +1,30 @@
+name: PR51 robust MATLAB selector isolated scientific constraint tests
+on:
+  push:
+    branches: [codex/pr51-ica-robust-matlab-20261112]
+    paths:
+      - +pipecompare/+eval/IcaRobust.m
+      - tests/test_ica_robust.m
+      - .github/workflows/pr51-ica-robust-matlab.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  matlab:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+      - name: Run independent MATLAB scientific feasibility selector tests
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            cd PipeCompare;addpath(pwd);addpath(fullfile(pwd,'tests'));
+            r=runtests(fullfile('tests','test_ica_robust.m'),'OutputDetail',3);
+            fprintf('PR51_ICA_ROBUST_MATLAB total=%d passed=%d failed=%d\n',numel(r),sum([r.Passed]),sum([r.Failed]));
+            assert(numel(r)==8 && all([r.Passed]),'PipeCompare:CI','IcaRobust shadow unit tests failed.');
