@@ -1,0 +1,21 @@
+name: PR51 ICA seed measurement semantics unit tests
+on:
+  push:
+    branches: [codex/pr51-ica-measurement-20261112]
+    paths:
+      - benchmarks/validate_ica_seed_measurements.py
+      - tests/test_ica_seed_measurements.py
+      - .github/workflows/pr51-ica-validate.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Regress raw versus gain-corrected P300 and scientific missingness
+        run: python -m unittest discover -s tests -p test_ica_seed_measurements.py -v
