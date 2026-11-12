@@ -133,6 +133,7 @@ jobs:
           command: |
             addpath(fullfile(pwd,'eeglab'));eeglab nogui;
             addpath(fullfile(pwd,'PipeCompare'));addpath(fullfile(pwd,'PipeCompare','benchmarks'));
+            pr51_eog_trial_support();
             pr51_eog_trial_support(fullfile(pwd,'input'),fullfile(pwd,'result'),str2double(getenv('PILOT_SUBJECT')));
       - name: Require exploratory arms to execute without technical exceptions
         run: |
