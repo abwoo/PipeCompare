@@ -31,6 +31,29 @@ class ShadowTest(unittest.TestCase):
         self.assertFalse(z["scientificPromotionAuthorized"])
         self.assertAlmostEqual(z["shadowP3Range"],.02)
 
+    def test_matlab_column_major_cell_array_serialization(self):
+        x=fixture()
+        check=x["icaSeedCheck"]
+        # MATLAB jsonencode flattens Nx3 cell matrices in column-major order:
+        # seed0/candidate0, seed0/candidate1, seed1/candidate0, ...
+        for key in ("rankStatus","strata","candidateMeasurements"):
+            rows=check[key]
+            check[key]=[rows[i][seed] for seed in range(3) for i in range(2)]
+        z=shadow(x)
+        self.assertEqual(z["shadowCandidate"],4)
+        self.assertEqual(z["eligibleCount"],2)
+        self.assertEqual(z["sourceRecommended"],[25,4,4])
+
+    def test_matlab_flattened_rejection_remains_per_correct_candidate(self):
+        x=fixture()
+        check=x["icaSeedCheck"]
+        check["rankStatus"][0][2]="rejected"
+        for key in ("rankStatus","strata","candidateMeasurements"):
+            rows=check[key]
+            check[key]=[rows[i][seed] for seed in range(3) for i in range(2)]
+        z=shadow(x)
+        self.assertEqual(z["shadowCandidate"],25)
+
     def test_excludes_best_score_when_rejected_in_one_seed(self):
         x=fixture()
         x["icaSeedCheck"]["rankStatus"][0][2]="rejected"
