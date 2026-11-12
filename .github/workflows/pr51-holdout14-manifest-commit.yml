@@ -38,9 +38,9 @@ jobs:
           assert data['eeg_bytes_downloaded']==0 and data['metadata_only'] is True
           assert data['status']=='CANDIDATE_SOURCE_MANIFEST_NOT_YET_FROZEN'
           assert len(data['files'])==42
-          expected={(s,t) for s in expected_subjects for t in ('eeg.fdt','eeg.set','events.tsv')}
+          expected_pairs={(s,t) for s in expected_subjects for t in ('eeg.fdt','eeg.set','events.tsv')}
           observed={(f['subject'],f['type']) for f in data['files']}
-          assert observed==expected and len(observed)==42
+          assert observed==expected_pairs and len(observed)==42
           for f in data['files']:
               assert re.fullmatch('[0-9a-f]{64}',f['sha256'])
               assert f['name']==f"sub-{f['subject']:03d}_task-P3_{f['type']}"
