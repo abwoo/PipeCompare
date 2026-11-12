@@ -232,7 +232,7 @@ def main():
             jobs = fetch_jobs(args.run_id, token)
             pairs = []
             for j in jobs:
-                match = re.search(r"ERP CORE P3 participant (\\d+)", j["name"])
+                match = re.search(r"ERP CORE P3 participant (\d+)", j["name"])
                 if match:
                     pairs.append((int(match.group(1)), fetch_log(j["id"], token)))
         else:
