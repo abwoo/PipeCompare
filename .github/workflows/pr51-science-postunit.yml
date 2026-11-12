@@ -6,6 +6,7 @@ on:
       - benchmarks/analyze_science_recorder.py
       - benchmarks/verify_science_noninterference.py
       - tests/test_science_spatial.py
+      - tests/test_science_noninterference.py
       - .github/workflows/pr51-science-postunit.yml
   workflow_dispatch:
 permissions:
@@ -22,5 +23,6 @@ jobs:
       - name: Validate sign-invariant component matching and waveforms
         run: |
           python -m unittest discover -s tests -p test_science_spatial.py -v
+          python -m unittest discover -s tests -p test_science_noninterference.py -v
           python -m py_compile benchmarks/verify_science_noninterference.py
           python -m py_compile benchmarks/analyze_science_recorder.py
