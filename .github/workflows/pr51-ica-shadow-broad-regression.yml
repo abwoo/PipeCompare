@@ -1,0 +1,52 @@
+name: PR51 ICA all-seed candidate feasibility broad MATLAB regression
+on:
+  push:
+    branches:
+      - codex/pr51-ica-feasibility-shadow-20261112
+    paths:
+      - .github/workflows/pr51-ica-shadow-broad-regression.yml
+      - +pipecompare/+run/Executor.m
+      - +pipecompare/+eval/IcThreshold.m
+      - +pipecompare/+eval/Threshold.m
+      - +pipecompare/+simple/Presets.m
+      - tests/run_all.m
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    name: MATLAB suite ${{ matrix.suite }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        suite: [test_methodology, test_statistics, test_engine, test_simple]
+    env:
+      DISPLAY: ':99'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+      - name: Pin EEGLAB 2026.0.0
+        run: git clone --depth 1 --branch 2026.0.0 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
+      - name: Start virtual display
+        timeout-minutes: 10
+        run: bash PipeCompare/.github/scripts/start-display.sh
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+          products: Signal_Processing_Toolbox
+      - name: Run existing scientific and end-to-end regression suite
+        timeout-minutes: 105
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab'));eeglab nogui;
+            cd PipeCompare;addpath(pwd);addpath(fullfile(pwd,'tests'));
+            suite='${{ matrix.suite }}';
+            r=runtests(fullfile('tests',[suite '.m']),'OutputDetail',3);
+            fprintf('PR51_BROAD_SUITE name=%s total=%d passed=%d failed=%d skipped=%d\n', ...
+                suite,numel(r),sum([r.Passed]),sum([r.Failed]),sum([r.Incomplete] & ~[r.Failed]));
+            assert(~isempty(r) && ~any([r.Failed]),'PipeCompare:CI','Broad regression failed');
