@@ -46,7 +46,11 @@ try
   setBase(EEG);fitClock=tic;
   if strcmp(getenv('PIPECOMPARE_SCIENCE_CAPTURE'),'1')
    % Only opt-in GitHub research execution, never the historical study.
-   transcript=evalc('[~,~,r]=pop_pipecompare(EEG,''measure'',''P3'',''events'',{''11'',''31''},''recipe'',''standard'',''reference'',''average'',''show'',''off'',''sciencecapture'',true);');
+   if strcmp(getenv('PIPECOMPARE_ICA_RANK_STABLE'),'1')
+    transcript=evalc('[~,~,r]=pop_pipecompare(EEG,''measure'',''P3'',''events'',{''11'',''31''},''recipe'',''standard'',''reference'',''average'',''show'',''off'',''sciencecapture'',true,''icarankstable'',true);');
+   else
+    transcript=evalc('[~,~,r]=pop_pipecompare(EEG,''measure'',''P3'',''events'',{''11'',''31''},''recipe'',''standard'',''reference'',''average'',''show'',''off'',''sciencecapture'',true);');
+   end
   else
    transcript=evalc('[~,~,r]=pop_pipecompare(EEG,''measure'',''P3'',''events'',{''11'',''31''},''recipe'',''standard'',''reference'',''average'',''show'',''off'');');
   end
