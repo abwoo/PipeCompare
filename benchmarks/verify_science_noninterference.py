@@ -21,7 +21,7 @@ def close(a,b,tol=1e-7):
     return a==b
 
 
-def one_pair(old,new):
+def one_pair(old,new,replay_tolerance_uv=1e-6):
     s=old["subject"]
     reasons=[]
     if s!=new["subject"]:reasons.append("subject-mismatch")
@@ -32,7 +32,7 @@ def one_pair(old,new):
         if old["source"].get(key)!=new["source"].get(key):
             reasons.append("source-"+key+"-changed")
     for key in ("differenceAmplitude","gain"):
-        if not close(old["erp"].get(key),new["erp"].get(key)):
+        if not close(old["erp"].get(key),new["erp"].get(key),tol=replay_tolerance_uv if key=="differenceAmplitude" else 1e-7):
             reasons.append("erp-"+key+"-changed")
     a,b=old["icaSeedCheck"],new["icaSeedCheck"]
     for key in ("ids","recommended","same"):
@@ -47,7 +47,7 @@ def one_pair(old,new):
     for j in range(len(a["measurements"])):
         x,y=a["measurements"][j],b["measurements"][j]
         for key in ("candidateId","hasMeasurement","seed"):
-            if not close(x.get(key),y.get(key)):
+            if not close(x.get(key),y.get(key),tol=replay_tolerance_uv if key=="correctedDifferenceEstimate" else 1e-7):
                 reasons.append(f"seed-{j}-{key}-changed")
         for key in ("correctedDifferenceEstimate","gain"):
             if not close(x.get(key),y.get(key)):
@@ -60,7 +60,10 @@ def one_pair(old,new):
         numerical.append({"seed":seed,"originalP300":left,"recorderP300":right,"p300DeltaUv":delta,
                           "originalCandidate":x.get("candidateId"),
                           "recorderCandidate":y.get("candidateId")})
+    exact_p300=all(row["p300DeltaUv"]==0 for row in numerical)
     return {"subject":s,"noninterventionPassed":not reasons,"reasons":sorted(set(reasons)),
+            "exactP300Reproduction":exact_p300,
+            "numericalParityToleranceUv":replay_tolerance_uv,
             "originalIds":a["recommended"],"recorderIds":b["recommended"],
             "seedP300Comparison":numerical}
 
@@ -80,11 +83,17 @@ def main():
             rows[x["subject"]]=x
         if set(rows)!=SUBJECTS:raise ValueError(f"Expected unchanged three-subject cohort, got {set(rows)}")
         return rows
+    protocol=json.loads(Path("benchmarks/erpcore_protocol.json").read_text())
+    tolerance=protocol["evaluation"]["replay_tolerance_uv"]
+    if not isinstance(tolerance,(int,float)) or not math.isfinite(tolerance) or tolerance<=0:
+        raise ValueError("Frozen protocol replay tolerance missing")
     a,b=load(args.original),load(args.recorder)
-    rows=[one_pair(a[k],b[k]) for k in sorted(SUBJECTS)]
+    rows=[one_pair(a[k],b[k],tolerance) for k in sorted(SUBJECTS)]
     out={"originalRun":43169562528,"recorderRun":43189639057,
          "newSubjects":False,"originalPR51Verdict":"PARTIAL",
          "allNonInterventional":all(x["noninterventionPassed"] for x in rows),
+         "allExactP300":all(x["exactP300Reproduction"] for x in rows),
+         "numericalParityUsesFrozenReplayToleranceUv":tolerance,
          "rows":rows,"promotionAuthorized":False}
     args.out.parent.mkdir(parents=True,exist_ok=True)
     args.out.write_text(json.dumps(out,indent=2))
