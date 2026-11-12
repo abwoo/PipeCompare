@@ -143,11 +143,13 @@ jobs:
                   assert int(x['candidateId'])==int(rec),(x,rec)
           first=a['measurements'][0]
           assert first['hasMeasurement'],first
-          assert math.isclose(first['differenceEstimate'],
+          assert math.isclose(first['correctedDifferenceEstimate'],
                  r['erp']['differenceAmplitude'],rel_tol=0,abs_tol=1e-8)
           print('PR51_ICA_MEASUREMENT_TRACE',{
               'subject':r['subject'],'ids':a['recommended'],
-              'p3_differences':[x['differenceEstimate'] for x in a['measurements']],
+              'p3_raw_differences':[x['differenceEstimate'] for x in a['measurements']],
+              'p3_gain_corrected_differences':[x['correctedDifferenceEstimate'] for x in a['measurements']],
+              'gains':[x['gain'] for x in a['measurements']],
               'effective_support':[x['effectiveUnflagged'] for x in a['measurements']]})
           PYCODE
       - name: Preserve completed results and failure evidence
