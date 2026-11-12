@@ -1,0 +1,21 @@
+name: PR51 ICA independent scientific eligibility audit tests
+on:
+  push:
+    branches: [codex/pr51-ica-feasible-20261112]
+    paths:
+      - benchmarks/validate_ica_robust_real.py
+      - tests/test_ica_robust_real.py
+      - .github/workflows/pr51-ica-feasible-python.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Recheck independent scientific feasibility on synthetic failures and abstentions
+        run: python -m unittest discover -s tests -p test_ica_robust_real.py -v
