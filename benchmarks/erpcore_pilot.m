@@ -198,8 +198,8 @@ d=struct('available',true,'veogThresholdUv',50,'nFlagged',0,'nUnflagged',0, ...
  'flaggedWithVeog',0,'unflaggedWithVeog',0,'flaggedMedianMaxVeog',NaN,'unflaggedMedianMaxVeog',NaN);
 flaggedMax=[];unflaggedMax=[];
 for c=1:numel(support)
- if strcmp(support(c).condition,'target'),rows=find(strcmp(cellstr(D.eventTypes(:)),'11'));
- else,rows=find(strcmp(cellstr(D.eventTypes(:)),'31'));end
+ code=sourceCodeForCondition(support(c).condition);
+ rows=find(strcmp(cellstr(D.eventTypes(:)),code));
  for k=1:numel(rows)
   j=rows(k);cols=lat(j)+epochSamp;if cols(1)<1||cols(end)>numel(veog),continue;end
   % Baseline-subtract within the epoch first: the raw VEOG carries the
@@ -217,6 +217,15 @@ d.nFlagged=numel(flaggedMax);d.nUnflagged=numel(unflaggedMax);
 d.flaggedWithVeog=sum(flaggedMax>d.veogThresholdUv);
 d.unflaggedWithVeog=sum(unflaggedMax>d.veogThresholdUv);
 d.flaggedMedianMaxVeog=median(flaggedMax);d.unflaggedMedianMaxVeog=median(unflaggedMax);
+end
+
+function code=sourceCodeForCondition(label)
+% Saved reference condition names may be '11'/'31', not target/standard.
+% Never treat an unrecognized label as standard.
+if any(strcmp(char(string(label)),{'11','target'})),code='11';
+elseif any(strcmp(char(string(label)),{'31','standard'})),code='31';
+else,error('PipeCompare:ErpcoreCondition','Unknown reference condition %s',char(string(label)));
+end
 end
 
 function a=emptyReadout()
@@ -281,6 +290,12 @@ end
 
 function checkSupportRecorder()
 % Exercise the actual recorder without EEG, fitting or performance outcomes.
+assert(strcmp(sourceCodeForCondition('11'),'11'));
+assert(strcmp(sourceCodeForCondition('target'),'11'));
+assert(strcmp(sourceCodeForCondition('31'),'31'));
+assert(strcmp(sourceCodeForCondition('standard'),'31'));
+try,sourceCodeForCondition('unknown');error('PipeCompare:Test','Bad condition accepted');
+catch ex,assert(strcmp(ex.identifier,'PipeCompare:ErpcoreCondition'));end
 r.ref.ids={[1 2 3],[4 5 6]};r.ref.names={'target','standard'};
 r.ref.n=[3 3];r.ref.blink={{logical([0;1;0]),logical([1;0;0])}};
 o.X={[2;4;NaN],[3;5;7]};o.w={};o.eyeBiasAssessed=[true true];
