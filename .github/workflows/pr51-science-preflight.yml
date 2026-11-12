@@ -1,0 +1,71 @@
+name: PR51 science recorder immediate two-subject archived evidence preflight
+on:
+  push:
+    branches: [codex/pr51-science-recorder-json-fix-20261112]
+    paths:
+      - .github/workflows/pr51-science-preflight.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install numpy==2.2.6 scipy==1.15.3
+      - uses: actions/download-artifact@v4
+        with:
+          repository: abwoo/PipeCompare
+          run-id: 43189687480
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: pr51-ica-science-*-attempt-1
+          path: evidence
+      - uses: actions/download-artifact@v4
+        with:
+          repository: abwoo/PipeCompare
+          run-id: 43169562528
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: pr51-icthreshold-dev-*-attempt-1
+          path: reference
+      - name: Revalidate subjects 15 and 21 with no EEG refitting
+        run: |
+          python - <<'PY'
+          import json,subprocess
+          from pathlib import Path
+          from sys import path
+          path.insert(0,'benchmarks')
+          from verify_science_noninterference import one_pair
+          historical={}
+          for src in Path('reference').rglob('result.json'):
+              v=json.loads(src.read_text());historical[v['subject']]=v
+          outcomes=[]
+          for src in Path('evidence').rglob('result.json'):
+              v=json.loads(src.read_text())
+              if v['subject'] not in (15,21):continue
+              subject=v['subject']
+              out=Path('audit')/f'{subject}_science.json'
+              subprocess.run(['python','benchmarks/validate_science_record.py',
+                 '--input',str(src),'--out',str(out)],check=True)
+              audit=json.loads(out.read_text())
+              parallel=one_pair(historical[subject],v)
+              assert audit['checked']==audit['available'] and not audit['problems'], audit
+              assert parallel['noninterventionPassed'],parallel
+              outcomes.append({'subject':subject,'recorded':audit['available'],
+                  'recorderNonInterference':parallel['noninterventionPassed']})
+              print('PR51_SCIENCE_PREFLIGHT',outcomes[-1])
+          assert sorted(x['subject'] for x in outcomes)==[15,21]
+          Path('audit/prefight_summary.json').write_text(json.dumps({
+             'originalPR51Verdict':'PARTIAL','newEEGFits':False,
+             'subjects':outcomes},indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pr51-science-preflight-${{ github.run_id }}
+          path: audit/
+          retention-days: 90
+          if-no-files-found: warn
