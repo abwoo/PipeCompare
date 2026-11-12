@@ -298,7 +298,21 @@ classdef Executor
                     cx = ctx;
                     if strcmp(in.type, 'icremove'), cx.iclabel = labels; end
                     cx = choiceContext(env, child, cx, S);
+                    % Opt-in research observer runs on the PRE-removal EEG.
+                    % Its failure may invalidate science evidence, never the
+                    % original cleaning action or candidate Rank decision.
+                    preContribution = [];
+                    if strcmp(in.type,'icremove') && ...
+                            pipecompare.utils.fieldOr(env.opts,'scienceCapture',false)
+                        try
+                            preContribution = pipecompare.research.IcaContribution.capturePreRemove(E,env.contract);
+                        catch observerError
+                            preContribution = struct('status','failed','reason', ...
+                                sprintf('%s: %s',observerError.identifier,observerError.message));
+                        end
+                    end
                     [E2, coms, info] = runStep(in, E, cx, env.opts.verbose);
+                    if ~isempty(preContribution), info.icaContribution = preContribution; end
                     if isfield(info, 'iclabel'), labels = info.iclabel; end
                     for q = 1:numel(coms)
                         fprintf('    %s\n', coms{q});
@@ -846,9 +860,12 @@ f = struct('type', in.type, 'params', in.params, 'interpolated', {{}}, 'removed'
     'icsRemoved', NaN, 'icsTotal', NaN, 'rejected', NaN, 'epochsBefore', NaN, 'epochsInterpolated', NaN, ...
     'icsBrain', NaN, 'icsOther', NaN, 'otherMedian', NaN, 'icaPoints', NaN, 'uvChosen', NaN, 'thresholdChosen', NaN, 'icsConsidered', NaN, 'icsProtected', NaN, ...
     'comps', [], 'rejIdx', [], 'cutoffRefined', false, 'weightRatio', NaN, 'trialWeights', [], 'curves', [], 'keptShift', [], 'leftAsIs', {{}}, 'eog', [], 'stretches', [], 'stretchCheck', [], ...
-    'iclabelClasses', {{}}, 'iclabelProbabilities', []);
+    'iclabelClasses', {{}}, 'iclabelProbabilities', [], 'icaContribution', []);
 for n = {'interpolated', 'removed', 'leftAsIs'}
     if isfield(info, n{1}), f.(n{1}) = cellstr(info.(n{1})); end
+end
+if isfield(info,'icaContribution')
+    f.icaContribution = info.icaContribution;
 end
 if isfield(info,'iclabel') && isfield(info.iclabel,'classification') && ...
         isfield(info.iclabel.classification,'ICLabel')
