@@ -1,0 +1,40 @@
+name: PR51 passive pre-removal ICA contribution MATLAB scientific regression
+on:
+  push:
+    branches: [codex/pr51-ica-contribution-observer-20261112]
+    paths:
+      - +pipecompare/+research/IcaContribution.m
+      - +pipecompare/+research/IcaScience.m
+      - +pipecompare/+run/Executor.m
+      - tests/test_ica_contribution.m
+      - docs/PR51_ICA_COMPONENT_CONTRIBUTION_PROTOCOL_20261112.md
+      - .github/workflows/pr51-ica-contribution-unit.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  matlab-unit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+          fetch-depth: 0
+      - name: Confirm evaluation and production defaults have no source changes
+        working-directory: PipeCompare
+        run: |
+          test -z "$(git diff --name-only 8275d0be3e8bb881fb26017e6d84dc6971b0f4b5 HEAD -- +pipecompare/+eval/Measure.m +pipecompare/+eval/Rank.m +pipecompare/+run/Steps.m +pipecompare/+simple/Presets.m pop_pipecompare.m)"
+          git diff --check
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+      - name: Verify passive contribution projectors and existing ERP observer
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'PipeCompare'));
+            a=runtests(fullfile(pwd,'PipeCompare','tests','test_ica_contribution.m'));
+            b=runtests(fullfile(pwd,'PipeCompare','tests','test_ica_science.m'));
+            assert(all([a.Passed]) && all([b.Passed]), ...
+              'PipeCompare:ScienceObserverUnit','ICA observer scientific regression failed.');
