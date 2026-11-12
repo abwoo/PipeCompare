@@ -1,0 +1,163 @@
+name: PR51 six disjoint ICA seed initialization development readout
+on:
+  workflow_call:
+    inputs:
+      subject:
+        type: number
+        required: true
+permissions:
+  contents: read
+jobs:
+  record:
+    name: ERP CORE P3 participant ${{ inputs.subject }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 150
+    env:
+      DISPLAY: ':99'
+      PILOT_SUBJECT: ${{ inputs.subject }}
+      PR51_DEV_SIX_SEED_AUDIT: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Verify only approved research algorithm and diagnostic source files differ from baseline
+        working-directory: PipeCompare
+        run: |
+          base=$(python -c "import json;print(json.load(open('benchmarks/erpcore_protocol.json'))['algorithm_commit'])")
+          changed=$(git diff --name-only "$base" HEAD -- +pipecompare pop_pipecompare.m eegplugin_pipecompare.m fallback pcomp.m pipecompare_setup.m)
+          expected=$(printf '+pipecompare/+eval/IcThreshold.m\n+pipecompare/+eval/IcaIndependentGroups.m\n+pipecompare/+eval/IcaRobust.m\n+pipecompare/+eval/IcaRobustFamily.m\n+pipecompare/+eval/Threshold.m\n+pipecompare/+run/Executor.m\n+pipecompare/+simple/Presets.m')
+          test "$changed" = "$expected" || { echo "Unexpected production source delta: $changed"; exit 1; }
+          echo "Exploratory changed file: $changed"
+          git diff --check "$base" HEAD -- +pipecompare/+eval/IcThreshold.m +pipecompare/+eval/IcaIndependentGroups.m +pipecompare/+eval/IcaRobust.m +pipecompare/+eval/IcaRobustFamily.m +pipecompare/+eval/Threshold.m +pipecompare/+run/Executor.m +pipecompare/+simple/Presets.m
+          git diff --stat "$base" HEAD -- +pipecompare/+eval/IcThreshold.m +pipecompare/+eval/IcaIndependentGroups.m +pipecompare/+eval/IcaRobust.m +pipecompare/+eval/IcaRobustFamily.m +pipecompare/+eval/Threshold.m +pipecompare/+run/Executor.m +pipecompare/+simple/Presets.m
+      - name: Verify frozen Measure identity
+        run: |
+          python - <<'PYCODE'
+          import json,hashlib,os
+          from pathlib import Path
+          r=Path('PipeCompare');p=json.loads((r/'benchmarks/erpcore_protocol.json').read_text())
+          assert hashlib.sha256((r/'+pipecompare/+eval/Measure.m').read_bytes()).hexdigest()==p['baseline_measure_sha256']
+          with open(os.environ['GITHUB_ENV'],'a') as f:
+              f.write('PILOT_MEASURE_SHA256='+p['baseline_measure_sha256']+'\n')
+          PYCODE
+      - name: Refuse any unseen validation participant on development seed audit
+        run: |
+          case "$PILOT_SUBJECT" in 11|15|21) echo "Source in previously used development set" ;; *) echo "Heldout access forbidden" >&2; exit 1 ;; esac
+      - name: Fetch and checksum one ERP CORE P3 excerpt
+        timeout-minutes: 15
+        run: python PipeCompare/benchmarks/fetch_erpcore.py --subject "$PILOT_SUBJECT" --out input
+      - name: Checkout pinned EEGLAB version
+        run: git clone --depth 1 --branch 2026.0.0 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
+      - name: Record EEG implementation identity
+        run: echo "EEGLAB_SHA=$(git -C eeglab rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Bound Linux dependency downloads
+        run: bash PipeCompare/.github/scripts/pilot-prepare-matlab.sh
+      - name: Install matching CPU compiler
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y g++-12
+      - name: Start virtual display
+        timeout-minutes: 5
+        run: bash PipeCompare/.github/scripts/start-display.sh
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+          products: Signal_Processing_Toolbox
+      - name: Prepare pinned ICLabel CPU build
+        run: python PipeCompare/.github/scripts/pilot-iclabel-cpu.py eeglab/plugins/ICLabel/matconvnet
+      - name: Verify native ICLabel and support recorder
+        timeout-minutes: 12
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab'));eeglab nogui;
+            addpath(fullfile(pwd,'PipeCompare'));addpath(fullfile(pwd,'PipeCompare','benchmarks'));
+            pilot_native_backend(fullfile(pwd,'result','backend'));
+            erpcore_pilot();
+      - name: Record full Standard search, comparators, and replay outcomes
+        timeout-minutes: 90
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab'));eeglab nogui;
+            plugin=fileparts(which('pop_iclabel'));addpath(fullfile(plugin,'matconvnet','matlab'));vl_setupnn;
+            assert(exist('vl_nnconv','file')==3,'Native inference not active.');
+            addpath(fullfile(pwd,'PipeCompare'));addpath(fullfile(pwd,'PipeCompare','benchmarks'));
+            erpcore_pilot(fullfile(pwd,'input'),fullfile(pwd,'result'),str2double(getenv('PILOT_SUBJECT')));
+      - name: Check record completion before scheduling the remaining subjects
+        run: |
+          python - <<'PYCODE'
+          import json
+          from pathlib import Path
+          x=json.loads((Path('result')/'result.json').read_text())
+          assert x['completed'], x['errors']
+          assert x['notRun']==0
+          PYCODE
+      - name: Label prospective source identity and scientific non-confirmation
+        if: always()
+        run: |
+          python - <<'PYCODE'
+          import hashlib,json,os
+          from pathlib import Path
+          out=Path('result');out.mkdir(exist_ok=True)
+          p=Path('PipeCompare/+pipecompare/+eval/IcThreshold.m')
+          q=Path('PipeCompare/+pipecompare/+eval/Threshold.m')
+          z=Path('PipeCompare/+pipecompare/+simple/Presets.m')
+          robust=Path('PipeCompare/+pipecompare/+eval/IcaRobust.m')
+          robustFamily=Path('PipeCompare/+pipecompare/+eval/IcaRobustFamily.m')
+          independent=Path('PipeCompare/+pipecompare/+eval/IcaIndependentGroups.m')
+          identity={'purpose':'exploratory-BUGFIX-smoke-not-preregistered-confirmation',
+              'original_algorithm_commit':json.loads(Path('PipeCompare/benchmarks/erpcore_protocol.json').read_text())['algorithm_commit'],
+              'implementation_commit':os.getenv('GITHUB_SHA'),
+              'icthreshold_sha256':hashlib.sha256(p.read_bytes()).hexdigest(),
+              'threshold_sha256':hashlib.sha256(q.read_bytes()).hexdigest(),
+              'presets_sha256':hashlib.sha256(z.read_bytes()).hexdigest(),
+              'robust_sha256':hashlib.sha256(robust.read_bytes()).hexdigest(),
+              'family_robust_sha256':hashlib.sha256(robustFamily.read_bytes()).hexdigest(),
+              'independent_groups_sha256':hashlib.sha256(independent.read_bytes()).hexdigest(),
+              'six_distinct_ica_starts_opt_in':os.getenv('PR51_DEV_SIX_SEED_AUDIT'),
+              'workflow_run':os.getenv('GITHUB_RUN_ID'),
+              'scope':'IcThreshold.m, IcaIndependentGroups.m, IcaRobust.m, IcaRobustFamily.m, Threshold.m, Executor.m, Presets.m; original P3 protocol unchanged',
+              'do_not_pool_with_original_frozen_results':True}
+          (out/'exploratory_identity.json').write_text(json.dumps(identity,indent=2))
+          print('PR51_EXPLORATORY_IDENTITY',json.dumps(identity))
+          PYCODE
+      - name: Independently align VEOG and HEOG to both source event conditions
+        if: always()
+        run: |
+          if test -s result/result.json && test -s input/input.mat; then
+            python PipeCompare/benchmarks/validate_veog_support.py \
+              --result result/result.json --mat input/input.mat --out result
+          else
+            echo "Source record missing; cross-check cannot be claimed" >&2
+            exit 1
+          fi
+      - name: Independently validate both nonoverlapping ICA seed triplets
+        run: |
+          python PipeCompare/benchmarks/validate_ica_independent_groups.py \
+            --input result/result.json --output result/ica_disjoint_triplets.json
+          python - <<'PYCODE'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('result/ica_disjoint_triplets.json').read_text())
+          assert d['subject'] in (11,15,21)
+          assert [g['seeds'] for g in d['groups']]==[[0,1,2],[3,4,5]]
+          assert not d['newFrozenStudy'] and not d['heldoutParticipantEEGOpened']
+          print('PR51_ICA_GROUPS_AUDIT',json.dumps({
+              'subject':d['subject'],'outcome':d['status'],
+              'candidate_ids':[g['candidate'] for g in d['groups']],
+              'raw_recipes':d['originalSeeds']}))
+          PYCODE
+      - name: Preserve completed results and failure evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-ica-disjoint-${{ inputs.subject }}-attempt-${{ github.run_attempt }}
+          path: result
+          retention-days: 90
+          if-no-files-found: warn
