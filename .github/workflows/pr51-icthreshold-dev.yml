@@ -1,0 +1,23 @@
+name: PR51 exploratory real-P3 IcThreshold candidate smoke
+on:
+  push:
+    branches:
+      - codex/pr51-icthreshold-fix-20261112
+    paths:
+      - +pipecompare/+eval/IcThreshold.m
+      - .github/workflows/pr51-icthreshold-dev-record.yml
+      - .github/workflows/pr51-icthreshold-dev.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  candidate:
+    name: Exploratory real P3 subject ${{ matrix.subject }}
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        subject: [18, 23]
+    uses: ./.github/workflows/pr51-icthreshold-dev-record.yml
+    with:
+      subject: ${{ matrix.subject }}
