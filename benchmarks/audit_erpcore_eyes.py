@@ -56,8 +56,10 @@ def main():
     fs = int(float(d["fs"]))
     assert fs == 256
     labels = [one_text(x) for x in np.atleast_1d(d["labels"]).ravel()]
-    assert labels.count("Pz") == 1
-    pz = np.asarray(d["data"], float)[labels.index("Pz"), :]
+    assert labels.count("Pz") == 1 and len(labels) == 16
+    eeg = np.asarray(d["data"], float)
+    assert eeg.shape[0] == len(labels)
+    pz = eeg[labels.index("Pz"), :]
     veog = np.asarray(d["veog"], float).reshape(-1)
     heog = np.asarray(d["heog"], float).reshape(-1)
     assert pz.shape == veog.shape == heog.shape and pz.size == 300 * fs
@@ -86,6 +88,18 @@ def main():
             metrics[name + "_epoch_p2p_uv"] = float(np.ptp(e))
             metrics[name + "_window_mean_uv"] = float(np.mean(e[window_mask]))
             metrics[name + "_baseline_sd_uv"] = float(np.std(e[baseline_mask]))
+        # Whole-EEG trial rejection is driven by the maximum across EEG
+        # channels, not solely by Pz. These raw, epoch-baseline-corrected
+        # peaks are descriptive and are NOT the filtered MATLAB thresholds.
+        ch_epoch = eeg[:, epoch] - np.mean(eeg[:, epoch][:, baseline_mask], axis=1, keepdims=True)
+        ch_abs = np.max(np.abs(ch_epoch), axis=1)
+        metrics["eeg_max_channel_uv"] = float(np.max(ch_abs))
+        metrics["eeg_max_channel_label"] = labels[int(np.argmax(ch_abs))]
+        metrics["eeg_channels_gt100_uv"] = "|".join([labels[k] for k in np.flatnonzero(ch_abs > 100)])
+        metrics["eeg_any_channel_gt100_uv"] = int(np.any(ch_abs > 100))
+        metrics["eeg_n_channels_gt100_uv"] = int(np.count_nonzero(ch_abs > 100))
+        metrics["fp1_maxabs_uv"] = float(ch_abs[labels.index("Fp1")])
+        metrics["fp2_maxabs_uv"] = float(ch_abs[labels.index("Fp2")])
         trials.append(metrics)
 
     groups = {}
@@ -99,6 +113,12 @@ def main():
             "veog_above_50uv_fraction":sum(r["veog_epoch_maxabs_uv"]>50 for r in rows)/len(rows),
             "veog_above_100uv_fraction":sum(r["veog_epoch_maxabs_uv"]>100 for r in rows)/len(rows),
             "pz_above_100uv_fraction":sum(r["pz_epoch_maxabs_uv"]>100 for r in rows)/len(rows),
+            "eeg_max_channel_uv":quantile([r["eeg_max_channel_uv"] for r in rows]),
+            "eeg_any_channel_above_100uv_fraction":sum(r["eeg_any_channel_gt100_uv"] for r in rows)/len(rows),
+            "fp1_above_100uv_fraction":sum(r["fp1_maxabs_uv"]>100 for r in rows)/len(rows),
+            "fp2_above_100uv_fraction":sum(r["fp2_maxabs_uv"]>100 for r in rows)/len(rows),
+            "eeg_channel_gt100_counts":{label:sum(label in r["eeg_channels_gt100_uv"].split("|") for r in rows)
+                                         for label in labels},
         }
     args.out.mkdir(parents=True,exist_ok=True)
     with (args.out/"trial_amplitude_audit.csv").open("w",newline="") as fp:
@@ -112,7 +132,7 @@ def main():
         "source_fdt_sha256":source["source_fdt_sha256"],
         "source_events_sha256":source["source_events_sha256"],
         "input_mat_sha256":sha(args.input),
-        "purpose":"Descriptive VEOG/HEOG/Pz signal distribution; no optical ground truth",
+        "purpose":"Descriptive VEOG/HEOG/16-EEG-electrode distributions; no optical ground truth",
         "algorithm_changed":False,
         "filter_applied":"NONE; per-epoch prestimulus baseline subtraction ONLY",
         "not_equivalent_to_frozen_MATLAB_rejection":True,
