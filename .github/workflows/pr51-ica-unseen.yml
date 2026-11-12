@@ -1,0 +1,79 @@
+name: PR51 ICA selected seeds 0-2 versus unseen starts 3-5
+on:
+  push:
+    branches: [codex/pr51-ica-unseen-seeds-20261112]
+    paths:
+      - +pipecompare/+simple/Presets.m
+      - benchmarks/validate_ica_unseen_seeds.py
+      - tests/test_ica_unseen_seeds.py
+      - .github/workflows/pr51-ica-unseen-record.yml
+      - .github/workflows/pr51-ica-unseen.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Guard independent ICA starts from selection leakage
+        run: |
+          python -m unittest discover -s tests -p test_ica_unseen_seeds.py -v
+          python -m unittest discover -s tests -p test_ica_feasibility_shadow.py -v
+  real:
+    needs: unit
+    name: Independent ICA starts for ERP CORE subject ${{ matrix.subject }}
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        subject: [11, 15, 21]
+    uses: ./.github/workflows/pr51-ica-unseen-record.yml
+    with:
+      subject: ${{ matrix.subject }}
+  collect:
+    needs: real
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pr51-icthreshold-dev-*-attempt-*
+          path: evidence
+      - name: Preserve every unseen-start outcome including failures
+        run: |
+          python - <<'PYCODE'
+          import json
+          from pathlib import Path
+          files=sorted(Path('evidence').rglob('ica_unseen.json'))
+          assert len(files)==3, f'expect all 3 unchanged development participants: {files}'
+          rows=[json.loads(f.read_text()) for f in files]
+          assert {r['subject'] for r in rows}=={11,15,21}
+          assert all(r['selectionSeeds']==[0,1,2] and
+                     r['unseenFitSeeds']==[3,4,5] and
+                     not r['newParticipantsEvaluated'] and
+                     not r['scientificPromotionAuthorized'] for r in rows)
+          Path('output').mkdir(exist_ok=True)
+          Path('output/unseen_ica_seeds.json').write_text(json.dumps({
+              'study':'development-only unseen ICA-start stress',
+              'confirmatory':False,'originalPR51Verdict':'PARTIAL',
+              'rows':rows},indent=2))
+          for r in rows:
+              print('PR51_UNSEEN_ICA_COLLECT',json.dumps({
+                  'subject':r['subject'],
+                  'old':r['originalBaseline']['candidateId'],
+                  'shadow':r['shadowUnseen']['candidateId'],
+                  'old_unseen_valid':r['originalBaseline']['validAllThree'],
+                  'shadow_unseen_valid':r['shadowUnseen']['validAllThree'],
+                  'old_p3_range':r['originalBaseline'].get('unseenP3Range'),
+                  'shadow_p3_range':r['shadowUnseen'].get('unseenP3Range')}))
+          PYCODE
+      - name: Archive negative and positive stress outcomes
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-ica-unseen-seeds-${{ github.run_id }}
+          path: output/
+          retention-days: 90
