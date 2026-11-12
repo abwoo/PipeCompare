@@ -158,7 +158,7 @@ classdef Presets
             % recording's own waveform where it is reliable, and the
             % recommended pipeline also run with the eye channels regressed
             % out (Executor eogCheck: when there is an EOG channel).
-            o = struct('refineCutoffs', true, 'icaSeeds', 2, 'signalTemplate', 'data', 'eogCheck', true);
+            o = struct('refineCutoffs', true, 'icaSeeds', 5, 'signalTemplate', 'data', 'eogCheck', true);
         end
 
         function steps = recipeSteps(name)
