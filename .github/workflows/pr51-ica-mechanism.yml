@@ -1,0 +1,29 @@
+name: PR51 stage 3 ICA mechanism archive schema (no EEG refit)
+on:
+  push:
+    branches: [codex/pr51-ica-mechanism-audit-20261112]
+    paths:
+      - benchmarks/inspect_ica_mechanism_archive.py
+      - .github/workflows/pr51-ica-mechanism.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - uses: actions/download-artifact@v4
+        with:
+          repository: abwoo/PipeCompare
+          run-id: 43169562528
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: pr51-icthreshold-dev-*-attempt-1
+          path: evidence
+      - name: Check real MATLAB archive fields for ICA-no-op confounding
+        run: python benchmarks/inspect_ica_mechanism_archive.py
