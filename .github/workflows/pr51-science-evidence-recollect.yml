@@ -2,7 +2,7 @@ name: PR51 science recorder immutable EEG artifact reanalysis and noninterferenc
 on:
   push:
     branches: [codex/pr51-science-recorder-json-fix-20261112]
-    paths: [.github/workflows/pr51-science-evidence-recollect.yml]
+    paths: [.github/workflows/pr51-science-evidence-recollect.yml, benchmarks/verify_science_noninterference.py, tests/test_science_noninterference.py]
   workflow_dispatch:
 permissions:
   contents: read
