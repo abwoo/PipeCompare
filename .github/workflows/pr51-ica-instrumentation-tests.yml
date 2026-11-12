@@ -26,4 +26,4 @@ jobs:
           python .github/scripts/pr51-instrument-ica-measure.py .
           git diff --check -- +pipecompare/+run/Executor.m
           git diff --stat -- +pipecompare/+run/Executor.m
-          test -f ../result/ica_measure_instrumentation.diff
+          test -f result/ica_measure_instrumentation.diff
