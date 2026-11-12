@@ -9,7 +9,7 @@ from validate_subject8_extended_pipeline import analyze
 def support(n,k,condition):
     return {"condition":condition,"referenceN":n,
         "effectiveUnflaggedN":k,
-        "scores":[float(i) for i in range(1,n+1)],
+        "scores":[float((-1)**i) for i in range(n)],
         "weights":[1.0]*n}
 def goodarm():
     return {"available":True,"differenceAmplitude":0.0,
