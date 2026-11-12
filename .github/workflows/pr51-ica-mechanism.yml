@@ -4,6 +4,8 @@ on:
     branches: [codex/pr51-ica-mechanism-audit-20261112]
     paths:
       - benchmarks/inspect_ica_mechanism_archive.py
+      - benchmarks/diagnose_ica_mechanism.py
+      - tests/test_ica_mechanism.py
       - .github/workflows/pr51-ica-mechanism.yml
   workflow_dispatch:
 permissions:
@@ -25,5 +27,21 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           pattern: pr51-icthreshold-dev-*-attempt-1
           path: evidence
+      - name: Regress zero-IC-removal logic and scientific support
+        run: |
+          python -m unittest discover -s tests -p test_ica_mechanism.py -v
+          python -m unittest discover -s tests -p test_ica_unseen_seeds.py -v
       - name: Check real MATLAB archive fields for ICA-no-op confounding
         run: python benchmarks/inspect_ica_mechanism_archive.py
+      - name: Compute objective, support and P300 findings from archived real data
+        run: |
+          python benchmarks/diagnose_ica_mechanism.py \
+            --evidence evidence --out output/ica_mechanism.json
+      - name: Archive source-backed mechanistic investigation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-ica-mechanism-${{ github.run_id }}
+          path: output/
+          retention-days: 90
+          if-no-files-found: warn
