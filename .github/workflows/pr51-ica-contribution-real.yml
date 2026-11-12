@@ -1,0 +1,84 @@
+name: PR51 passive pre-removal ICA contribution real EEG validation
+on:
+  push:
+    branches: [codex/pr51-ica-contribution-observer-20261112]
+    paths:
+      - +pipecompare/+research/IcaContribution.m
+      - +pipecompare/+research/IcaScience.m
+      - +pipecompare/+run/Executor.m
+      - benchmarks/validate_ica_contribution.py
+      - tests/test_ica_contribution.py
+      - .github/workflows/pr51-ica-science-record.yml
+      - .github/workflows/pr51-ica-contribution-real.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned ICA science dependencies
+        run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Fail-closed pre-removal contribution and prior science regressions
+        run: |
+          python -m unittest discover -s tests -p test_ica_contribution.py -v
+          python -m unittest discover -s tests -p test_ica_science.py -v
+          python -m unittest discover -s tests -p test_ica_match_confidence.py -v
+  real:
+    needs: unit
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        subject: [11,15,21]
+    uses: ./.github/workflows/pr51-ica-science-record.yml
+    with:
+      subject: ${{ matrix.subject }}
+  collect:
+    if: always()
+    needs: real
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download real recorder and scientific failure evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pr51-ica-science-dev-*-attempt-*
+          path: evidence
+      - name: Check all 3 development records and unchanged frozen science
+        run: |
+          python - <<'PYCODE'
+          import json
+          from pathlib import Path
+          src=sorted(Path('evidence').rglob('ica_science_validated.json'))
+          new=sorted(Path('evidence').rglob('ica_contribution_validation.json'))
+          sci=[json.loads(path.read_text()) for path in src]
+          rows=[json.loads(path.read_text()) for path in new]
+          ok=(len(src)==len(new)==3 and {x['subject'] for x in rows}=={11,15,21}
+              and all(not x['identityErrors'] and not x['scienceFailures'] for x in sci)
+              and all(len(x['candidates']) in (2,3) for x in rows))
+          result={'scope':'previously inspected development subjects only',
+                  'original20SubjectVerdict':'PARTIAL',
+                  'sourceOriginalSixStartRun':43169562528,
+                  'newSubjectsEvaluated':False,'productionPromoted':False,
+                  '14SubjectFrozenExperimentAuthorized':False,
+                  'allScienceAndNewPreRemovalSignaturesValidated':ok,
+                  'subjects':[x['subject'] for x in rows]}
+          Path('summary').mkdir(exist_ok=True)
+          Path('summary/ica_pre_removal_collection.json').write_text(json.dumps(result,indent=2))
+          print('PR51_PRE_REMOVAL_COLLECTION',json.dumps(result))
+          if not ok:raise SystemExit('Pre-removal scientific evidence incomplete')
+          PYCODE
+      - name: Preserve complete / incomplete study decision
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-ica-pre-removal-collection-${{ github.run_id }}
+          path: summary/
+          retention-days: 90
+          if-no-files-found: warn
