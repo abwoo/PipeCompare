@@ -33,6 +33,23 @@ class RecordIntegrity(unittest.TestCase):
         self.assertTrue(z["valid"],z["issues"])
         self.assertGreater(z["bootstrap"]["se"],0)
         self.assertEqual(z["bootstrap"]["draws"],1000)
+    def test_matlab_null_unretained_trials_not_a_python_type_error(self):
+        x=example()
+        c=x["science"]["waveform"]["condition"][0]
+        c["sourceIds"]=[11,12,13,14,15,16]
+        c["weights"].append(None)
+        c["scores"].append(None)
+        z=inspect_one(x,7,3)
+        self.assertTrue(z["valid"],z["issues"])
+
+    def test_matlab_null_cannot_count_as_valid_weight(self):
+        x=example()
+        c=x["science"]["waveform"]["condition"][0]
+        c["weights"]=[None,None,None,None,1.]
+        z=inspect_one(x,7,3)
+        self.assertFalse(z["valid"])
+        self.assertIn("insufficient-bootstrap-scores-0",z["issues"])
+
     def test_component_identity_failure(self):
         x=example()
         x["science"]["ica"][0]["removedIndices"]=[3]
