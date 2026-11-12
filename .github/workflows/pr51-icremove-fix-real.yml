@@ -8,8 +8,10 @@ on:
       - .github/workflows/pr51-icremove-fix-record.yml
       - +pipecompare/+eval/IcThreshold.m
       - +pipecompare/+eval/Threshold.m
+      - +pipecompare/+simple/Presets.m
       - tests/test_icthreshold_nonfinite.m
       - tests/test_threshold_nonfinite.m
+      - tests/test_icatext_no_recommendation.m
   workflow_dispatch:
 permissions:
   contents: read
