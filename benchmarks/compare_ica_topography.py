@@ -46,9 +46,21 @@ def alignment(reference, target):
     similarity=np.abs((aa/na).T @ (bb/nb))
     rows,cols=linear_sum_assignment(-similarity)
     matched=similarity[rows,cols]
-    r0=reference.get("removedIndices")
-    r1=target.get("removedIndices")
-    if not (isinstance(r0,list) and isinstance(r1,list)):
+    # MATLAB jsonencode turns a 1x1 numeric index into a JSON number, but
+    # multiple indices into a JSON array. Both express the same explicit
+    # component set; do not misclassify a singleton as missing evidence.
+    def removed_ids(raw):
+        if isinstance(raw, list):
+            return raw
+        if isinstance(raw, int) and not isinstance(raw, bool):
+            return [raw]
+        if isinstance(raw, float) and np.isfinite(raw) and raw.is_integer():
+            return [int(raw)]
+        return None
+
+    r0=removed_ids(reference.get("removedIndices"))
+    r1=removed_ids(target.get("removedIndices"))
+    if r0 is None or r1 is None:
         return {"available":False,"reason":"missing-component-removal-identities"}
     if (any(not isinstance(v,int) or isinstance(v,bool)
             or v<1 or v>aa.shape[1] for v in r0+r1)
