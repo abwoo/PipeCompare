@@ -76,6 +76,8 @@ end
 """
 
 def patch(src: str) -> str:
+    if 'seedMeasures{seed+1}' in src or 'function a = pr51SeedMeasure(' in src:
+        raise ValueError('Expected unique, uninstrumented frozen Executor source')
     for marker in (START, PERSEED, ENDING, BEFORE_HELPER):
         if src.count(marker) != 1:
             raise ValueError(f"Expected one unique frozen ICA audit marker: {marker[:65]}")
