@@ -1,0 +1,446 @@
+{
+  "metadata_only": true,
+  "eeg_bytes_downloaded": 0,
+  "osf_node": "etdkz",
+  "subject_ids": [
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    31,
+    32,
+    33,
+    34,
+    36,
+    37,
+    38,
+    39
+  ],
+  "files": [
+    {
+      "subject": 24,
+      "type": "eeg.fdt",
+      "name": "sub-024_task-P3_eeg.fdt",
+      "sha256": "b4d5fc36870a522b3fd86b4f442c1b8f41684a384a869e0685fe5f4bcff9fcba",
+      "md5": "1e335dc48282ed6e6eff8cba140486e4",
+      "size": 48525312,
+      "osf_id": "60077dc1e80d3708e6a57c69",
+      "download": "https://osf.io/download/60077dc1e80d3708e6a57c69/"
+    },
+    {
+      "subject": 24,
+      "type": "eeg.set",
+      "name": "sub-024_task-P3_eeg.set",
+      "sha256": "702cbf47cb524051df5aa48cc49473067558713feb5370ed48b56a45b4fb4174",
+      "md5": "e4c51708b24c9ab78b110e313ff74bb0",
+      "size": 3072160,
+      "osf_id": "60077dc786541a092914bd48",
+      "download": "https://osf.io/download/35pgv/"
+    },
+    {
+      "subject": 24,
+      "type": "events.tsv",
+      "name": "sub-024_task-P3_events.tsv",
+      "sha256": "3b66060f0f78b4665b400628dd269e6bd14b5305b82c91fb928afc926381a91c",
+      "md5": "86bcd0715dc8254b4f14e73088be6813",
+      "size": 14500,
+      "osf_id": "60077dc9ba010908a2891fcc",
+      "download": "https://osf.io/download/qgt6r/"
+    },
+    {
+      "subject": 25,
+      "type": "eeg.fdt",
+      "name": "sub-025_task-P3_eeg.fdt",
+      "sha256": "d03e644b5ce11e831076df7c9bb570feea6755472a0dcd0523a96cdb20735648",
+      "md5": "72961f88583df4f2500e22e7a9479cad",
+      "size": 51634176,
+      "osf_id": "60077dd7ba010908a2891fdf",
+      "download": "https://osf.io/download/60077dd7ba010908a2891fdf/"
+    },
+    {
+      "subject": 25,
+      "type": "eeg.set",
+      "name": "sub-025_task-P3_eeg.set",
+      "sha256": "103fd98143cc57a7f777a2404bd82d50b55be8d6193a0110a88b039ea6248669",
+      "md5": "fa4b165e82403ea5160c5e4b61b3c3a3",
+      "size": 3260576,
+      "osf_id": "60077ddf86541a092c14f82b",
+      "download": "https://osf.io/download/60077ddf86541a092c14f82b/"
+    },
+    {
+      "subject": 25,
+      "type": "events.tsv",
+      "name": "sub-025_task-P3_events.tsv",
+      "sha256": "680518bdbbfbbda021bba9e4e0f8b5192e7ac8d53ad8c9455a8936dad0b613be",
+      "md5": "3bf5d38902b0ea888da9a850ba7f1b5b",
+      "size": 14534,
+      "osf_id": "60077de186541a092c14f859",
+      "download": "https://osf.io/download/kv6ej/"
+    },
+    {
+      "subject": 26,
+      "type": "eeg.fdt",
+      "name": "sub-026_task-P3_eeg.fdt",
+      "sha256": "a4ac76e2b306070f3f6ddfbbdc2a9e35e16aa7ee60556ba96b0202d0cfd96314",
+      "md5": "42cb241847c027eaf54016a1d4833b64",
+      "size": 48525312,
+      "osf_id": "60077de986541a092914bda0",
+      "download": "https://osf.io/download/60077de986541a092914bda0/"
+    },
+    {
+      "subject": 26,
+      "type": "eeg.set",
+      "name": "sub-026_task-P3_eeg.set",
+      "sha256": "3e51cc66e5deae0daf0bdc6d8e2b3933d25010e7b0d9ab821027e75c305ce075",
+      "md5": "86c1540dc09959a6ecbabf1148d8a906",
+      "size": 3072048,
+      "osf_id": "60077deee80d3708d7a56ff2",
+      "download": "https://osf.io/download/60077deee80d3708d7a56ff2/"
+    },
+    {
+      "subject": 26,
+      "type": "events.tsv",
+      "name": "sub-026_task-P3_events.tsv",
+      "sha256": "953d4764c86388a9be7b493183985ea90e886c18adcd7b8b12b9e0e503b71d6a",
+      "md5": "019fc31dea14d96253a2c984db0b54ce",
+      "size": 14499,
+      "osf_id": "60077df186541a092114b463",
+      "download": "https://osf.io/download/60077df186541a092114b463/"
+    },
+    {
+      "subject": 27,
+      "type": "eeg.fdt",
+      "name": "sub-027_task-P3_eeg.fdt",
+      "sha256": "a5731047f41705699b2f6d681f716e89f7185bbe622d7ea15b29a07d7e4571b9",
+      "md5": "51176c439398a50166825c952a2fa10b",
+      "size": 48390144,
+      "osf_id": "60077dfee80d3708eca596dc",
+      "download": "https://osf.io/download/60077dfee80d3708eca596dc/"
+    },
+    {
+      "subject": 27,
+      "type": "eeg.set",
+      "name": "sub-027_task-P3_eeg.set",
+      "sha256": "329ca73e80a187c9a8b6f4f809be1d44789542dc2bdedd983e1d235a6eb4bfee",
+      "md5": "11d16939e407fc08dc1499b0746a0d88",
+      "size": 3063744,
+      "osf_id": "60077e05e80d3708eca596f7",
+      "download": "https://osf.io/download/60077e05e80d3708eca596f7/"
+    },
+    {
+      "subject": 27,
+      "type": "events.tsv",
+      "name": "sub-027_task-P3_events.tsv",
+      "sha256": "e894a28b87dcead9d3ad8aec1dd819f66a1d77265452694b94dda2475be02be9",
+      "md5": "0563bfa8f2338e8d796e7df524ea862f",
+      "size": 14428,
+      "osf_id": "60077e08ba010908a78932fa",
+      "download": "https://osf.io/download/rxet4/"
+    },
+    {
+      "subject": 28,
+      "type": "eeg.fdt",
+      "name": "sub-028_task-P3_eeg.fdt",
+      "sha256": "e84fdb0cda17a153d0399a7b0ac6ad92a44567fce505230790cd1350cce59ebc",
+      "md5": "656991883ac1882ac67d1d6b563bfc28",
+      "size": 53121024,
+      "osf_id": "60077e16e80d3708eca59730",
+      "download": "https://osf.io/download/60077e16e80d3708eca59730/"
+    },
+    {
+      "subject": 28,
+      "type": "eeg.set",
+      "name": "sub-028_task-P3_eeg.set",
+      "sha256": "c18d8c2ccf32f21127da0ff00bdb8f3182e468873b21bfcb7a5e389f904b76ee",
+      "md5": "51d3729cfff46b80e8afe30e01eb2459",
+      "size": 3350408,
+      "osf_id": "60077e1de80d3708dea57360",
+      "download": "https://osf.io/download/5ygnk/"
+    },
+    {
+      "subject": 28,
+      "type": "events.tsv",
+      "name": "sub-028_task-P3_events.tsv",
+      "sha256": "cb255f60c54f90669f164245c8c01bceab2894147facb239351f715e162744b3",
+      "md5": "f58f048300db5ac8812d5918fd3cc5b9",
+      "size": 14433,
+      "osf_id": "60077e1fe80d3708eca59753",
+      "download": "https://osf.io/download/60077e1fe80d3708eca59753/"
+    },
+    {
+      "subject": 29,
+      "type": "eeg.fdt",
+      "name": "sub-029_task-P3_eeg.fdt",
+      "sha256": "96ce634352a36a56bff2eb114da61e3d3b9924c1df0b5b9e20ed772019a7f0c6",
+      "md5": "39e4e3b996f1bbbf0f1668d54f0d0676",
+      "size": 46768128,
+      "osf_id": "60077e27ba010908a2892048",
+      "download": "https://osf.io/download/60077e27ba010908a2892048/"
+    },
+    {
+      "subject": 29,
+      "type": "eeg.set",
+      "name": "sub-029_task-P3_eeg.set",
+      "sha256": "3593b1ce0718915601cdf22e910bd831a7ef7dcd35c970c3e61104aee9f79d31",
+      "md5": "587456a8430a604af2e9730a93f3ba06",
+      "size": 2964096,
+      "osf_id": "60077e2d86541a092c14fe48",
+      "download": "https://osf.io/download/60077e2d86541a092c14fe48/"
+    },
+    {
+      "subject": 29,
+      "type": "events.tsv",
+      "name": "sub-029_task-P3_events.tsv",
+      "sha256": "14a98b90ca42a525b97e45d165bba5f5d0433c57b458be8f2fd1d82fea38c820",
+      "md5": "5a91257737fabe6389f71b38c02f97a2",
+      "size": 14278,
+      "osf_id": "60077e2f86541a092c14fe7c",
+      "download": "https://osf.io/download/mvjfb/"
+    },
+    {
+      "subject": 31,
+      "type": "eeg.fdt",
+      "name": "sub-031_task-P3_eeg.fdt",
+      "sha256": "206347e24d2391561d6ebc50bb9bea1c4d9e9e08e8b8e1a4c2066f10a81ad151",
+      "md5": "f293a2094a4c89314349666f14ee34e1",
+      "size": 46632960,
+      "osf_id": "60077e4e86541a092c1500d0",
+      "download": "https://osf.io/download/60077e4e86541a092c1500d0/"
+    },
+    {
+      "subject": 31,
+      "type": "eeg.set",
+      "name": "sub-031_task-P3_eeg.set",
+      "sha256": "14e3b67322f5fa9a50e56e899cff767ad062b2530f1712d7a6e069ad4c8c5ea8",
+      "md5": "28752a5f0b6a4844df936055cadcbb02",
+      "size": 2957360,
+      "osf_id": "60077e55e80d3708eaa58d8f",
+      "download": "https://osf.io/download/60077e55e80d3708eaa58d8f/"
+    },
+    {
+      "subject": 31,
+      "type": "events.tsv",
+      "name": "sub-031_task-P3_events.tsv",
+      "sha256": "3d12b236e7e04f8f25ff5e294e7bbb649ed1f53aa56abd62c53d28441869ec54",
+      "md5": "6038151f4dd53f082b805b393f0bcd77",
+      "size": 14493,
+      "osf_id": "60077e58e80d3708eca59837",
+      "download": "https://osf.io/download/60077e58e80d3708eca59837/"
+    },
+    {
+      "subject": 32,
+      "type": "eeg.fdt",
+      "name": "sub-032_task-P3_eeg.fdt",
+      "sha256": "f90f2db24d435697be317b9ca820a95f4178ca201c57f09543de8571289fc4b1",
+      "md5": "a09506b81c845fb0d4c19e094204b468",
+      "size": 50012160,
+      "osf_id": "60077e65e80d3708e7a58387",
+      "download": "https://osf.io/download/wuxb5/"
+    },
+    {
+      "subject": 32,
+      "type": "eeg.set",
+      "name": "sub-032_task-P3_eeg.set",
+      "sha256": "856b485fa417bb9f501bc00166948387e2b7f53a4243bf533da8175d73bae4b7",
+      "md5": "63409c150e02f9e7edffa59f31725461",
+      "size": 3162160,
+      "osf_id": "60077e6de80d3708e7a58396",
+      "download": "https://osf.io/download/5y3ja/"
+    },
+    {
+      "subject": 32,
+      "type": "events.tsv",
+      "name": "sub-032_task-P3_events.tsv",
+      "sha256": "63d6cdafbfd14912051179d3658e0a3b4d8d2d9553532f101d150638b9c0a390",
+      "md5": "d72e365cedf2cfe9a1a3da0c6c3cc2f1",
+      "size": 14498,
+      "osf_id": "60077e7086541a092914bf1f",
+      "download": "https://osf.io/download/hdyba/"
+    },
+    {
+      "subject": 33,
+      "type": "eeg.fdt",
+      "name": "sub-033_task-P3_eeg.fdt",
+      "sha256": "7adc758a193a8842da0d4d410bddd7f2f580bc493b006b9d968d5e2d617cb0b4",
+      "md5": "2f9787d085c056fe74ca271007583e58",
+      "size": 47038464,
+      "osf_id": "60077e7ae80d3708eca598b4",
+      "download": "https://osf.io/download/nh29x/"
+    },
+    {
+      "subject": 33,
+      "type": "eeg.set",
+      "name": "sub-033_task-P3_eeg.set",
+      "sha256": "7c2a2789ef573ac41be4e348c4d0a58ef02c06432d7240982a8b4dfed084fe71",
+      "md5": "3a4e914876ecd844319bb6a536970d92",
+      "size": 2982216,
+      "osf_id": "60077e8286541a092c1504e0",
+      "download": "https://osf.io/download/60077e8286541a092c1504e0/"
+    },
+    {
+      "subject": 33,
+      "type": "events.tsv",
+      "name": "sub-033_task-P3_events.tsv",
+      "sha256": "cbc3edb78630a3df9bb0cd538cb1edfad1e0c189cf65a338f38a9c89acb3e517",
+      "md5": "3fc441a4a7b0120c82c75eb24f65b16a",
+      "size": 14536,
+      "osf_id": "60077e8486541a092c150514",
+      "download": "https://osf.io/download/wj24x/"
+    },
+    {
+      "subject": 34,
+      "type": "eeg.fdt",
+      "name": "sub-034_task-P3_eeg.fdt",
+      "sha256": "7207b5ed093754ecfb8a23cc0c991bb920d3a9c4be7a1af670208b4ad2d83db1",
+      "md5": "a582227d6ddd4282ec677476a3bb9aa0",
+      "size": 47443968,
+      "osf_id": "60077e8ee80d3708eca5990c",
+      "download": "https://osf.io/download/60077e8ee80d3708eca5990c/"
+    },
+    {
+      "subject": 34,
+      "type": "eeg.set",
+      "name": "sub-034_task-P3_eeg.set",
+      "sha256": "decb2aa40b8cc6fa31ea8897424b4d875006f94f288cbefad530df835cc26a4c",
+      "md5": "c59722a834b8d0a7dcab288a0f2a27ef",
+      "size": 3006736,
+      "osf_id": "60077e95e80d3708eca59929",
+      "download": "https://osf.io/download/9gdq5/"
+    },
+    {
+      "subject": 34,
+      "type": "events.tsv",
+      "name": "sub-034_task-P3_events.tsv",
+      "sha256": "afbe8c199909d79cdc7114a7a69fa60586c2285323dd07e8db23360a2b4ad8e5",
+      "md5": "1b4e1f9e42122ed6ddc45d31d8e0621e",
+      "size": 14491,
+      "osf_id": "60077e99e80d3708eca59941",
+      "download": "https://osf.io/download/60077e99e80d3708eca59941/"
+    },
+    {
+      "subject": 36,
+      "type": "eeg.fdt",
+      "name": "sub-036_task-P3_eeg.fdt",
+      "sha256": "8f48d89de03e8cf6667af90bb60e428f5bf9dfc5eb747626871a9289644989ab",
+      "md5": "9fe877296079e752fd740a29f504749f",
+      "size": 48390144,
+      "osf_id": "60077eb586541a092914bfe3",
+      "download": "https://osf.io/download/60077eb586541a092914bfe3/"
+    },
+    {
+      "subject": 36,
+      "type": "eeg.set",
+      "name": "sub-036_task-P3_eeg.set",
+      "sha256": "92c8ec58a7096ab26cf72fd646bc740be9da529912d880f55abefab7e6c076c4",
+      "md5": "67acbc3caf9eb5668a5029baff59c880",
+      "size": 3063296,
+      "osf_id": "60077ebbe80d3708e6a57d0f",
+      "download": "https://osf.io/download/jktgm/"
+    },
+    {
+      "subject": 36,
+      "type": "events.tsv",
+      "name": "sub-036_task-P3_events.tsv",
+      "sha256": "843b4736db689917b1d193790771673773b600ed4aed24d0e940e5c1585c27e0",
+      "md5": "d33ac79134f4789203d6852460bc47ec",
+      "size": 14447,
+      "osf_id": "60077ebde80d3708eca599c5",
+      "download": "https://osf.io/download/60077ebde80d3708eca599c5/"
+    },
+    {
+      "subject": 37,
+      "type": "eeg.fdt",
+      "name": "sub-037_task-P3_eeg.fdt",
+      "sha256": "69f3071ddf8b8066b829935d1e442f64d63a7fbda3b899f921ac721f35b7a2e2",
+      "md5": "dd9a663e8947e45369ebf8fb3c517259",
+      "size": 50688000,
+      "osf_id": "60077ec686541a092914c012",
+      "download": "https://osf.io/download/zau7k/"
+    },
+    {
+      "subject": 37,
+      "type": "eeg.set",
+      "name": "sub-037_task-P3_eeg.set",
+      "sha256": "b2a3616667482ff551b2f0ab11ce9e4608fc310cf064cbfbe7fdc4df36721b87",
+      "md5": "cec34d733c4fd7cdbb877f1c83efa71b",
+      "size": 3203120,
+      "osf_id": "60077ecce80d3708eca599f6",
+      "download": "https://osf.io/download/60077ecce80d3708eca599f6/"
+    },
+    {
+      "subject": 37,
+      "type": "events.tsv",
+      "name": "sub-037_task-P3_events.tsv",
+      "sha256": "a4e9d7d1bcc8fef56cc81123b4a04da85912b9830f8f0b8b915a32e9a9930478",
+      "md5": "c0d038405cece5a11732a60c40bdc41e",
+      "size": 14534,
+      "osf_id": "60077eceba01090897891096",
+      "download": "https://osf.io/download/60077eceba01090897891096/"
+    },
+    {
+      "subject": 38,
+      "type": "eeg.fdt",
+      "name": "sub-038_task-P3_eeg.fdt",
+      "sha256": "69691e2b35edad6209e510c85664349af1ddffa1f891e3e9584c71ab91f7535a",
+      "md5": "0966506c05dd1b3786f29e4b20f8606a",
+      "size": 65961984,
+      "osf_id": "60077ed7ba0109089e89201d",
+      "download": "https://osf.io/download/k79vr/"
+    },
+    {
+      "subject": 38,
+      "type": "eeg.set",
+      "name": "sub-038_task-P3_eeg.set",
+      "sha256": "d36149d4da2806afb0a0963e5ca2fb7c2cb3ab08ab357ef29b1a4d46995e403a",
+      "md5": "eec75e26b7318fd4c7b1bf0c34d5cea7",
+      "size": 4128088,
+      "osf_id": "60077edfba010908a2892156",
+      "download": "https://osf.io/download/qwujb/"
+    },
+    {
+      "subject": 38,
+      "type": "events.tsv",
+      "name": "sub-038_task-P3_events.tsv",
+      "sha256": "dbddbf24a0a82c40d553a3960585aa584d5f220cda713f1f4f6f3473ed3654a1",
+      "md5": "3938d4c21cb4e0536cd6df8aedc1b479",
+      "size": 14446,
+      "osf_id": "60077ee186541a092614b98f",
+      "download": "https://osf.io/download/5t3h8/"
+    },
+    {
+      "subject": 39,
+      "type": "eeg.fdt",
+      "name": "sub-039_task-P3_eeg.fdt",
+      "sha256": "9a4d100b244b24da57d0241af64ebd5b05de6761467986d0c425eef7663eafac",
+      "md5": "7f8a8fdcaba1d007936cd6129259cc98",
+      "size": 53526528,
+      "osf_id": "60077eeae80d3708eca59a76",
+      "download": "https://osf.io/download/60077eeae80d3708eca59a76/"
+    },
+    {
+      "subject": 39,
+      "type": "eeg.set",
+      "name": "sub-039_task-P3_eeg.set",
+      "sha256": "7e4ff01c66e4bad1ce9d0a18aedb00b98400346772f886e8f001d9dfa3a19c86",
+      "md5": "de81fe8142d42df30cbbc1801d1c48eb",
+      "size": 3375264,
+      "osf_id": "60077eefba010908a4892ad6",
+      "download": "https://osf.io/download/r53eb/"
+    },
+    {
+      "subject": 39,
+      "type": "events.tsv",
+      "name": "sub-039_task-P3_events.tsv",
+      "sha256": "4e732970f78183d471ba1777ae7163c764e4cad79db823f78cd94d0dc251802d",
+      "md5": "03b1068ad88ac7cf9d095e2b22a9025c",
+      "size": 14546,
+      "osf_id": "60077ef2ba010908a4892ae4",
+      "download": "https://osf.io/download/79g3t/"
+    }
+  ],
+  "pages_visited": 467,
+  "files_scanned": 2848,
+  "status": "CANDIDATE_SOURCE_MANIFEST_NOT_YET_FROZEN"
+}
