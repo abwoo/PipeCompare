@@ -35,6 +35,20 @@ class NonIntervention(unittest.TestCase):
         new["icaSeedCheck"]["measurements"][3]["correctedDifferenceEstimate"]=1.7
         self.assertIn("seed-3-correctedDifferenceEstimate-changed",
                       one_pair(old,new)["reasons"])
+    def test_sub_microvolt_numeric_noise_within_existing_replay_tolerance(self):
+        old=result();new=deepcopy(old)
+        new["icaSeedCheck"]["measurements"][4]["correctedDifferenceEstimate"]+=5.61e-7
+        row=one_pair(old,new,replay_tolerance_uv=1e-6)
+        self.assertTrue(row["noninterventionPassed"])
+        self.assertFalse(row["exactP300Reproduction"])
+        self.assertAlmostEqual(row["numericalParityToleranceUv"],1e-6)
+    def test_difference_beyond_frozen_replay_tolerance_rejected(self):
+        old=result();new=deepcopy(old)
+        new["icaSeedCheck"]["measurements"][4]["correctedDifferenceEstimate"]+=2e-6
+        row=one_pair(old,new,replay_tolerance_uv=1e-6)
+        self.assertFalse(row["noninterventionPassed"])
+        self.assertIn("seed-4-correctedDifferenceEstimate-changed",row["reasons"])
+
     def test_changed_source_identity_detected(self):
         old=result();new=deepcopy(old)
         new["source"]["source_set_sha256"]="different"
