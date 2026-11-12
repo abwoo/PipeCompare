@@ -1,0 +1,42 @@
+name: PR51 exploratory worst-seed objective candidate preview
+on:
+  push:
+    branches: [codex/pr51-ica-minimax-preview-20261112]
+    paths:
+      - benchmarks/preview_ica_minimax.py
+      - tests/test_ica_minimax_preview.py
+      - benchmarks/results/ica_seed_objective_development_20261112.json
+      - .github/workflows/pr51-ica-minimax-preview.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test finite matrix, ties and missing ICA starts
+        run: python -m unittest discover -s tests -p test_ica_minimax_preview.py -v
+      - name: Evaluate three frozen original participant objective matrices as exploratory proxies
+        run: |
+          python benchmarks/preview_ica_minimax.py \
+            --snapshot benchmarks/results/ica_seed_objective_development_20261112.json \
+            --out output/minimax_preview.json
+          python - <<'PYCODE'
+          import json
+          from pathlib import Path
+          x=json.loads(Path('output/minimax_preview.json').read_text())
+          assert {q['subject'] for q in x['subjects']} == {11,15,21}
+          assert x['purpose']=='DEVELOPMENT_ONLY_NUMERIC_PROXY_NO_SCIENTIFIC_FEASIBILITY'
+          assert all(not q['scientific_feasibility_checked'] for q in x['subjects'])
+          assert all(not q.get('eligible_for_real_algorithm_promotion',False) for q in x['subjects'])
+          PYCODE
+      - name: Preserve numerical preview with explicit feasibility caveat
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-ica-minimax-proxy-${{ github.run_id }}
+          path: output/
+          retention-days: 90
