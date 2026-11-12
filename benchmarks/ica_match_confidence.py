@@ -65,8 +65,8 @@ def assignment(a,b):
         best_col=float(C[:,j].max())
         row_nearest=np.flatnonzero(np.isclose(C[i,:],best_row,atol=1e-12,rtol=0.))
         col_nearest=np.flatnonzero(np.isclose(C[:,j],best_col,atol=1e-12,rtol=0.))
-        mutual=(len(row_nearest)==1 and len(col_nearest)==1
-                and row_nearest[0]==j and col_nearest[0]==i)
+        mutual=bool(len(row_nearest)==1 and len(col_nearest)==1
+                    and row_nearest[0]==j and col_nearest[0]==i)
         alternative=C.copy()
         alternative[i,j]=-1e9
         i2,j2=linear_sum_assignment(-alternative)
