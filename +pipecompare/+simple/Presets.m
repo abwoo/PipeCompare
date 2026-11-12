@@ -159,6 +159,9 @@ classdef Presets
             % recommended pipeline also run with the eye channels regressed
             % out (Executor eogCheck: when there is an EOG channel).
             o = struct('refineCutoffs', true, 'icaSeeds', 5, 'signalTemplate', 'data', 'eogCheck', true);
+            % Strictly opt-in research-only science snapshots; never enabled by
+            % production UI/defaults. No effects on Rank, signal or execution.
+            o.scienceRecord = strcmp(getenv('PIPECOMPARE_PR51_SCIENCE_RECORD'),'1');
         end
 
         function steps = recipeSteps(name)
