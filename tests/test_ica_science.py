@@ -32,6 +32,7 @@ def synth():
        "usedCount":3,"effectiveN":3,"meanWaveform":wave1.tolist(),
        "windowMean":0,"originalEstimate":0}]
     measure={"candidateId":4,"seed":0,"gain":1.,
+             "sourceUnflagged":[3,3],"effectiveUnflagged":[3,3],
              "correctedDifferenceEstimate":score0,"science":{
                 "status":"complete","decompositions":[base],
                 "timeMs":times.tolist(),"channel":"Pz","conditions":cond}}
@@ -51,6 +52,20 @@ class ScienceRecorderTest(unittest.TestCase):
         x=synth();x["science"]["conditions"][0]["retainedIds"]=[12,14]
         got=validate_science(x,11,4,0)
         self.assertFalse(got["complete"])
+    def test_scientific_source_support_disagreement_is_rejected(self):
+        x=synth()
+        x["sourceUnflagged"]=[4,3]
+        result=validate_science(x,11,4,0)
+        self.assertFalse(result["complete"])
+        self.assertIn("physical-hmm-support-disagrees-with-source:0",result["errors"])
+
+    def test_weighted_unflagged_support_disagreement_is_rejected(self):
+        x=synth()
+        x["effectiveUnflagged"]=[2,3]
+        result=validate_science(x,11,4,0)
+        self.assertFalse(result["complete"])
+        self.assertIn("weighted-hmm-support-disagrees-with-source:0",result["errors"])
+
     def test_iclabel_shape_incoherent(self):
         x=synth();x["science"]["decompositions"][0]["classProbabilities"]=[[1.,0.]]
         got=validate_science(x,11,4,0)
