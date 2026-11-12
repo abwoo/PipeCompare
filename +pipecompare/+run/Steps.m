@@ -642,10 +642,21 @@ classdef Steps
                 end
                 if isempty(what), what = {'the data as they are (nothing extreme to leave out)'}; end
                 if seed > 0
+                    % Experimental ICA-start sensitivity must hold the
+                    % model dimension fixed. EEGLAB getrank ordinarily
+                    % estimates rank from the first 3,000 samples; after
+                    % reshuffling this would use DIFFERENT observations,
+                    % mixing rank/PCA changes into ICA-start variability.
+                    % Apply seed-0's unshuffled rank estimate explicitly
+                    % before any sample order is changed. Seed-0 production
+                    % fitting and all ordinary Pipeline choices are intact.
+                    [lockedRank, rankAudit] = pipecompare.run.IcaRankLock.estimate(tmp.data); %#ok<ASGLU>
+                    opts = [opts {'pca',lockedRank}];
+                    args = vararg2str(opts);
                     sz = size(tmp.data); x = reshape(tmp.data, sz(1), []);
                     x = x(:, randperm(RandStream('mt19937ar', 'Seed', seed), size(x, 2)));
                     tmp.data = reshape(x, sz); clear x
-                    what{end+1} = sprintf('its samples in a random order (seed %d)', seed);
+                    what{end+1} = sprintf('its samples in a random order (seed %d), locked ICA PCA rank %d from unshuffled fit copy', seed, lockedRank);
                 end
                 tmp = runIca(tmp, opts);
                 EEG.icaweights = tmp.icaweights; EEG.icasphere = tmp.icasphere;
@@ -1412,7 +1423,10 @@ r = icaRank(double(x(:, 1:min(3000, size(x, 2)))), contains(fileread(which('pop_
 x = x - repmat(mean(x, 2), [1 size(x, 2)]);
 x = double(x);
 x = x - repmat(mean(x, 2), [1 size(x, 2)]);
-if r < size(x, 1), o = [o {'pca', r}]; end
+% A sensitivity start may have an explicitly locked PCA dimension.
+% Never append a second, contradictory pca argument in the fallback.
+hasPca = any(cellfun(@(v) ischar(v) && strcmpi(v,'pca'),o));
+if r < size(x, 1) && ~hasPca, o = [o {'pca', r}]; end
 [EEG.icaweights, EEG.icasphere] = runica(x, 'lrate', 0.001, o{:});
 clear x
 EEG.icachansind = 1:EEG.nbchan; EEG.icaact = [];
