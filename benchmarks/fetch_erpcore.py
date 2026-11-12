@@ -136,6 +136,8 @@ def main():
     ap.add_argument("--protocol", default=None,
                     help="path to erpcore_protocol.json (default: benchmarks/erpcore_protocol.json next to this script)")
     ap.add_argument("--cache", default=None, help="optional directory with pre-downloaded source files")
+    ap.add_argument("--duration-seconds",type=int,default=None,
+                    help="EXPLORATORY later-event diagnostic only; default keeps frozen 300 s")
     args = ap.parse_args()
 
     script_dir = Path(__file__).resolve().parent
@@ -210,7 +212,12 @@ def main():
     factor = srate // fs_out
     data256 = resample_poly(data1024, 1, factor, axis=1)
     n256 = data256.shape[1]
-    excerpt_s = p["excerpt"]["duration_seconds"]
+    excerpt_s = (p["excerpt"]["duration_seconds"] if args.duration_seconds is None
+                 else args.duration_seconds)
+    if args.duration_seconds is not None and args.subject not in (4,8):
+        raise SystemExit("Longer diagnostic is limited to the two prior development support failures")
+    if not isinstance(excerpt_s,int) or excerpt_s<1:
+        raise SystemExit("Invalid requested excerpt duration")
     n_excerpt = int(excerpt_s * fs_out)
     assert n256 >= n_excerpt, f"recording too short: {n256/fs_out:.1f}s < {excerpt_s}s"
     excerpt = data256[:, :n_excerpt].copy()
@@ -278,6 +285,8 @@ def main():
         "samples": n_excerpt,
         "offset_seconds": p["excerpt"]["offset_seconds"],
         "duration_seconds": excerpt_s,
+        "exploratory_duration_override": args.duration_seconds is not None,
+        "original_frozen_duration_seconds": p["excerpt"]["duration_seconds"],
         "channels": CHANNELS_16,
         "eog_channels": {"veog": VEOG_LABEL, "heog": "HEOG_left - HEOG_right"},
         "reference_channels": [REF_P9, REF_P10],
