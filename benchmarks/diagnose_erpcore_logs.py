@@ -254,7 +254,8 @@ def main():
     if any(not r["completed"] or r["errors"] for r in rows):
         raise ValueError("at least one frozen run failed; do not treat as complete")
     args.out.mkdir(parents=True, exist_ok=True)
-    output = {"run_id": args.run_id, "source": ("connector-captured result-marker snapshots; cloud independently checks fixed source rows, not raw log re-download"\n                                           if args.snapshot_dir is not None else "original GitHub Actions job logs"),
+    output = {"run_id": args.run_id, "source": ("connector-captured result-marker snapshots; cloud independently checks fixed source rows, not raw log re-download"
+                                           if args.snapshot_dir is not None else "original GitHub Actions job logs"),
               "subjects": rows}
     (args.out / "forensics.json").write_text(json.dumps(output, indent=2, allow_nan=True) + "\n")
     (args.out / "forensics.md").write_text(build_report(rows, args.run_id) + "\n")
