@@ -1,0 +1,65 @@
+name: PR51 checksum-pinned public metadata artifact provenance commit
+on:
+  push:
+    branches: [codex/pr51-holdout14-design-20261112]
+    paths:
+      - .github/workflows/pr51-holdout14-manifest-commit.yml
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: write
+jobs:
+  commit-manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Retrieve previously verified metadata-only OSF snapshot
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p snapshot
+          gh run download 43163072602 --repo "$GITHUB_REPOSITORY" \
+            --name pr51-holdout14-metadata-43163072602 --dir snapshot
+      - name: Check exact source-provenance checksum and no leaked EEG bytes
+        run: |
+          python - <<'PYCODE'
+          import hashlib,json,re
+          from pathlib import Path
+          metadata=Path('snapshot/holdout14_osf_candidate_manifest.json')
+          b=metadata.read_bytes()
+          expected="7cabbd348c0267a1b42e140be7e627f1c0ba7873ac6b87997544d6035f61aeb6"
+          assert hashlib.sha256(b).hexdigest()==expected,'Original OSF metadata artifact digest changed'
+          data=json.loads(b)
+          expected_subjects=[24,25,26,27,28,29,31,32,33,34,36,37,38,39]
+          assert data['subject_ids']==expected_subjects
+          assert data['eeg_bytes_downloaded']==0 and data['metadata_only'] is True
+          assert data['status']=='CANDIDATE_SOURCE_MANIFEST_NOT_YET_FROZEN'
+          assert len(data['files'])==42
+          expected={(s,t) for s in expected_subjects for t in ('eeg.fdt','eeg.set','events.tsv')}
+          observed={(f['subject'],f['type']) for f in data['files']}
+          assert observed==expected and len(observed)==42
+          for f in data['files']:
+              assert re.fullmatch('[0-9a-f]{64}',f['sha256'])
+              assert f['name']==f"sub-{f['subject']:03d}_task-P3_{f['type']}"
+              assert f['download'].startswith('https://osf.io/download/')
+              assert f['size']>0
+          dest=Path('benchmarks/results/holdout14_osf_candidate_manifest_20261112.json')
+          dest.parent.mkdir(exist_ok=True)
+          dest.write_bytes(b)
+          print('PR51_OSF_MANIFEST_PINNED',json.dumps({'files':42,'subjects':14,'sha256':expected,
+             'eeg_bytes_downloaded':0,'not_a_frozen_study':True}))
+          PYCODE
+      - name: Commit immutable candidate source metadata into isolated design branch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add benchmarks/results/holdout14_osf_candidate_manifest_20261112.json
+          if git diff --cached --quiet; then
+            echo 'Metadata snapshot already committed'
+          else
+            git commit -m "Pin checksum-verified 42-file public OSF heldout candidate metadata, no EEG read"
+            git push origin HEAD:refs/heads/codex/pr51-holdout14-design-20261112
+          fi
