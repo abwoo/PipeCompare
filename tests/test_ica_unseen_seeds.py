@@ -66,6 +66,15 @@ class UnseenStarts(unittest.TestCase):
         self.assertEqual(z["trainingShadow"]["shadowCandidate"],4)
         self.assertFalse(z["shadowUnseen"]["validAllThree"])
 
+    def test_training_stability_flag_ignores_unseen_recommendations(self):
+        x=fixture()
+        x["icaSeedCheck"]["recommended"]=[4,4,4,25,25,25]
+        x["icaSeedCheck"]["same"]=False
+        z=inspect(x)
+        self.assertTrue(z["trainingShadow"]["sourceCandidateStable"])
+        self.assertEqual(z["trainingShadow"]["sourceRecommended"],[4,4,4])
+        self.assertEqual(z["trainingShadow"]["shadowCandidate"],4)
+
     def test_unseen_nonfinite_objective_fails_closed(self):
         x=fixture()
         x["icaSeedCheck"]["objective"][0][4]=float("nan")
