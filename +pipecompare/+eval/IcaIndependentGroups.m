@@ -15,7 +15,7 @@ methods (Static)
         out=struct('status','not-comparable','sameCandidate',false, ...
             'groups',[],'sourceSeedLabels',0:5,'originalSearchRankingUnchanged',true, ...
             'isIndependentHeldoutStudy',false);
-        descriptions=struct([]);
+        descriptions=cell(1,2);
         for group=1:2
             cols=(1:3)+3*(group-1);
             anchor=recommended(cols(1));
@@ -38,11 +38,11 @@ methods (Static)
             else
                 z.seedMeasurements={};
             end
-            if isempty(descriptions),descriptions=z;else,descriptions(end+1)=z;end %#ok<AGROW>
+            descriptions{group}=z;
         end
         out.groups=descriptions;
-        if all(strcmp({descriptions.status},'selected'))
-            out.sameCandidate=descriptions(1).candidateId==descriptions(2).candidateId;
+        if strcmp(descriptions{1}.status,'selected') && strcmp(descriptions{2}.status,'selected')
+            out.sameCandidate=descriptions{1}.candidateId==descriptions{2}.candidateId;
             if out.sameCandidate,out.status='same-across-disjoint-triplets';
             else,out.status='different-across-disjoint-triplets';end
         else
