@@ -1,0 +1,26 @@
+name: PR51 post-capture spatial and parity unit tests
+on:
+  push:
+    branches: [codex/pr51-science-recorder-20261112]
+    paths:
+      - benchmarks/analyze_science_recorder.py
+      - benchmarks/verify_science_noninterference.py
+      - tests/test_science_spatial.py
+      - .github/workflows/pr51-science-postunit.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  spatial-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Validate sign-invariant component matching and waveforms
+        run: |
+          python -m unittest discover -s tests -p test_science_spatial.py -v
+          python -m py_compile benchmarks/verify_science_noninterference.py
+          python -m py_compile benchmarks/analyze_science_recorder.py
