@@ -1,0 +1,67 @@
+name: PR51 real P3 estimator-family-locked ICA scientific comparison
+on:
+  push:
+    branches: [codex/pr51-ica-estimator-family-20261112]
+    paths:
+      - +pipecompare/+run/Executor.m
+      - +pipecompare/+eval/IcaRobustFamily.m
+      - .github/workflows/pr51-ica-family-record.yml
+      - .github/workflows/pr51-ica-family-real.yml
+      - benchmarks/validate_ica_family_real.py
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  record:
+    name: Development real P300 subject ${{ matrix.subject }}
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        subject: [11, 15, 21]
+    uses: ./.github/workflows/pr51-ica-family-record.yml
+    with:
+      subject: ${{ matrix.subject }}
+  collector:
+    needs: record
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pr51-ica-family-*-attempt-*
+          path: evidence
+      - name: Verify original and family robust P300 estimates on all three development subjects
+        run: |
+          PYTHONPATH=benchmarks python - <<'PYCODE'
+          import json
+          from pathlib import Path
+          from validate_ica_family_real import validate
+          paths=sorted(Path('evidence').rglob('result.json'))
+          assert len(paths)==3, f'Expected all three source-backed EEG records, got {paths}'
+          records=[json.loads(p.read_text()) for p in paths]
+          assert {r['subject'] for r in records}=={11,15,21}
+          rows=[validate(r) for r in records]
+          assert all(x['noRetrospectiveGateChange'] and not x['isNewFrozenExperiment'] for x in rows)
+          Path('output').mkdir(exist_ok=True)
+          Path('output/ica_estimator_family_development.json').write_text(json.dumps({
+              'source':'ERP_CORE_P3_original_development_subjects',
+              'not_frozen_validation':True,
+              'recommender_replaces_original':False,
+              'subjects':rows},indent=2))
+          for row in rows:
+              print('PR51_ICA_ESTIMATOR_FAMILY_COLLECT',json.dumps({
+                  'subject':row['subject'],'original':row['originalId'],
+                  'original_family':row['baselineFamily'],
+                  'common_minimax':row['oldCommonFeasibleCandidate'],
+                  'family_minimax':row['familyCandidate'],
+                  'corrected_P3':[z['correctedDifferenceEstimate'] for z in row['familyMeasurements']]}))
+          PYCODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pr51-ica-estimator-family-development-${{ github.run_id }}
+          path: output/
+          retention-days: 90
