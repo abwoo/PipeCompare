@@ -1,0 +1,60 @@
+name: PR51 ICA weak-component topology and IC-removal forensic (archived only)
+on:
+  push:
+    branches: [codex/pr51-ica-component-outliers-20261112]
+    paths:
+      - benchmarks/diagnose_ica_component_outliers.py
+      - tests/test_ica_component_outliers.py
+      - docs/PR51_ICA_COMPONENT_OUTLIERS_20261112.md
+      - .github/workflows/pr51-ica-component-outliers.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify no edits to scientific MATLAB code
+        run: |
+          test -z "$(git diff --name-only ffd32668a4f59c9516e5048f994605c746de11ec HEAD -- +pipecompare)"
+          git diff --check
+      - name: Install pinned independent matching dependencies
+        run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Check source matching, sign, permutation, removal, and missingness
+        run: python -m unittest discover -s tests -p test_ica_component_outliers.py -v
+  analyze:
+    needs: tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Read verified real MATLAB ICA science, no refit
+        uses: actions/download-artifact@v4
+        with:
+          repository: abwoo/PipeCompare
+          run-id: 43184910782
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: pr51-ica-science-dev-*-attempt-1
+          path: evidence
+      - name: Explain minimum scalp-map correlation failures, preserve component-level evidence
+        run: |
+          python benchmarks/diagnose_ica_component_outliers.py \
+            --evidence evidence --out output/weak_components.json
+      - name: Archive all weak map findings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-ica-component-outliers-${{ github.run_id }}
+          path: output/
+          retention-days: 90
+          if-no-files-found: warn
