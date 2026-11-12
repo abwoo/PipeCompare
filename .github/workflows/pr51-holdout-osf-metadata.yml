@@ -1,0 +1,37 @@
+name: PR51 unexposed ERP CORE P3 OSF source metadata discovery
+on:
+  push:
+    branches: [codex/pr51-holdout14-design-20261112]
+    paths:
+      - benchmarks/discover_holdout_osf_metadata.py
+      - tests/test_holdout_osf_metadata.py
+      - .github/workflows/pr51-holdout-osf-metadata.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-metadata:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Unit-test public metadata safety and completeness
+        run: python -m unittest discover -s tests -p test_holdout_osf_metadata.py -v
+      - name: Discover only filenames and SHA256 in public OSF, no EEG download
+        timeout-minutes: 20
+        run: |
+          python benchmarks/discover_holdout_osf_metadata.py \
+            --holdout benchmarks/erpcore_holdout14_preanalysis_20261112.json \
+            --original benchmarks/erpcore_protocol.json \
+            --output output/holdout14_osf_candidate_manifest.json
+      - name: Preserve source metadata, without approving an experimental freeze
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-holdout14-metadata-${{ github.run_id }}
+          path: output/
+          if-no-files-found: warn
+          retention-days: 90
