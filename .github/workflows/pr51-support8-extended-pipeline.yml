@@ -1,0 +1,166 @@
+name: PR51 subject 8 full-record Standard and fixed scientific feasibility
+on:
+  push:
+    branches: [codex/pr51-support8-full-pipeline-20261112]
+    paths:
+      - benchmarks/pr51_extended_pilot.m
+      - benchmarks/validate_subject8_extended_pipeline.py
+      - tests/test_subject8_extended_pipeline.py
+      - docs/PR51_SUB8_EXTENDED_PIPELINE_PREDEFINED_20261112.md
+      - .github/workflows/pr51-support8-extended-pipeline.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Preserve historical 300s science and reject unsupported downstream pairing
+        run: |
+          python -m unittest discover -s tests -p test_subject8_extended_pipeline.py -v
+          python -m unittest discover -s tests -p test_later_hmm_support.py -v
+          git diff --check
+      - name: Verify frozen original protocol and exact Measure code identity
+        run: |
+          python - <<'PYCODE'
+          import json,hashlib
+          from pathlib import Path
+          p=json.loads(Path('benchmarks/erpcore_protocol.json').read_text())
+          assert p['excerpt']['duration_seconds']==300
+          assert hashlib.sha256(Path('+pipecompare/+eval/Measure.m').read_bytes()).hexdigest()==p['baseline_measure_sha256']
+          assert 'function erpcore_pilot(' in Path('benchmarks/erpcore_pilot.m').read_text()
+          PYCODE
+  real:
+    needs: unit
+    runs-on: ubuntu-22.04
+    timeout-minutes: 150
+    env:
+      DISPLAY: ':99'
+      PILOT_SUBJECT: '8'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Verify no added scientific changes in extension branch
+        working-directory: PipeCompare
+        run: |
+          base=$(python -c "import json;print(json.load(open('benchmarks/erpcore_protocol.json'))['algorithm_commit'])")
+          changed=$(git diff --name-only "$base" HEAD -- +pipecompare pop_pipecompare.m eegplugin_pipecompare.m fallback pcomp.m pipecompare_setup.m)
+          expected=$(printf '+pipecompare/+eval/IcThreshold.m\n+pipecompare/+eval/IcaRobust.m\n+pipecompare/+eval/Threshold.m\n+pipecompare/+run/Executor.m\n+pipecompare/+simple/Presets.m')
+          test "$changed" = "$expected" || { echo "Unexpected scientific source delta: $changed"; exit 1; }
+          git diff --check "$base" HEAD
+      - name: Verify and export frozen original Measure pin
+        run: |
+          python - <<'PYCODE'
+          import json,hashlib,os
+          from pathlib import Path
+          root=Path('PipeCompare')
+          p=json.loads((root/'benchmarks/erpcore_protocol.json').read_text())
+          assert hashlib.sha256((root/'+pipecompare/+eval/Measure.m').read_bytes()).hexdigest()==p['baseline_measure_sha256']
+          with open(os.environ['GITHUB_ENV'],'a') as f:
+              f.write('PILOT_MEASURE_SHA256='+p['baseline_measure_sha256']+'\n')
+          PYCODE
+      - name: Check independent full-record source HMM support prerequisite
+        uses: actions/download-artifact@v4
+        with:
+          repository: abwoo/PipeCompare
+          run-id: 43179740278
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: pr51-later-hmm-8-attempt-1
+          path: original-hmm-evidence
+      - name: Fail closed unless prior HMM science met the floor
+        run: |
+          python - <<'PYCODE'
+          import json
+          from pathlib import Path
+          files=list(Path('original-hmm-evidence').rglob('later_hmm_support.json'))
+          assert len(files)==1,files
+          x=json.loads(files[0].read_text())
+          assert x['subject']==8 and x['originalSeconds']==300 and x['fullSeconds']==460
+          assert [r['unflaggedN'] for r in x['baseline']]==[5,20]
+          assert [r['unflaggedN'] for r in x['extended']]==[6,24]
+          assert x['fullWindowUnflaggedFloorMet'] and not x['productionPromotionAuthorized']
+          print('PR51_PRIOR_HMM_GATE',x['subject'],[r['unflaggedN'] for r in x['extended']])
+          PYCODE
+      - name: Fetch exactly the pinned subject 8 460-second EEG data
+        timeout-minutes: 15
+        run: |
+          python PipeCompare/benchmarks/fetch_erpcore.py \
+            --subject 8 --duration-seconds 460 --out input
+      - name: Checkout pinned EEGLAB 2026.0.0
+        run: git clone --depth 1 --branch 2026.0.0 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
+      - name: Record EEG implementation SHA
+        run: echo "EEGLAB_SHA=$(git -C eeglab rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Bound Linux dependencies
+        run: bash PipeCompare/.github/scripts/pilot-prepare-matlab.sh
+      - name: Install matching CPU compiler
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y g++-12
+      - name: Start graphical backend for EEGLAB
+        run: bash PipeCompare/.github/scripts/start-display.sh
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+          products: Signal_Processing_Toolbox
+      - name: Prepare pinned native ICLabel CPU inference
+        run: python PipeCompare/.github/scripts/pilot-iclabel-cpu.py eeglab/plugins/ICLabel/matconvnet
+      - name: Verify support recorder and pinned ICLabel
+        timeout-minutes: 12
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab'));eeglab nogui;
+            addpath(fullfile(pwd,'PipeCompare'));addpath(fullfile(pwd,'PipeCompare','benchmarks'));
+            pilot_native_backend(fullfile(pwd,'result','backend'));
+            pr51_extended_pilot();
+      - name: Run original Standard and fixed Minimal/Common on 460 seconds
+        timeout-minutes: 95
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab'));eeglab nogui;
+            plugin=fileparts(which('pop_iclabel'));addpath(fullfile(plugin,'matconvnet','matlab'));vl_setupnn;
+            assert(exist('vl_nnconv','file')==3,'Native ICLabel inference unavailable');
+            addpath(fullfile(pwd,'PipeCompare'));addpath(fullfile(pwd,'PipeCompare','benchmarks'));
+            pr51_extended_pilot(fullfile(pwd,'input'),fullfile(pwd,'result'),8);
+      - name: Check real run execution completion
+        run: |
+          python - <<'PYCODE'
+          import json
+          from pathlib import Path
+          x=json.loads(Path('result/result.json').read_text())
+          assert x['completed'] and not x['errors'], x.get('errors')
+          assert x['developmentOnly'] and x['extended460Seconds'] and not x['promotionAuthorized']
+          assert x['notRun']==0
+          assert x['subject']==8 and x['source']['duration_seconds']==460
+          assert x['executionCommit']==__import__('os').environ['GITHUB_SHA']
+          print('PR51_EXTENDED_REAL_COMPLETE',x['subject'],x.get('feasible'),x.get('candidates'))
+          PYCODE
+      - name: Independent 1000-draw P300 bootstrap and all-arm scientific gate
+        run: |
+          test "$(find original-hmm-evidence -name later_hmm_support.json | wc -l)" -eq 1
+          python PipeCompare/benchmarks/validate_subject8_extended_pipeline.py \
+            --record result/result.json \
+            --support "$(find original-hmm-evidence -name later_hmm_support.json | head -n1)" \
+            --protocol PipeCompare/benchmarks/erpcore_protocol.json \
+            --out result/scientific_verdict.json
+      - name: Preserve success, negative results, or exact failure artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-sub8-full-pipeline-${{ github.run_id }}
+          path: result/
+          retention-days: 90
+          if-no-files-found: warn
