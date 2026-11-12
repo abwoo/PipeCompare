@@ -1265,23 +1265,42 @@ if strcmp(robust.status,'selected')
 else
     robust.seedMeasurements = {};
 end
+% Experimental alternative: hold original P3 trial-weight estimator class
+% fixed across ICA starts before applying all original scientific gates.
+estimatorFamilies = cell(numel(ids), n + 1);
+for j = 1:numel(ids)
+    for sd = 1:(n + 1)
+        estimatorFamilies{j,sd} = allMeasures{j,sd}.estimationFamily;
+    end
+end
+familyRobust = pipecompare.eval.IcaRobustFamily.select(ids, obj, seedStatus, ...
+    seedStratum, seedSupportPass, estimatorFamilies, k);
+if strcmp(familyRobust.status,'selected')
+    j = find(ids == familyRobust.candidateId,1);
+    familyRobust.seedMeasurements = allMeasures(j,:);
+else
+    familyRobust.seedMeasurements = {};
+end
 % MATLAB JSON encoding flattens 2-D cell arrays of text. Emit one
 % structured record per candidate so each seed's status stays aligned with
 % the same source candidate and support mask, independent of serializer.
 candidateSeedAudit = repmat(struct('candidateId',NaN,'status',{{}}, ...
-    'stratum',{{}},'supportPass',[],'objective',[]),1,numel(ids));
+    'stratum',{{}},'supportPass',[],'objective',[], ...
+    'estimationFamily',{{}}),1,numel(ids));
 for j = 1:numel(ids)
     candidateSeedAudit(j).candidateId = ids(j);
     candidateSeedAudit(j).status = seedStatus(j,:);
     candidateSeedAudit(j).stratum = seedStratum(j,:);
     candidateSeedAudit(j).supportPass = seedSupportPass(j,:);
     candidateSeedAudit(j).objective = obj(j,:);
+    candidateSeedAudit(j).estimationFamily = estimatorFamilies(j,:);
 end
 out = struct('seeds', 1:n, 'ids', ids(:)', 'objective', obj, 'recommended', rec, ...
     'same', all(rec == k), 'measurements', {measurements}, ...
     'statusBySeed', {seedStatus}, 'stratumBySeed', {seedStratum}, ...
     'supportPassBySeed', seedSupportPass, ...
-    'candidateSeedAudit', {candidateSeedAudit}, 'robust', robust);
+    'candidateSeedAudit', {candidateSeedAudit}, 'robust', robust, ...
+    'familyRobust', familyRobust);
 ch = max(abs(obj(:, 2:end) ./ obj(:, 1) - 1), [], 2);
 if out.same
     pipecompare.utils.log(['ICA check: with ICA started in %d other way(s), the same pipeline (%d) is recommended; ', ...
@@ -1309,7 +1328,8 @@ function z = seedMeasureOfRecommendation(cands, idx, ref, seed, rankTable)
 z = struct('seed', seed, 'candidateId', NaN, 'hasMeasurement', false, ...
     'conditionEstimates', [], 'differenceEstimate', NaN, 'sme', [], ...
     'gain', NaN, 'correctedConditionEstimates', [], 'correctedDifferenceEstimate', NaN, ...
-    'sourceUnflagged', [], 'effectiveUnflagged', []);
+    'sourceUnflagged', [], 'effectiveUnflagged', [], ...
+    'estimationFamily', 'unavailable');
 if isempty(idx) || ~isscalar(idx) || ~isfinite(idx) || idx < 1 || idx > numel(cands)
     return;
 end
@@ -1321,6 +1341,8 @@ m = cands(idx).m;
 if ~isfield(m,'objectives') || isempty(m.objectives), return; end
 o = m.objectives(1);
 if ~isfield(o,'estimate') || isempty(o.estimate), return; end
+z.estimationFamily = 'unweighted';
+if isfield(o,'w') && ~isempty(o.w), z.estimationFamily = 'weighted'; end
 z.conditionEstimates = o.estimate;
 if isfield(o,'sme'), z.sme = o.sme; end
 z.hasMeasurement = all(isfinite(o.estimate));
