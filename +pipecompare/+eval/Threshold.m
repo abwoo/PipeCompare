@@ -62,14 +62,22 @@ classdef Threshold
                 'notDistinguished', 0, 'equallyGood', 0, 'objectiveBest', NaN, 'objectiveChosen', NaN, 'rejectedBest', 0, 'rejectedChosen', 0, ...
                 'note', '', 'curves', struct('options', {{C}}, 'ok', true, 'chosen', 1));
             nAll = numel([M{:}]);
-            if ~any(ok)
-                % no limit keeps enough trials: reject nothing (the ranking
-                % then reports the trials missing)
+            % A rejection limit can retain enough trials but still have
+            % no estimable objective, e.g., every retained target trial is
+            % blink-flagged and eye bias is unidentifiable (NaN). Such a
+            % limit is never a candidate for numerical optimization.
+            F = find(ok & isfinite(obj));
+            if isempty(F)
+                % Conservative fallback: reject nothing. Never make an
+                % empty argmin or claim this non-finite result as optimal.
                 u = roundIn(v(end), 2 * v(end)); info.uvChosen = u; info.uvBest = u;
-                info.note = 'no limit keeps enough trials; nothing rejected';
+                if any(ok)
+                    info.note = 'no rejection limit has a finite objective; nothing rejected';
+                else
+                    info.note = 'no limit keeps enough trials; nothing rejected';
+                end
                 return;
             end
-            F = find(ok);
             best = F(find(obj(F) == min(obj(F)), 1, 'last'));   % ties: the higher limit
             pick = F;
             if numel(F) > pipecompare.eval.Threshold.MaxCompared
