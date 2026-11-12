@@ -1,0 +1,23 @@
+name: PR51 targeted icremove stack traceback
+on:
+  push:
+    branches:
+      - codex/pr51-rootcause-20261112
+    paths:
+      - .github/workflows/pr51-icremove-trace.yml
+      - .github/workflows/pr51-icremove-trace-record.yml
+      - .github/scripts/pr51-instrument-icremove.py
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  trace:
+    name: Trace ERP CORE subject ${{ matrix.subject }}
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        subject: [18, 23]
+    uses: ./.github/workflows/pr51-icremove-trace-record.yml
+    with:
+      subject: ${{ matrix.subject }}
