@@ -1,0 +1,35 @@
+name: PR51 stage-3 original frozen ICA seed-objective evidence audit
+on:
+  push:
+    branches:
+      - codex/pr51-ica-measure-stability-20261112
+    paths:
+      - benchmarks/audit_p3_ica_original_seeds.py
+      - tests/test_ica_original_seed_audit.py
+      - benchmarks/results/pr51_ica_original_20261112/**
+      - .github/workflows/pr51-ica-original-seed-audit.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test frozen matrix provenance, selected objectives and integrity
+        run: python -m unittest discover -s tests -p 'test_ica_original_seed_audit.py' -v
+      - name: Build frozen original three-subject seed evidence report
+        run: |
+          python benchmarks/audit_p3_ica_original_seeds.py \
+            --original-dir benchmarks/results/pr51_ica_original_20261112 \
+            --out result/ica-original-seeds
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pr51-original-ica-seed-objective-matrices
+          path: result/ica-original-seeds/
+          if-no-files-found: error
