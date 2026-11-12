@@ -12,6 +12,7 @@ import math
 import urllib.request
 from pathlib import Path
 
+import numpy as np
 from scipy.io import loadmat
 from fetch_erpcore import parse_events_tsv, trial_filter
 
@@ -80,9 +81,7 @@ def analyze(protocol,outdir):
         if samples*channel_count*4!=src["fdt"]["size"]:
             raise ValueError(f"FDT size inconsistent with source metadata for {sid}")
         events=parse_events_tsv(outdir/src["events"]["name"])
-        if len(events)!=len(meta.event) if isinstance(meta.event,list) else False:
-            # MATLAB event may be numpy ndarray: source validation in the
-            # original full EEG loader remains authoritative.
+        if len(events)!=len(np.atleast_1d(meta.event)):
             raise ValueError(f"Event count mismatch for subject {sid}")
         seconds=samples/sr
         windows=count_windows(events,seconds,rt=(
