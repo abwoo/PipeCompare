@@ -82,6 +82,26 @@ jobs:
             assert(exist('vl_nnconv','file')==3,'Native inference not active.');
             addpath(fullfile(pwd,'PipeCompare'));addpath(fullfile(pwd,'PipeCompare','benchmarks'));
             erpcore_pilot(fullfile(pwd,'input'),fullfile(pwd,'result'),str2double(getenv('PILOT_SUBJECT')));
+      - name: Print caught icremove stack trace from saved MATLAB transcript
+        if: always()
+        run: |
+          python - <<'PYCODE'
+          from pathlib import Path
+          p = Path("result/standard.log")
+          if not p.exists():
+              print("PR51_TRACE transcript absent")
+          else:
+              lines = p.read_text(errors="replace").splitlines()
+              hits = [i for i, x in enumerate(lines) if "PR51_ICREMOVE_STACK subject=" in x]
+              print("PR51_TRACE_COUNT", len(hits))
+              for i in hits[:3]:
+                  for line in lines[i:i+24]:
+                      print("PR51_TRACE", line[:600])
+              if not hits:
+                  for line in lines:
+                      if "FAILED icremove" in line or "Unable to perform assignment" in line:
+                          print("PR51_ORIGINAL_FAILURE", line[:600])
+          PYCODE
       - name: Check record completion before scheduling the remaining subjects
         run: |
           python - <<'PYCODE'
