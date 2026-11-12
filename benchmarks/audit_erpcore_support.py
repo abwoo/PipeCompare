@@ -32,7 +32,8 @@ def audit(result):
         if not support:
             for condition in ("target", "standard"):
                 rows.append({"subject": subject, "arm": arm, "condition": condition,
-                             "available": False, "reason": "support-unavailable"})
+                             "available": False, "measurementAvailable": bool(readout.get("available", False)),
+                             "reason": "support-unavailable"})
             continue
         if isinstance(support, dict):
             support = [support]
@@ -70,7 +71,9 @@ def audit(result):
             if abs(eff_clean - float(record["effectiveUnflaggedN"])) > 1e-7:
                 raise ValueError(f"effective support mismatch: {subject}/{arm}/{name}")
             rows.append({"subject": subject, "arm": arm, "condition": name,
-                         "available": True, "referenceN": int(record["referenceN"]),
+                         "available": True, "measurementAvailable": bool(readout.get("available", False)),
+                         "referenceN": int(record["referenceN"]),
+                         "referenceUnflaggedN": sum(not bool(x) for x in blink),
                          "kept": int(record["kept"]), "positiveN": count,
                          "flaggedN": int(record["flaggedN"]),
                          "unflaggedN": int(record["unflaggedN"]),
@@ -81,6 +84,35 @@ def audit(result):
                          "reason": ("below-original-effective-floor"
                                     if eff_clean < SUPPORT_FLOOR else "support-sufficient")})
     return rows, trials
+
+def structural_triage(rows):
+    """An immutable HMM mask bounds effective support by clean source-trial count.
+
+    This is an upper bound, not an achieved accuracy estimate; no threshold or
+    scientific gate is modified. A subject with fewer than five unflagged
+    reference trials cannot attain five effective unflagged trials through
+    weighting, rejection or a different candidate selection.
+    """
+    out = []
+    for subject in sorted(set(x["subject"] for x in rows)):
+        standard = [x for x in rows if x["subject"] == subject and x["arm"] == "erp"]
+        if len(standard) != 2 or not all(x["available"] for x in standard):
+            out.append({"subject": subject, "structurally_possible": None,
+                        "status": "source-support-unavailable"})
+            continue
+        def label(value):
+            return {"11": "target", "31": "standard"}.get(value, value)
+        clean = {label(x["condition"]): x["referenceUnflaggedN"] for x in standard}
+        if set(clean) != {"target", "standard"}:
+            raise ValueError(f"unknown reference condition identities for {subject}: {clean}")
+        possible = all(n >= SUPPORT_FLOOR for n in clean.values())
+        out.append({"subject": subject, "source_unflagged": clean,
+                    "structurally_possible": possible,
+                    "status": ("source-upper-bound-below-frozen-floor"
+                               if not possible else "not-structurally-excluded"),
+                    "note": "Necessary condition only; not evidence of artifact-free ground truth"})
+    return out
+
 
 def main():
     p = argparse.ArgumentParser()
@@ -107,6 +139,7 @@ def main():
         "no_thresholds_changed": True,
         "do_not_pool_with_original_preregistered_run": True,
         "conditions": rows,
+        "structural_triage": structural_triage(rows),
         "trial_records": len(trials)
     }, indent=2))
     print("PR51_SUPPORT_AUDIT", json.dumps({
