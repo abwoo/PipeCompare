@@ -55,6 +55,10 @@ def inspect(study):
     original=c["recommended"][0]
     if not valid(original) or original not in ids:
         raise ValueError("Original candidate missing")
+    # Freeze cross-seed comparison to the selection seed-0 baseline stratum.
+    # A feasible Rank.status alone does not establish same-estimand
+    # comparability or a finite objective in a separately fitted seed.
+    baseline_stratum=strata[ids.index(original)][0]
     def heldout(ident):
         if ident is None:
             return {"candidateId":None,"validAllThree":False,
@@ -66,15 +70,29 @@ def inspect(study):
             eff=z.get("effectiveUnflagged",[]) if isinstance(z,dict) else []
             p3=z.get("correctedDifferenceEstimate") if isinstance(z,dict) else None
             gain=z.get("gain") if isinstance(z,dict) else None
-            passed=(status[row][seed]=="feasible" and
-                    isinstance(z,dict) and z.get("candidateId")==ident and
-                    z.get("seed")==seed and z.get("hasMeasurement") and
-                    valid(p3) and valid(gain) and gain>0 and
-                    isinstance(eff,list) and len(eff)==2 and
-                    all(valid(v) and v+1e-9>=FLOOR for v in eff))
+            # No post-hoc relaxation: test independent fits against the
+            # same frozen science gates and baseline-selected stratum.
+            reasons=[]
+            if status[row][seed]!="feasible":
+                reasons.append("rank-not-feasible")
+            if strata[row][seed]!=baseline_stratum:
+                reasons.append("stratum-drift")
+            if not valid(c["objective"][row][seed]):
+                reasons.append("nonfinite-objective")
+            if not (isinstance(z,dict) and z.get("candidateId")==ident
+                    and z.get("seed")==seed):
+                reasons.append("misaligned-measurement")
+            if not (isinstance(z,dict) and z.get("hasMeasurement")
+                    and valid(p3) and valid(gain) and gain>0):
+                reasons.append("finite-calibrated-p3-missing")
+            if not (isinstance(eff,list) and len(eff)==2 and
+                    all(valid(v) and v+1e-9>=FLOOR for v in eff)):
+                reasons.append("frozen-effective-trial-floor-not-met")
             observations.append({"seed":seed,"rankStatus":status[row][seed],
+                  "stratum":strata[row][seed],
                   "objective":c["objective"][row][seed],
-                  "p3":p3,"effectiveUnflagged":eff,"passed":bool(passed)})
+                  "p3":p3,"effectiveUnflagged":eff,
+                  "passed":not reasons,"failureReasons":reasons})
         accepted=all(t["passed"] for t in observations)
         values=[t["p3"] for t in observations if valid(t["p3"])]
         return {"candidateId":ident,"validAllThree":accepted,
