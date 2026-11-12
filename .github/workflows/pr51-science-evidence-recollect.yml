@@ -1,0 +1,72 @@
+name: PR51 science recorder immutable EEG artifact reanalysis and noninterference
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  reaudit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Download original six-start EEG scientific results
+        uses: actions/download-artifact@v4
+        with:
+          repository: abwoo/PipeCompare
+          run-id: 43169562528
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: pr51-icthreshold-dev-*-attempt-1
+          path: baseline
+      - name: Download recorder-enabled EEG scientific results (no MATLAB refit)
+        uses: actions/download-artifact@v4
+        with:
+          repository: abwoo/PipeCompare
+          run-id: 43189687480
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: pr51-ica-science-*-attempt-1
+          path: recorder
+      - name: Verify all three subjects and independently reconstruct P300 bootstrap SME
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess,json
+          original=sorted(Path('recorder').rglob('result.json'))
+          ids=[]
+          for src in original:
+              subject=json.loads(src.read_text())['subject']
+              ids.append(subject)
+              subprocess.run(['python','benchmarks/validate_science_record.py',
+                              '--input',str(src),'--out',str(Path('audit')/f'{subject}_science.json')],
+                             check=True)
+          assert sorted(ids)==[11,15,21], f'Incomplete original EEG record cohort: {ids}'
+          PY
+      - name: Compare recorder-enabled scientific selection to original untouched run
+        run: |
+          python benchmarks/verify_science_noninterference.py \
+            --original baseline --recorder recorder \
+            --out audit/noninterference.json
+      - name: Compare ICA component topology and complete ERP waveforms
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json, shutil
+          for r in Path('recorder').rglob('result.json'):
+              subject=json.loads(r.read_text())['subject']
+              shutil.copyfile(Path('audit')/f'{subject}_science.json',
+                              r.with_name('science_record_audit.json'))
+          PY
+          python benchmarks/analyze_science_recorder.py \
+            --evidence recorder --out audit/component_waveform.json
+      - name: Preserve negative results and full numerical audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-science-reanalysis-${{ github.run_id }}
+          path: audit/
+          retention-days: 90
+          if-no-files-found: warn
