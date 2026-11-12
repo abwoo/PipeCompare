@@ -17,6 +17,9 @@ pz = strcmpi({E.chanlocs.labels}, 'Pz');
 verifyEqual(tc, nnz(pz), 1);
 E.data(pz, :, :) = NaN;
 [f, limit, why] = pipecompare.eval.IcThreshold.score(E, [], [], [], contract, ref, opts, []);
+[v, ok, obj] = pipecompare.eval.Threshold.curve(E, zeros(1,E.trials), contract, ref, opts, [], 0);
+fprintf('PR51_GUARD_DEBUG f=%s limit=%s why=%s v=%s ok=%s obj=%s\n', ...
+    mat2str(f), mat2str(limit), why, mat2str(v), mat2str(ok), mat2str(obj));
 verifyTrue(tc, isscalar(f) && isnan(f), 'NaN objective must not produce an empty score.');
 verifyTrue(tc, isscalar(limit) && isnan(limit), 'NaN objective must not produce an empty cutoff.');
 verifyTrue(tc, contains(why, 'non-finite'), 'Diagnostic must distinguish invalid objective from too few trials.');
