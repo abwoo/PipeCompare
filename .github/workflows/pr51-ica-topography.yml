@@ -1,0 +1,107 @@
+name: PR51 real ICA topology alignment — development only, no promotion
+on:
+  push:
+    branches: [codex/pr51-ica-topography-20261112]
+    paths:
+      - +pipecompare/+eval/IcaFingerprint.m
+      - +pipecompare/+run/Executor.m
+      - tests/test_ica_fingerprint.m
+      - tests/test_ica_topography.py
+      - benchmarks/compare_ica_topography.py
+      - docs/PR51_ICA_TOPOGRAPHY_PREDEFINED_20261112.md
+      - .github/workflows/pr51-ica-topography.yml
+      - .github/workflows/pr51-ica-unseen-record.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  python-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Verify one-to-one component alignment and no-op controls
+        run: |
+          python -m unittest discover -s tests -p test_ica_topography.py -v
+          python -m unittest discover -s tests -p test_ica_mechanism.py -v
+          python -m unittest discover -s tests -p test_ica_unseen_seeds.py -v
+          git diff --check
+      - name: Keep original preregistered Measure unchanged
+        run: |
+          python - <<'PYCODE'
+          import hashlib,json
+          from pathlib import Path
+          pin=json.loads(Path('benchmarks/erpcore_protocol.json').read_text())
+          assert hashlib.sha256(Path('+pipecompare/+eval/Measure.m').read_bytes()).hexdigest()==pin['baseline_measure_sha256']
+          PYCODE
+  matlab-unit:
+    needs: python-unit
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+      - name: Verify component fingerprint capture does not alter candidate
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(pwd); results=runtests(fullfile(pwd,'tests','test_ica_fingerprint.m')); 
+            disp(results); assert(all([results.Passed]),'PR51:ICA','Component fingerprint unit tests failed.');
+  real:
+    needs: matlab-unit
+    name: Research-only ICA maps ERP CORE participant ${{ matrix.subject }}
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        subject: [11,15,21]
+    uses: ./.github/workflows/pr51-ica-unseen-record.yml
+    with:
+      subject: ${{ matrix.subject }}
+  collect:
+    needs: real
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pr51-icthreshold-dev-*-attempt-*
+          path: evidence
+      - name: Verify all 3 source-provenance identities and complete six-start calculations
+        run: |
+          python - <<'PYCODE'
+          import json,os
+          from pathlib import Path
+          items=sorted(Path('evidence').rglob('result.json'))
+          assert len(items)==3,items
+          for f in items:
+              d=json.loads(f.read_text())
+              assert d['completed'] and not d['errors']
+              assert d['executionCommit']==os.environ['GITHUB_SHA']
+              assert str(d['workflowRun'])==os.environ['GITHUB_RUN_ID']
+              assert len(d['icaSeedCheck']['recommended'])==6
+              assert 'icaComponentFingerprints' in d['icaSeedCheck']
+              print('PR51_ICA_TOPOLOGY_SOURCE',d['subject'],d['executionCommit'])
+          assert {json.loads(f.read_text())['subject'] for f in items}=={11,15,21}
+          PYCODE
+      - name: Evaluate one-to-one ICA scalp-map and component removal stability
+        run: |
+          python benchmarks/compare_ica_topography.py \
+            --evidence evidence --out output/ica_topography.json
+      - name: Archive complete science and absence evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-ica-topography-${{ github.run_id }}
+          path: output/
+          retention-days: 90
+          if-no-files-found: warn
