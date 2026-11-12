@@ -75,8 +75,6 @@ jobs:
             addpath(fullfile(pwd,'PipeCompare'));addpath(fullfile(pwd,'PipeCompare','benchmarks'));
             pilot_native_backend(fullfile(pwd,'result','backend'));
             erpcore_pilot();
-      - name: Temporarily capture candidate reject_threshold failure stack
-        run: python PipeCompare/.github/scripts/pr51-trace-reject.py PipeCompare
       - name: Record full Standard search, comparators, and replay outcomes
         timeout-minutes: 90
         uses: matlab-actions/run-command@v2
