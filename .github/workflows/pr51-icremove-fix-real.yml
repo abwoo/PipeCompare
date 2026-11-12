@@ -1,0 +1,24 @@
+name: PR51 real-P3 finite-guard candidate trial
+on:
+  push:
+    branches:
+      - codex/pr51-icremove-fix-20261112
+    paths:
+      - .github/workflows/pr51-icremove-fix-real.yml
+      - .github/workflows/pr51-icremove-fix-record.yml
+      - +pipecompare/+eval/IcThreshold.m
+      - tests/test_icthreshold_nonfinite.m
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  two-subjects:
+    name: Candidate fix participant ${{ matrix.subject }}
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        subject: [18, 23]
+    uses: ./.github/workflows/pr51-icremove-fix-record.yml
+    with:
+      subject: ${{ matrix.subject }}
