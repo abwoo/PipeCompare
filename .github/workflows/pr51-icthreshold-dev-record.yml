@@ -24,15 +24,16 @@ jobs:
         with:
           python-version: '3.11'
       - run: python -m pip install numpy==2.2.6 scipy==1.15.3
-      - name: Verify exactly one approved algorithm-code file differs from frozen baseline
+      - name: Verify only the two approved threshold-code files differ from frozen baseline
         working-directory: PipeCompare
         run: |
           base=$(python -c "import json;print(json.load(open('benchmarks/erpcore_protocol.json'))['algorithm_commit'])")
           changed=$(git diff --name-only "$base" HEAD -- +pipecompare pop_pipecompare.m eegplugin_pipecompare.m fallback pcomp.m pipecompare_setup.m)
-          test "$changed" = "+pipecompare/+eval/IcThreshold.m" || { echo "Unexpected production source delta: $changed"; exit 1; }
+          expected=$(printf '+pipecompare/+eval/IcThreshold.m\n+pipecompare/+eval/Threshold.m')
+          test "$changed" = "$expected" || { echo "Unexpected production source delta: $changed"; exit 1; }
           echo "Exploratory changed file: $changed"
-          git diff --check "$base" HEAD -- +pipecompare/+eval/IcThreshold.m
-          git diff --stat "$base" HEAD -- +pipecompare/+eval/IcThreshold.m
+          git diff --check "$base" HEAD -- +pipecompare/+eval/IcThreshold.m +pipecompare/+eval/Threshold.m
+          git diff --stat "$base" HEAD -- +pipecompare/+eval/IcThreshold.m +pipecompare/+eval/Threshold.m
       - name: Verify frozen Measure identity
         run: |
           python - <<'PYCODE'
@@ -103,12 +104,14 @@ jobs:
           from pathlib import Path
           out=Path('result');out.mkdir(exist_ok=True)
           p=Path('PipeCompare/+pipecompare/+eval/IcThreshold.m')
+          q=Path('PipeCompare/+pipecompare/+eval/Threshold.m')
           identity={'purpose':'exploratory-BUGFIX-smoke-not-preregistered-confirmation',
               'original_algorithm_commit':json.loads(Path('PipeCompare/benchmarks/erpcore_protocol.json').read_text())['algorithm_commit'],
               'implementation_commit':os.getenv('GITHUB_SHA'),
               'icthreshold_sha256':hashlib.sha256(p.read_bytes()).hexdigest(),
+              'threshold_sha256':hashlib.sha256(q.read_bytes()).hexdigest(),
               'workflow_run':os.getenv('GITHUB_RUN_ID'),
-              'scope':'only +pipecompare/+eval/IcThreshold.m changed; original P3 protocol unchanged',
+              'scope':'only +pipecompare/+eval/IcThreshold.m and Threshold.m changed; original P3 protocol unchanged',
               'do_not_pool_with_original_frozen_results':True}
           (out/'exploratory_identity.json').write_text(json.dumps(identity,indent=2))
           print('PR51_EXPLORATORY_IDENTITY',json.dumps(identity))
