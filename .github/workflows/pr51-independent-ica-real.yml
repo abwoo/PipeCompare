@@ -1,0 +1,71 @@
+name: PR51 independent ICA seed-triplet real ERP CORE development comparison
+on:
+  push:
+    branches: [codex/pr51-independent-ica-triplets-20261112]
+    paths:
+      - +pipecompare/+run/Executor.m
+      - +pipecompare/+eval/IcaIndependentGroups.m
+      - +pipecompare/+simple/Presets.m
+      - benchmarks/validate_ica_independent_groups.py
+      - .github/workflows/pr51-independent-ica-record.yml
+      - .github/workflows/pr51-independent-ica-real.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  evaluate:
+    name: Six-start P300 development participant ${{ matrix.subject }}
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        subject: [11, 15, 21]
+    uses: ./.github/workflows/pr51-independent-ica-record.yml
+    with:
+      subject: ${{ matrix.subject }}
+  collect:
+    needs: evaluate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pr51-ica-disjoint-*-attempt-*
+          path: evidence
+      - name: Independently audit all six ICA starts and prevent skipped participants
+        run: |
+          PYTHONPATH=benchmarks python - <<'PYCODE'
+          import json
+          from pathlib import Path
+          from validate_ica_independent_groups import validate
+          paths=sorted(Path('evidence').rglob('result.json'))
+          assert len(paths)==3, f'Exactly three development subjects required, found {paths}'
+          full=[json.loads(p.read_text()) for p in paths]
+          assert {r['subject'] for r in full}=={11,15,21}
+          rows=[validate(r) for r in full]
+          counts={'same':0,'different':0,'abstain':0}
+          for r in rows:
+              if r['status']=='same-across-disjoint-triplets':counts['same']+=1
+              elif r['status']=='different-across-disjoint-triplets':counts['different']+=1
+              else:counts['abstain']+=1
+          assert sum(counts.values())==3
+          Path('output').mkdir(exist_ok=True)
+          output={'purpose':'development-only-independent ICA-start-triplet replication',
+                  'not_new_subjects':True,'not_frozen_validation':True,
+                  'scientific_gates_changed':False,'counts':counts,'subjects':rows}
+          Path('output/ica_disjoint_seed_triplet_development.json').write_text(json.dumps(output,indent=2))
+          for r in rows:
+              print('PR51_DISJOINT_TRIPLETS_COLLECT',json.dumps({
+                  'subject':r['subject'],'outcome':r['status'],
+                  'selections':[g['candidate'] for g in r['groups']],
+                  'calibrated_P300':[g['correctedP3'] for g in r['groups']]}))
+          print('PR51_DISJOINT_ICA_GROUP_COUNTS',json.dumps(counts))
+          PYCODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pr51-development-six-ICA-starts-${{ github.run_id }}
+          path: output/
+          retention-days: 90
