@@ -1,15 +1,123 @@
-name: PR51 scientific recorder reusable
+name: PR51 scientific ICA and ERP waveform recorder on development subjects
 on:
   workflow_call:
     inputs:
       subject:
-        required: true
         type: number
+        required: true
 permissions:
   contents: read
+  actions: read
 jobs:
   record:
+    name: Real ERP CORE P3 science readout ${{ inputs.subject }}
     runs-on: ubuntu-22.04
+    timeout-minutes: 150
+    env:
+      DISPLAY: ':99'
+      PILOT_SUBJECT: ${{ inputs.subject }}
+      PIPECOMPARE_SCIENCE_CAPTURE: '1'
     steps:
       - uses: actions/checkout@v4
-      - run: echo 'Scientific recorder workflow staging'
+        with:
+          path: PipeCompare
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned analysis dependencies
+        run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Guard research-only source delta and unchanged Rank and Measure
+        working-directory: PipeCompare
+        run: |
+          base=626c6d3bfe6236d3f5d154de02e6985523ebd8dd
+          changed=$(git diff --name-only "$base" HEAD -- +pipecompare pop_pipecompare.m)
+          expected=$(printf '+pipecompare/+research/IcaScience.m\n+pipecompare/+run/Executor.m\npop_pipecompare.m')
+          test "$changed" = "$expected"
+          git diff --check "$base" HEAD -- +pipecompare pop_pipecompare.m
+          test -z "$(git diff --name-only "$base" HEAD -- +pipecompare/+eval/Measure.m +pipecompare/+eval/Rank.m)"
+      - name: Verify original frozen Measure identity
+        run: |
+          python - <<'PYCODE'
+          import json,hashlib,os
+          from pathlib import Path
+          r=Path('PipeCompare');p=json.loads((r/'benchmarks/erpcore_protocol.json').read_text())
+          assert hashlib.sha256((r/'+pipecompare/+eval/Measure.m').read_bytes()).hexdigest()==p['baseline_measure_sha256']
+          with open(os.environ['GITHUB_ENV'],'a') as f:
+              f.write('PILOT_MEASURE_SHA256='+p['baseline_measure_sha256']+'\n')
+          PYCODE
+      - name: Download checksum-verified ERP CORE P3 development excerpt
+        timeout-minutes: 15
+        run: python PipeCompare/benchmarks/fetch_erpcore.py --subject "$PILOT_SUBJECT" --out input
+      - name: Checkout pinned EEGLAB 2026.0.0 and dependencies
+        run: git clone --depth 1 --branch 2026.0.0 --recurse-submodules --shallow-submodules https://github.com/sccn/eeglab.git eeglab
+      - name: Record EEG implementation identity
+        run: echo "EEGLAB_SHA=$(git -C eeglab rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Prepare bounded Linux dependencies
+        run: bash PipeCompare/.github/scripts/pilot-prepare-matlab.sh
+      - name: Install matching compiler
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y g++-12
+      - name: Start virtual display
+        timeout-minutes: 5
+        run: bash PipeCompare/.github/scripts/start-display.sh
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+          products: Signal_Processing_Toolbox
+      - name: Prepare ICLabel native CPU backend
+        run: python PipeCompare/.github/scripts/pilot-iclabel-cpu.py eeglab/plugins/ICLabel/matconvnet
+      - name: Verify MATLAB native EEG backend and recorder prerequisites
+        timeout-minutes: 12
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab'));eeglab nogui;
+            addpath(fullfile(pwd,'PipeCompare'));addpath(fullfile(pwd,'PipeCompare','benchmarks'));
+            pilot_native_backend(fullfile(pwd,'result','backend'));
+            erpcore_pilot();
+      - name: Fit six ICA starts with read-only science snapshots
+        timeout-minutes: 100
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'eeglab'));eeglab nogui;
+            plugin=fileparts(which('pop_iclabel'));addpath(fullfile(plugin,'matconvnet','matlab'));vl_setupnn;
+            assert(exist('vl_nnconv','file')==3,'Native inference not active.');
+            addpath(fullfile(pwd,'PipeCompare'));addpath(fullfile(pwd,'PipeCompare','benchmarks'));
+            erpcore_pilot(fullfile(pwd,'input'),fullfile(pwd,'result'),str2double(getenv('PILOT_SUBJECT')));
+      - name: Check MATLAB result completion and independent six seeds
+        run: |
+          python - <<'PYCODE'
+          import json,os
+          from pathlib import Path
+          r=json.loads(Path('result/result.json').read_text())
+          assert r['completed'] and not r['errors'],r['errors']
+          assert r['notRun']==0 and r['subject']==int(os.getenv('PILOT_SUBJECT'))
+          c=r['icaSeedCheck']
+          assert len(c['recommended'])==6
+          assert len(c['candidateMeasurements'])==len(c['ids'])*6
+          print('PR51_ICA_SCIENCE_MATLAB_COMPLETE',r['subject'],len(c['ids']))
+          PYCODE
+      - name: Download immutable original six-start result for scientific identity parity
+        uses: actions/download-artifact@v4
+        with:
+          repository: abwoo/PipeCompare
+          run-id: 43169562528
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: pr51-icthreshold-dev-${{ inputs.subject }}-attempt-1
+          path: previous
+      - name: Validate topographies, trial identities, ERP waveforms, bootstraps and unchanged original results
+        run: |
+          PREVIOUS=$(find previous -type f -name result.json)
+          test -n "$PREVIOUS"
+          python PipeCompare/benchmarks/validate_ica_science.py --new result/result.json --previous "$PREVIOUS" --out result/ica_science_validated.json
+      - name: Preserve results and failed scientific checks
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-ica-science-dev-${{ inputs.subject }}-attempt-${{ github.run_attempt }}
+          path: result/
+          retention-days: 90
+          if-no-files-found: warn
