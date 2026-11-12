@@ -44,7 +44,12 @@ try
  catch ex,result.errors{end+1}=failure('reference-amplitude',ex);end
  try
   setBase(EEG);fitClock=tic;
-  transcript=evalc('[~,~,r]=pop_pipecompare(EEG,''measure'',''P3'',''events'',{''11'',''31''},''recipe'',''standard'',''reference'',''average'',''show'',''off'');');
+  if strcmp(getenv('PIPECOMPARE_SCIENCE_CAPTURE'),'1')
+   % Only opt-in GitHub research execution, never the historical study.
+   transcript=evalc('[~,~,r]=pop_pipecompare(EEG,''measure'',''P3'',''events'',{''11'',''31''},''recipe'',''standard'',''reference'',''average'',''show'',''off'',''sciencecapture'',true);');
+  else
+   transcript=evalc('[~,~,r]=pop_pipecompare(EEG,''measure'',''P3'',''events'',{''11'',''31''},''recipe'',''standard'',''reference'',''average'',''show'',''off'');');
+  end
   saveText(fullfile(outDir,'standard.log'),transcript);
   result.fitSeconds=toc(fitClock);result.candidates=numel(r.cands);result.notRun=r.notRun;
   assert(r.notRun==0,'PipeCompare:Erpcore','Incomplete search.');
@@ -112,7 +117,12 @@ catch ex,result.errors{end+1}=failure('source',ex);
 end
 result.seconds=toc(clock);result.completed=isempty(result.errors);
 writeJson(fullfile(outDir,'result.json'),result);
-fprintf('PIPECOMPARE_ERPCORE_RESULT %s\n',jsonencode(result));
+if strcmp(getenv('PIPECOMPARE_SCIENCE_CAPTURE'),'1')
+ fprintf('PR51_SCIENCE_CAPTURE_RECORD subject=%d completed=%d errors=%d candidateRows=%d\n', ...
+  subject,result.completed,numel(result.errors),numel(result.icaSeedCheck.ids));
+else
+ fprintf('PIPECOMPARE_ERPCORE_RESULT %s\n',jsonencode(result));
+end
 % The collector checks all planned records and distinguishes execution from science.
 end
 
