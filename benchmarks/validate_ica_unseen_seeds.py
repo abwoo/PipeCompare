@@ -39,7 +39,7 @@ def inspect(study):
     if len(c["objective"])!=len(ids) or len(c["recommended"])!=SEEDS:
         raise ValueError("ICA score or recommendation seed length mismatch")
     if not all(len(row)==SEEDS for row in c["objective"]):
-        raise ValueError("Need selection and independent ICA-start columns")
+        raise ValueError("Need six selection and independent ICA-start columns")
     status=grid(c["rankStatus"],len(ids),"rankStatus")
     strata=grid(c["strata"],len(ids),"strata")
     measures=grid(c["candidateMeasurements"],len(ids),"candidateMeasurements")
