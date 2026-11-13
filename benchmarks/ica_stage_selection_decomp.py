@@ -95,7 +95,8 @@ def weighted(source,reference):
 
 
 def difference(v):
-    if len(v)!=2:return ValueError("Two-condition ERP only")
+    if len(v)!=2:
+        raise ValueError("Two-condition ERP only")
     return v[0]-v[1]
 
 
