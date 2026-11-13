@@ -301,16 +301,7 @@ classdef Executor
                     % Opt-in research observer runs on the PRE-removal EEG.
                     % Its failure may invalidate science evidence, never the
                     % original cleaning action or candidate Rank decision.
-                    preContribution = [];
-                    if strcmp(in.type,'icremove') && ...
-                            pipecompare.utils.fieldOr(env.opts,'scienceCapture',false)
-                        try
-                            preContribution = pipecompare.research.IcaContribution.capturePreRemove(E,env.contract);
-                        catch observerError
-                            preContribution = struct('status','failed','reason', ...
-                                sprintf('%s: %s',observerError.identifier,observerError.message));
-                        end
-                    end
+                    preContribution = passivePreRemovalCapture(in,E,env);
                     [E2, coms, info] = runStep(in, E, cx, env.opts.verbose);
                     if ~isempty(preContribution), info.icaContribution = preContribution; end
                     if isfield(info, 'iclabel'), labels = info.iclabel; end
@@ -349,7 +340,9 @@ classdef Executor
                 pipecompare.utils.log('step %s (shared trunk)', in.label);
                 t0 = tic;
                 try
+                    preContribution = passivePreRemovalCapture(in,E,env);
                     [E, coms, info] = runStep(in, E, choiceContext(env, child, ctx, S), env.opts.verbose);
+                    if ~isempty(preContribution), info.icaContribution = preContribution; end
                     for q = 1:numel(coms), fprintf('    %s\n', coms{q}); E = eeg_hist(E, coms{q}); end
                 catch ME   % same handling as runSubtree: the candidates below fail, the search goes on
                     out = [out; failUnder(env, leavesUnder(tree, child), in, ME)];
@@ -971,6 +964,21 @@ keep = lines(~cellfun(@isempty, regexpi(lines, 'warning|error|\[PipeCompare\]', 
 for k = 1:numel(keep), fprintf('    %s\n', strtrim(keep{k})); end
 end
 
+function z = passivePreRemovalCapture(in,E,env)
+% Observe every path that executes icremove, including post-search
+% eye-regression and cutoff refinement. Do not change E, Rank or decisions.
+z = [];
+if ~strcmp(in.type,'icremove') || ~pipecompare.utils.fieldOr(env.opts,'scienceCapture',false)
+    return;
+end
+try
+    z = pipecompare.research.IcaContribution.capturePreRemove(E,env.contract);
+catch observerError
+    z = struct('status','failed','reason', ...
+        sprintf('%s: %s',observerError.identifier,observerError.message));
+end
+end
+
 function L = levelsOf(leaves)
 % per pipeline, its settings: one {slot, key} row per step it runs (for
 % the ranking's factorial model, Rank.factorialModel)
@@ -1139,7 +1147,9 @@ try
             cx.after = path2(k+1:end); cx.signal = struct('S', S, 'truth', env.truth);
         end
         t0 = tic;
+        preContribution = passivePreRemovalCapture(in,E,env);
         [E, coms, info] = runStep(in, E, cx, env.opts.verbose);
+        if ~isempty(preContribution), info.icaContribution = preContribution; end
         if any(k == fi) && in.params.cutoff ~= path{k}.params.cutoff, info.cutoffRefined = true; end
         for q = 1:numel(coms), fprintf('    %s\n', coms{q}); E = eeg_hist(E, coms{q}); end
         [S, unmatched] = replayCopy(in, S, info, ctx);
@@ -1195,6 +1205,7 @@ try
         in = path2{k};
         if tick(env, 0, in), return; end
         t0 = tic;
+        preContribution = passivePreRemovalCapture(in,E,env);
         if k < q && strcmp(in.type, 'ica') && nIca < numel(c.ica)
             nIca = nIca + 1; dd = c.ica{nIca};
             E.icaweights = dd.icaweights; E.icasphere = dd.icasphere;
@@ -1208,6 +1219,7 @@ try
             pipecompare.utils.log('step %s', in.label);
             [E, coms, info] = runStep(in, E, cx, env.opts.verbose);
         end
+        if ~isempty(preContribution), info.icaContribution = preContribution; end
         if k < q && pipecompare.utils.fieldOr(c.steps{k}, 'cutoffRefined', false), info.cutoffRefined = true; end
         for j = 1:numel(coms), E = eeg_hist(E, coms{j}); end
         [S, unmatched] = replayCopy(in, S, info, ctx);
@@ -1408,16 +1420,7 @@ try
                 end
             end
         end
-        preContribution = [];
-        if strcmp(in.type,'icremove') && ...
-                pipecompare.utils.fieldOr(env.opts,'scienceCapture',false)
-            try
-                preContribution = pipecompare.research.IcaContribution.capturePreRemove(E,env.contract);
-            catch observerError
-                preContribution = struct('status','failed','reason', ...
-                    sprintf('%s: %s',observerError.identifier,observerError.message));
-            end
-        end
+        preContribution = passivePreRemovalCapture(in,E,env);
         if isempty(d)
             cx = pathContext(path, q, ctx, S, env.truth);
             [E, coms, info] = runStep(in, E, cx, env.opts.verbose);
