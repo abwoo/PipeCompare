@@ -1,0 +1,33 @@
+name: PR51 P1b ICA component stage association integrity tests
+on:
+  push:
+    branches: [codex/pr51-ica-stage-impact-audit-20261113]
+    paths:
+      - benchmarks/ica_stage_impact.py
+      - tests/test_ica_stage_impact.py
+      - .github/workflows/pr51-ica-stage-unit.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Guard original MATLAB/ICA evaluation and observer source
+        run: |
+          test -z "$(git diff --name-only 2608eeb1e97cc1459e7f506ee7f49b0a5b7c78b6 HEAD -- +pipecompare pop_pipecompare.m)"
+          git diff --check
+      - name: Install pinned scientific audit dependencies
+        run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Test component projections, sensor residual, trial support, original ERP separation
+        run: |
+          python -m unittest discover -s tests -p test_ica_stage_impact.py -v
+          python -m unittest discover -s tests -p test_ica_contribution.py -v
+          python -m unittest discover -s tests -p test_ica_match_confidence.py -v
+          python -m unittest discover -s tests -p test_ica_component_outliers.py -v
