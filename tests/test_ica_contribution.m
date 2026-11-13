@@ -21,11 +21,31 @@ end
 function testRankDeficientResidualCannotBeHidden(t)
 [E,contract]=fixture();
 E.icaweights=[1 0 0;0 1 1];
+E.icawinv=pinv(E.icaweights*E.icasphere);
 out=pipecompare.research.IcaContribution.capturePreRemove(E,contract);
 verifyEqual(t,out.status,'complete');
 verifyEqual(t,out.rank,2);
 verifyGreaterThan(t,out.maxAbsResidualUv,1);
 verifyEqual(t,out.observedPzUv,sum(out.componentUv,1)+out.residualPzUv,'AbsTol',1e-10);
+end
+
+function testNativeMixingAndPinvAreNotInterchangeable(t)
+[E,contract]=fixture();
+E.icawinv=diag([1,1,0.9]);
+original=E;
+out=pipecompare.research.IcaContribution.capturePreRemove(E,contract);
+verifyEqual(t,out.status,'complete');
+verifyGreaterThan(t,out.nativeVsPinvMixingMaxAbs,0.09);
+verifyGreaterThan(t,out.nativeMaxAbsResidualUv,0.1);
+verifyEqual(t,out.nativeICComponentUv(3,:),0.9*(1:6),'AbsTol',1e-10);
+verifyEqual(t,E,original);
+end
+
+function testMissingNativeEEGLABMixingMustFailClosed(t)
+[E,contract]=fixture();
+E.icawinv=[];
+verifyError(t,@()pipecompare.research.IcaContribution.capturePreRemove(E,contract), ...
+ 'PipeCompare:IcaContribution');
 end
 
 function testNonfiniteICAMustFailClosed(t)
@@ -61,7 +81,7 @@ E.data=zeros(3,101,6);
 tm=E.xmin+(0:E.pnts-1)/E.srate;
 win=tm>=0.3-1e-8 & tm<=0.6+1e-8;
 for k=1:6,E.data(3,win,k)=k;end
-E.icaweights=eye(3);E.icasphere=eye(3);E.icachansind=1:3;
+E.icaweights=eye(3);E.icasphere=eye(3);E.icawinv=eye(3);E.icachansind=1:3;
 E.event=repmat(struct('type','','urevent',0),1,6);
 E.epoch=repmat(struct('event',[],'eventlatency',[],'eventtype',{{}}),1,6);
 for k=1:6
