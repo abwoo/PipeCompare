@@ -1,0 +1,55 @@
+name: PR51 ICA observer forensic diagnostics from failed real EEG run (no refits)
+on:
+  push:
+    branches: [codex/pr51-ica-contribution-failure-audit-20261113]
+    paths:
+      - .github/workflows/pr51-contribution-failure-audit.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Obtain archived development science from exact failed verification
+        uses: actions/download-artifact@v4
+        with:
+          repository: abwoo/PipeCompare
+          run-id: 43197542023
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: pr51-ica-science-dev-*-attempt-*
+          path: evidence
+      - name: Print per-candidate, per-ICA-start observer presence and failure provenance
+        run: |
+          python - <<'PYCODE'
+          import json,sys
+          from pathlib import Path
+          sys.path.insert(0,"benchmarks")
+          from validate_ica_unseen_seeds import grid
+          ids_by_subject={11:[12,25],15:[5,2,6],21:[25,4]}
+          files=list(Path("evidence").rglob("result.json"))
+          assert len(files)==3,f"Three original real EEG results required, found {len(files)}"
+          seen=set()
+          for file in files:
+              obj=json.loads(file.read_text());sid=int(obj["subject"]);seen.add(sid)
+              assert sid in ids_by_subject
+              m=obj["icaSeedCheck"];ids=m["ids"];meas=grid(m["candidateMeasurements"],len(ids),"candidateMeasurements")
+              print("PR51_FORENSIC_SUBJECT",json.dumps({"subject":sid,"complete":obj["completed"],"errors":obj.get("errors"),"ids":ids}))
+              for candidate in ids_by_subject[sid]:
+                  ix=ids.index(candidate)
+                  for seed in range(6):
+                      row=meas[ix][seed]
+                      assert row["candidateId"]==candidate and row["seed"]==seed
+                      sci=row.get("science",{})
+                      caps=sci.get("preRemovalContributions",[])
+                      if isinstance(caps,dict):caps=[caps]
+                      if caps is None:caps=[]
+                      d={"subject":sid,"candidateId":candidate,"seed":seed,"scienceStatus":sci.get("status"),"captureCount":len(caps),"captureStatuses":[z.get("status") for z in caps],"captureReasons":[z.get("reason","") for z in caps],"candidateMeasurementKeys":sorted(row)}
+                      print("PR51_OBSERVER_FAILURE_TRACE",json.dumps(d))
+          assert seen==set(ids_by_subject)
+          PYCODE
