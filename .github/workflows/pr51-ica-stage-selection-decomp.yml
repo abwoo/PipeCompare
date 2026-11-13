@@ -1,0 +1,62 @@
+name: PR51 ICA fixed-event stage signal vs selection/weight source decomposition
+on:
+  push:
+    branches: [codex/pr51-ica-stage-selection-decomp-20261113]
+    paths:
+      - benchmarks/ica_stage_selection_decomp.py
+      - tests/test_ica_stage_selection_decomp.py
+      - .github/workflows/pr51-ica-stage-selection-decomp.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: No production or scientific source changes on this branch
+        run: |
+          test -z "$(git diff --name-only f18d8a853e98cbafbfbdf3694b028720745d30a3 HEAD -- +pipecompare pop_pipecompare.m eegplugin_pipecompare.m)"
+          git diff --check
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: P1c fixed event/weight and pre-removal Pz conservation regressions
+        run: |
+          python -m unittest discover -s tests -p test_ica_stage_selection_decomp.py -v
+          python -m unittest discover -s tests -p test_ica_stage_impact.py -v
+          python -m unittest discover -s tests -p test_ica_contribution.py -v
+          python -m unittest discover -s tests -p test_ica_science.py -v
+  analysis:
+    needs: tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Use only successful and source-parity-verified real EEG archive 43397978997
+        uses: actions/download-artifact@v4
+        with:
+          repository: abwoo/PipeCompare
+          run-id: 43397978997
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: pr51-ica-science-dev-*-attempt-1
+          path: evidence
+      - name: Analyze predeclared target/standard sensor signal versus trial/weight changes
+        run: |
+          python benchmarks/ica_stage_selection_decomp.py \
+            --evidence evidence --out output/fixed_event_stage_selection.json
+      - name: Preserve all individual outcomes, including negative and ambiguous cases
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-ica-stage-selection-decomposition-${{ github.run_id }}
+          path: output/
+          retention-days: 90
+          if-no-files-found: warn
