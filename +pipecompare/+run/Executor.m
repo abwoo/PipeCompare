@@ -304,6 +304,8 @@ classdef Executor
                     preContribution = passivePreRemovalCapture(in,E,env);
                     [E2, coms, info] = runStep(in, E, cx, env.opts.verbose);
                     if ~isempty(preContribution), info.icaContribution = preContribution; end
+                    postSignal = passivePostRemovalCapture(in,E2,env);
+                    if ~isempty(postSignal), info.icaPostRemoval = postSignal; end
                     if isfield(info, 'iclabel'), labels = info.iclabel; end
                     for q = 1:numel(coms)
                         fprintf('    %s\n', coms{q});
@@ -343,6 +345,8 @@ classdef Executor
                     preContribution = passivePreRemovalCapture(in,E,env);
                     [E, coms, info] = runStep(in, E, choiceContext(env, child, ctx, S), env.opts.verbose);
                     if ~isempty(preContribution), info.icaContribution = preContribution; end
+                    postSignal = passivePostRemovalCapture(in,E,env);
+                    if ~isempty(postSignal), info.icaPostRemoval = postSignal; end
                     for q = 1:numel(coms), fprintf('    %s\n', coms{q}); E = eeg_hist(E, coms{q}); end
                 catch ME   % same handling as runSubtree: the candidates below fail, the search goes on
                     out = [out; failUnder(env, leavesUnder(tree, child), in, ME)];
@@ -853,12 +857,15 @@ f = struct('type', in.type, 'params', in.params, 'interpolated', {{}}, 'removed'
     'icsRemoved', NaN, 'icsTotal', NaN, 'rejected', NaN, 'epochsBefore', NaN, 'epochsInterpolated', NaN, ...
     'icsBrain', NaN, 'icsOther', NaN, 'otherMedian', NaN, 'icaPoints', NaN, 'uvChosen', NaN, 'thresholdChosen', NaN, 'icsConsidered', NaN, 'icsProtected', NaN, ...
     'comps', [], 'rejIdx', [], 'cutoffRefined', false, 'weightRatio', NaN, 'trialWeights', [], 'curves', [], 'keptShift', [], 'leftAsIs', {{}}, 'eog', [], 'stretches', [], 'stretchCheck', [], ...
-    'iclabelClasses', {{}}, 'iclabelProbabilities', [], 'icaContribution', []);
+    'iclabelClasses', {{}}, 'iclabelProbabilities', [], 'icaContribution', [], 'icaPostRemoval', []);
 for n = {'interpolated', 'removed', 'leftAsIs'}
     if isfield(info, n{1}), f.(n{1}) = cellstr(info.(n{1})); end
 end
 if isfield(info,'icaContribution')
     f.icaContribution = info.icaContribution;
+end
+if isfield(info,'icaPostRemoval')
+    f.icaPostRemoval = info.icaPostRemoval;
 end
 if isfield(info,'iclabel') && isfield(info.iclabel,'classification') && ...
         isfield(info.iclabel.classification,'ICLabel')
@@ -973,6 +980,21 @@ if ~strcmp(in.type,'icremove') || ~pipecompare.utils.fieldOr(env.opts,'scienceCa
 end
 try
     z = pipecompare.research.IcaContribution.capturePreRemove(E,env.contract);
+catch observerError
+    z = struct('status','failed','reason', ...
+        sprintf('%s: %s',observerError.identifier,observerError.message));
+end
+end
+
+function z = passivePostRemovalCapture(in,E,env)
+% Observe the EEG actually returned after removal; never use this
+% evidence to alter the candidate. Observer exceptions are science-only.
+z = [];
+if ~strcmp(in.type,'icremove') || ~pipecompare.utils.fieldOr(env.opts,'scienceCapture',false)
+    return;
+end
+try
+    z = pipecompare.research.IcaRemovalStage.capturePost(E,env.contract);
 catch observerError
     z = struct('status','failed','reason', ...
         sprintf('%s: %s',observerError.identifier,observerError.message));
@@ -1150,6 +1172,8 @@ try
         preContribution = passivePreRemovalCapture(in,E,env);
         [E, coms, info] = runStep(in, E, cx, env.opts.verbose);
         if ~isempty(preContribution), info.icaContribution = preContribution; end
+        postSignal = passivePostRemovalCapture(in,E,env);
+        if ~isempty(postSignal), info.icaPostRemoval = postSignal; end
         if any(k == fi) && in.params.cutoff ~= path{k}.params.cutoff, info.cutoffRefined = true; end
         for q = 1:numel(coms), fprintf('    %s\n', coms{q}); E = eeg_hist(E, coms{q}); end
         [S, unmatched] = replayCopy(in, S, info, ctx);
@@ -1220,6 +1244,8 @@ try
             [E, coms, info] = runStep(in, E, cx, env.opts.verbose);
         end
         if ~isempty(preContribution), info.icaContribution = preContribution; end
+        postSignal = passivePostRemovalCapture(in,E,env);
+        if ~isempty(postSignal), info.icaPostRemoval = postSignal; end
         if k < q && pipecompare.utils.fieldOr(c.steps{k}, 'cutoffRefined', false), info.cutoffRefined = true; end
         for j = 1:numel(coms), E = eeg_hist(E, coms{j}); end
         [S, unmatched] = replayCopy(in, S, info, ctx);
@@ -1431,6 +1457,8 @@ try
             coms = d.coms; info = struct('ica', d);
         end
         if ~isempty(preContribution), info.icaContribution = preContribution; end
+        postSignal = passivePostRemovalCapture(in,E,env);
+        if ~isempty(postSignal), info.icaPostRemoval = postSignal; end
         [S, unmatched] = replayCopy(in, S, info, ctx);
         [ctx, acc] = advance(in, ctx, acc, info, coms, unmatched, 0);
     end
