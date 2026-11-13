@@ -1,0 +1,82 @@
+name: PR51 real EEG IC deletion effect vs final ERP mechanism audit
+on:
+  push:
+    branches: [codex/pr51-ica-postremoval-mechanisms-20261113]
+    paths:
+      - benchmarks/ica_postremoval_mechanisms.py
+      - tests/test_ica_postremoval_mechanisms.py
+      - .github/workflows/pr51-ica-postremoval-mechanisms-real.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Guarantee no MATLAB or original frozen science code changes
+        run: |
+          test -z "$(git diff --name-only 19fb39a1be3ebcf0a5cbeae7c614b0cff142dde3 HEAD -- +pipecompare pop_pipecompare.m eegplugin_pipecompare.m)"
+          git diff --check
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Scientific stage, physical Pz deletion and trial/weight conservation tests
+        run: |
+          python -m unittest discover -s tests -p test_ica_postremoval_mechanisms.py -v
+          python -m unittest discover -s tests -p test_ica_postremoval.py -v
+          python -m unittest discover -s tests -p test_ica_stage_selection_decomp.py -v
+          python -m unittest discover -s tests -p test_ica_science.py -v
+  analyze:
+    needs: regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Wait for exactly pinned upstream scientific real-EEG result, not an unverified green test
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          for n in $(seq 1 160); do
+            status=$(gh api repos/abwoo/PipeCompare/actions/runs/43405859824 --jq '.status')
+            head=$(gh api repos/abwoo/PipeCompare/actions/runs/43405859824 --jq '.head_sha')
+            test "$head" = "19fb39a1be3ebcf0a5cbeae7c614b0cff142dde3" || { echo 'Wrong original EEG implementation SHA'; exit 1; }
+            if test "$status" = "completed"; then
+              verdict=$(gh api repos/abwoo/PipeCompare/actions/runs/43405859824 --jq '.conclusion')
+              test "$verdict" = "success" || { echo "Real-EEG scientific source not valid: $verdict"; exit 1; }
+              echo "Confirmed real-EEG source, unchanged Rank and original science: 43405859824"
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "Source real-EEG scientific run did not finish with success"
+          exit 1
+      - name: Download only verified six-start real development subject evidence
+        uses: actions/download-artifact@v4
+        with:
+          repository: abwoo/PipeCompare
+          run-id: 43405859824
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: pr51-ica-science-dev-*-attempt-1
+          path: evidence
+      - name: Explain original Pz changes at actual ICA removal vs selection/weight
+        run: |
+          python benchmarks/ica_postremoval_mechanisms.py \
+            --evidence evidence --out output/ica_removal_mechanisms.json
+      - name: Archive complete source-attributed mechanism evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-ica-postremoval-mechanism-audit-${{ github.run_id }}
+          path: output/
+          retention-days: 90
+          if-no-files-found: warn
