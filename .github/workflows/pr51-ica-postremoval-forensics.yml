@@ -1,0 +1,46 @@
+name: PR51 forensic actual post-ICA Pz mismatch (archived failed evidence only)
+on:
+  push:
+    branches: [codex/pr51-ica-postremoval-forensics-20261113]
+    paths:
+      - benchmarks/diagnose_ica_postremoval.py
+      - .github/workflows/pr51-ica-postremoval-forensics.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  archived-only:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: No treatment, numerical threshold, or original rank changes
+        run: |
+          test -z "$(git diff --name-only 19fb39a1be3ebcf0a5cbeae7c614b0cff142dde3 HEAD -- +pipecompare pop_pipecompare.m)"
+          git diff --check
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Fetch true failed 11/15/21 original ERP science without fitting new EEG
+        uses: actions/download-artifact@v4
+        with:
+          repository: abwoo/PipeCompare
+          run-id: 43405859824
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: pr51-ica-science-dev-*-attempt-1
+          path: evidence
+      - name: Independently examine observed and predicted IC removal Pz including sign/count/scale
+        run: |
+          python benchmarks/diagnose_ica_postremoval.py \
+            --evidence evidence --out output/actual_vs_predicted_ica_removal.json
+      - name: Preserve all forensic mismatch evidence, never promote
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-ica-postremoval-mismatch-forensics-${{ github.run_id }}
+          path: output/
+          retention-days: 90
+          if-no-files-found: warn
