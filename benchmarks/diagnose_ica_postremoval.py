@@ -93,7 +93,7 @@ def main():
                 pre=serial(z.get("preRemovalContributions"))
                 post=serial(z.get("postRemovalSignals"))
                 dec=serial(z.get("decompositions"))
-                if len(pre)!=len(post)!=1 or len(pre)!=1 or len(dec)!=1:
+                if len(pre)!=1 or len(post)!=1 or len(dec)!=1:
                     raise ValueError("Missing actual Pz observer")
                 result=diagnose(pre[0],post[0],dec[0])
                 result["seed"]=seed
