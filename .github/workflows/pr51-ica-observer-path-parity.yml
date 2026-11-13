@@ -1,0 +1,115 @@
+name: PR51 research-only pre-IC-removal path parity full cloud retest
+on:
+  push:
+    branches: [codex/pr51-ica-observer-path-parity-20261113]
+    paths:
+      - .github/workflows/pr51-ica-observer-path-parity.yml
+      - +pipecompare/+run/Executor.m
+      - +pipecompare/+research/IcaContribution.m
+      - +pipecompare/+research/IcaScience.m
+      - benchmarks/validate_ica_contribution.py
+      - tests/test_ica_contribution.py
+      - tests/test_ica_contribution.m
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  python-unit:
+    name: Research source-change guard and validation regressions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Prove only opt-in observer wiring changed since previous experiment
+        run: |
+          changed=$(git diff --name-only 96d3e4ba8b89297abe7b1f74f9c6ff94c94d7627 HEAD -- +pipecompare pop_pipecompare.m eegplugin_pipecompare.m)
+          test "$changed" = '+pipecompare/+run/Executor.m' || { echo "Unexpected scientific source delta: $changed"; exit 1; }
+          git diff --check
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Observer, trial identity, ICA decomposition and matching regressions
+        run: |
+          python -m unittest discover -s tests -p test_ica_contribution.py -v
+          python -m unittest discover -s tests -p test_ica_science.py -v
+          python -m unittest discover -s tests -p test_ica_match_confidence.py -v
+          python -m unittest discover -s tests -p test_ica_multimetric.py -v
+          python -m unittest discover -s tests -p test_ica_support_integrity.py -v
+  matlab-unit:
+    name: MATLAB pre-removal projection and science nonintervention tests
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+      - name: Test exact ICA projection, rank residual and no input mutation
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'PipeCompare'));
+            a=runtests(fullfile(pwd,'PipeCompare','tests','test_ica_contribution.m'));
+            b=runtests(fullfile(pwd,'PipeCompare','tests','test_ica_science.m'));
+            assert(all([a.Passed])&&all([b.Passed]),'PipeCompare:Observer','Scientific observer unit regression failed.');
+  real:
+    needs: [python-unit, matlab-unit]
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        subject: [11,15,21]
+    uses: ./.github/workflows/pr51-ica-science-record.yml
+    with:
+      subject: ${{ matrix.subject }}
+  collect:
+    if: always()
+    needs: real
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect archived results and failures without discarding bad trials
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pr51-ica-science-dev-*-attempt-*
+          path: evidence
+      - name: Report exactly three independently checked development readouts
+        run: |
+          python - <<'PYCODE'
+          import json
+          from pathlib import Path
+          verified=sorted(Path('evidence').rglob('ica_science_validated.json'))
+          extra=sorted(Path('evidence').rglob('ica_contribution_validation.json'))
+          old=[json.loads(p.read_text()) for p in verified]
+          new=[json.loads(p.read_text()) for p in extra]
+          roster={11,15,21}
+          good=(len(old)==len(new)==3 and {x['subject'] for x in old}==roster
+                and {x['subject'] for x in new}==roster
+                and all(not x['identityErrors'] and not x['scienceFailures']
+                        and x['unalteredFrozenRankAndEstimates'] for x in old)
+                and all(len(x['candidates'])==len({11:[12,25],15:[5,2,6],21:[25,4]}[x['subject']])
+                        and all(len(c['startReports'])==6 for c in x['candidates']) for x in new))
+          summary={'original20SubjectVerdict':'PARTIAL','baselineValidPairs':15,
+                   'developmentSubjects':[11,15,21],
+                   'originalRankAndERPParitiesValid':len(old)==3 and all(not x['identityErrors'] for x in old),
+                   'allObserverContributionsAndTrialsValid':good,
+                   'frozen14SubjectHoldoutUsed':False,'PR51Merged':False,
+                   'algorithmPromotionAuthorized':False}
+          Path('summary').mkdir(exist_ok=True)
+          Path('summary/observer_path_parity.json').write_text(json.dumps(summary,indent=2))
+          print('PR51_OBSERVER_PATH_PARITY',json.dumps(summary))
+          assert good,'Failed closed: missing or invalid real P300 component evidence'
+          PYCODE
+      - name: Archive positive/negative overall verdict
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-ica-observer-path-parity-${{ github.run_id }}
+          path: summary/
+          retention-days: 90
+          if-no-files-found: warn
