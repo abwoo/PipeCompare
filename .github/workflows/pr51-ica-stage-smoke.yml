@@ -1,0 +1,50 @@
+name: PR51 P1b real EEG stage-impact method smoke (development subject 15 only)
+on:
+  push:
+    branches: [codex/pr51-ica-stage-impact-audit-20261113]
+    paths:
+      - .github/workflows/pr51-ica-stage-smoke.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  real-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Fetch only previously completed original-parity subject 15 from earlier failed ensemble run
+        uses: actions/download-artifact@v4
+        with:
+          repository: abwoo/PipeCompare
+          run-id: 43197542023
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: pr51-ica-science-dev-15-attempt-1
+          path: evidence
+      - name: Smoke-test stage component alignment with real trial-weight provenance
+        run: |
+          python - <<'PYCODE'
+          import json,sys
+          from pathlib import Path
+          sys.path.insert(0,"benchmarks")
+          from ica_stage_impact import evaluate
+          def source(name):
+              files=list(Path('evidence').rglob(name))
+              assert len(files)==1,(name,files)
+              return json.loads(files[0].read_text())
+          row=evaluate(source('result.json'),source('ica_science_validated.json'),
+                       source('ica_contribution_validation.json'))
+          assert row['subject']==15
+          assert [x['candidateId'] for x in row['candidateReports']]==[5,2,6]
+          assert all(len(x['comparisons'])==5 and all(y['stageSensorResidualConserved']
+                 for y in x['comparisons']) for x in row['candidateReports'])
+          print('PR51_ICA_STAGE_SMOKE',json.dumps({
+              'subject':15,'originalCandidateRosterAndSeedCountVerified':True,
+              'componentMappedAndSensorResidualConserved':True,
+              'priorScientificRankAndERPUnchanged':True,
+              'newParticipants':False,'scientificPromotionAuthorized':False}))
+          PYCODE
