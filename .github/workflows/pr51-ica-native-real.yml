@@ -1,0 +1,118 @@
+name: PR51 original EEGLAB 2026.0.0 icawinv actual ICA retained-component projection
+on:
+  push:
+    branches: [codex/pr51-ica-native-icawinv-20261113]
+    paths:
+      - +pipecompare/+research/IcaContribution.m
+      - tests/test_ica_contribution.m
+      - benchmarks/validate_ica_native_reconstruction.py
+      - tests/test_ica_native_reconstruction.py
+      - .github/workflows/pr51-ica-science-record.yml
+      - .github/workflows/pr51-ica-native-real.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  python-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify Rank, Measure, Steps and production defaults remain frozen
+        run: |
+          test -z "$(git diff --name-only 19fb39a1be3ebcf0a5cbeae7c614b0cff142dde3 HEAD -- +pipecompare/+eval/Measure.m +pipecompare/+eval/Rank.m +pipecompare/+run/Steps.m +pipecompare/+simple/Presets.m +pipecompare/+run/Executor.m pop_pipecompare.m)"
+          git diff --check
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Native EEG.icawinv, original rank and event provenance test suite
+        run: |
+          python -m unittest discover -s tests -p test_ica_native_reconstruction.py -v
+          python -m unittest discover -s tests -p test_ica_contribution.py -v
+          python -m unittest discover -s tests -p test_ica_postremoval.py -v
+          python -m unittest discover -s tests -p test_ica_science.py -v
+  matlab-unit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+      - name: Native mixing vs pseudoinverse, rank-residual and signal immutability regression
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'PipeCompare'));
+            a=runtests(fullfile(pwd,'PipeCompare','tests','test_ica_contribution.m'));
+            b=runtests(fullfile(pwd,'PipeCompare','tests','test_ica_postremoval.m'));
+            c=runtests(fullfile(pwd,'PipeCompare','tests','test_ica_science.m'));
+            assert(all([a.Passed]) && all([b.Passed]) && all([c.Passed]), ...
+              'PipeCompare:NativeICAObserver','Native mixing regression failed.');
+  real:
+    needs: [python-unit, matlab-unit]
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        subject: [11,15,21]
+    uses: ./.github/workflows/pr51-ica-science-record.yml
+    with:
+      subject: ${{ matrix.subject }}
+  collect:
+    if: always()
+    needs: real
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download raw real subject outcomes including possible failures
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pr51-ica-science-dev-*-attempt-*
+          path: evidence
+      - name: Cross-check original Rank and native real ICA kept-component reconstruction
+        run: |
+          python - <<'PYCODE'
+          import json
+          from pathlib import Path
+          paths={name:sorted(Path('evidence').rglob(name)) for name in (
+              'result.json','ica_science_validated.json',
+              'ica_contribution_validation.json','ica_native_validated.json')}
+          source={name:[json.loads(p.read_text()) for p in fs] for name,fs in paths.items()}
+          roster={11,15,21}
+          found=all(len(rows)==3 and {r['subject'] for r in rows}==roster for rows in source.values())
+          originals=source['result.json']
+          science=source['ica_science_validated.json']
+          native=source['ica_native_validated.json']
+          good=(found and all(x['completed'] and not x['errors'] for x in originals)
+                and all(not x['identityErrors'] and not x['scienceFailures']
+                        and x['unalteredFrozenRankAndEstimates'] for x in science)
+                and all(len(x['candidates'])==len({11:[12,25],15:[5,2,6],21:[25,4]}[x['subject']])
+                        and all(len(c['starts'])==6 and
+                                all(s['nativeRealEEGLABProjectionVerified'] for s in c['starts'])
+                                for c in x['candidates']) for x in native))
+          result={'baselineERP_CORE20ValidPairs':15,'originalVerdict':'PARTIAL',
+                  'originalRankCalibrationAndTrialEvidenceUnchanged':found and all(not x['identityErrors'] for x in science),
+                  'nativeEEGLABRetainedComponentPhysicsVerified':good,
+                  'priorWrongPinvHypothesisRetainedAsFailed':True,
+                  'newParticipants':False,'frozen14HoldoutOpened':False,
+                  'newICAMethodSuperiorityClaimed':False,'PR51MergeAuthorized':False,
+                  'subjects':[r['subject'] for r in native]}
+          Path('summary').mkdir(exist_ok=True)
+          Path('summary/native_eeeglab_reconstruction_verdict.json').write_text(json.dumps(result,indent=2))
+          print('PR51_NATIVE_EEGLAB_VERDICT',json.dumps(result))
+          assert good,'Missing evidence for actual native EEGLAB retained-component reconstruction'
+          PYCODE
+      - name: Preserve complete scientific pass or failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-ica-native-icawinv-science-${{ github.run_id }}
+          path: summary/
+          retention-days: 90
+          if-no-files-found: warn
