@@ -1,0 +1,122 @@
+name: PR51 actual after-ICA-removal Pz bridge (original six real EEG starts)
+on:
+  push:
+    branches: [codex/pr51-ica-postremoval-bridge-20261113]
+    paths:
+      - +pipecompare/+research/IcaRemovalStage.m
+      - +pipecompare/+research/IcaScience.m
+      - +pipecompare/+run/Executor.m
+      - benchmarks/validate_ica_postremoval.py
+      - tests/test_ica_postremoval.m
+      - tests/test_ica_postremoval.py
+      - .github/workflows/pr51-ica-science-record.yml
+      - .github/workflows/pr51-ica-postremoval-real.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  python-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify scientific development-only source delta
+        run: |
+          test -z "$(git diff --name-only 3bea47f7235a5b797a167fa7f99309854706c0c5 HEAD -- +pipecompare/+eval/Measure.m +pipecompare/+eval/Rank.m +pipecompare/+run/Steps.m +pipecompare/+simple/Presets.m pop_pipecompare.m eegplugin_pipecompare.m)"
+          git diff --check
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Original science, component, and post-removal subtraction invariants
+        run: |
+          python -m unittest discover -s tests -p test_ica_postremoval.py -v
+          python -m unittest discover -s tests -p test_ica_contribution.py -v
+          python -m unittest discover -s tests -p test_ica_stage_impact.py -v
+          python -m unittest discover -s tests -p test_ica_stage_selection_decomp.py -v
+          python -m unittest discover -s tests -p test_ica_science.py -v
+  matlab-unit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: PipeCompare
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2026a
+      - name: Post-removal Pz ERP, event identity, source immutability unit regressions
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(fullfile(pwd,'PipeCompare'));
+            a=runtests(fullfile(pwd,'PipeCompare','tests','test_ica_postremoval.m'));
+            b=runtests(fullfile(pwd,'PipeCompare','tests','test_ica_contribution.m'));
+            c=runtests(fullfile(pwd,'PipeCompare','tests','test_ica_science.m'));
+            assert(all([a.Passed]) && all([b.Passed]) && all([c.Passed]), ...
+              'PipeCompare:ScientificRecorder','Stage observer scientific tests failed.');
+  real:
+    needs: [python-unit,matlab-unit]
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        subject: [11,15,21]
+    uses: ./.github/workflows/pr51-ica-science-record.yml
+    with:
+      subject: ${{ matrix.subject }}
+  collect:
+    if: always()
+    needs: real
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Retain all EEG positive and negative evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pr51-ica-science-dev-*-attempt-*
+          path: evidence
+      - name: Check all new physical Pz removal bridges and unmodified original outcomes
+        run: |
+          python - <<'PYCODE'
+          import json
+          from pathlib import Path
+          original=sorted(Path('evidence').rglob('result.json'))
+          science=sorted(Path('evidence').rglob('ica_science_validated.json'))
+          pre=sorted(Path('evidence').rglob('ica_contribution_validation.json'))
+          post=sorted(Path('evidence').rglob('ica_postremoval_validated.json'))
+          a=[json.loads(p.read_text()) for p in original]
+          b=[json.loads(p.read_text()) for p in science]
+          c=[json.loads(p.read_text()) for p in pre]
+          d=[json.loads(p.read_text()) for p in post]
+          frozen={11,15,21}
+          ok=(len(a)==len(b)==len(c)==len(d)==3
+              and all({x['subject'] for x in rows}==frozen for rows in (a,b,c,d))
+              and all(x['completed'] and not x['errors'] for x in a)
+              and all(not x['identityErrors'] and not x['scienceFailures']
+                      and x['unalteredFrozenRankAndEstimates'] for x in b)
+              and all(len(x['candidates'])==len({11:[12,25],15:[5,2,6],21:[25,4]}[x['subject']])
+                      and all(len(z['starts'])==6 and
+                              all(q['directICStepLinearBridgeValid'] for q in z['starts'])
+                              for z in x['candidateReadouts']) for x in d))
+          out={'oldERP_CORE20ValidPairs':15,'originalVerdict':'PARTIAL',
+               'originalICA_Rank_and_calibrated_P300_identical':len(b)==3 and all(not x['identityErrors'] for x in b),
+               'actualPostRemovalPz_component_deletion_bridge_verified':ok,
+               'newParticipants':False,'14SubjectHoldoutTouched':False,
+               'selectorModified':False,'PR51MergeAuthorized':False,
+               'subjects':[x['subject'] for x in d]}
+          Path('summary').mkdir(exist_ok=True)
+          Path('summary/ica_postremoval_bridge_summary.json').write_text(json.dumps(out,indent=2))
+          print('PR51_POSTREMOVAL_SUMMARY',json.dumps(out))
+          assert ok,'Original outcome parity or true IC removal signal evidence invalid'
+          PYCODE
+      - name: Archive complete and incomplete original scientific verdict
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-real-ica-postremoval-bridge-${{ github.run_id }}
+          path: summary/
+          retention-days: 90
+          if-no-files-found: warn
