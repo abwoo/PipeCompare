@@ -49,7 +49,12 @@ jobs:
                       caps=sci.get("preRemovalContributions",[])
                       if isinstance(caps,dict):caps=[caps]
                       if caps is None:caps=[]
-                      d={"subject":sid,"candidateId":candidate,"seed":seed,"scienceStatus":sci.get("status"),"captureCount":len(caps),"captureStatuses":[z.get("status") for z in caps],"captureReasons":[z.get("reason","") for z in caps],"candidateMeasurementKeys":sorted(row)}
+                      if not isinstance(caps,list):caps=[caps]
+                      flat=[]
+                      for item in caps:
+                          if isinstance(item,list): flat.extend(item)
+                          else: flat.append(item)
+                      d={"subject":sid,"candidateId":candidate,"seed":seed,"scienceStatus":sci.get("status"),"captureCount":len(flat),"captureStatuses":[z.get("status") if isinstance(z,dict) else type(z).__name__ for z in flat],"captureReasons":[z.get("reason","") if isinstance(z,dict) else str(z)[:160] for z in flat],"captureRawType":type(caps).__name__,"candidateMeasurementKeys":sorted(row)}
                       print("PR51_OBSERVER_FAILURE_TRACE",json.dumps(d))
           assert seen==set(ids_by_subject)
           PYCODE
