@@ -171,21 +171,34 @@ def examine(new,scientific,prior_stage):
 
 def main():
     p=argparse.ArgumentParser()
-    p.add_argument("--evidence",type=Path,required=True)
+    p.add_argument("--evidence",type=Path)
+    p.add_argument("--new",type=Path)
+    p.add_argument("--old",type=Path)
+    p.add_argument("--pre",type=Path)
     p.add_argument("--out",type=Path,required=True)
     a=p.parse_args()
-    def by_subject(name):
-        files=sorted(a.evidence.rglob(name))
-        if len(files)!=3:
-            raise ValueError("Expected three source-artifacts for "+name)
-        objs=[json.loads(path.read_text()) for path in files]
-        tab={x["subject"]:x for x in objs}
-        if set(tab)!={11,15,21}:raise ValueError("Missing/duplicated/out-of-scope participant")
-        return tab
-    result=by_subject("result.json")
-    validated=by_subject("ica_science_validated.json")
-    stage=by_subject("ica_contribution_validation.json")
-    report=[examine(result[s],validated[s],stage[s]) for s in sorted(result)]
+    if a.new is not None:
+        if a.evidence is not None or a.old is None or a.pre is None:
+            raise ValueError("Single subject requires --new, --old, --pre and no --evidence")
+        real=json.loads(a.new.read_text())
+        science=json.loads(a.old.read_text())
+        former=json.loads(a.pre.read_text())
+        report=[examine(real,science,former)]
+    else:
+        if a.evidence is None or a.old is not None or a.pre is not None:
+            raise ValueError("Aggregate run requires exactly --evidence")
+        def by_subject(name):
+            files=sorted(a.evidence.rglob(name))
+            if len(files)!=3:
+                raise ValueError("Expected three source-artifacts for "+name)
+            objs=[json.loads(path.read_text()) for path in files]
+            tab={x["subject"]:x for x in objs}
+            if set(tab)!={11,15,21}:raise ValueError("Missing/duplicated/out-of-scope participant")
+            return tab
+        result=by_subject("result.json")
+        validated=by_subject("ica_science_validated.json")
+        stage=by_subject("ica_contribution_validation.json")
+        report=[examine(result[s],validated[s],stage[s]) for s in sorted(result)]
     output={"study":"read-only original actual post-ICA deletion Pz linear event bridge",
             "original20SubjectVerdict":"PARTIAL","validOriginalPairs":15,
             "realDevelopmentOnly":True,"frozen14HoldoutOpened":False,
