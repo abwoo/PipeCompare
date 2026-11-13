@@ -49,7 +49,7 @@ class ActualPostMechanism(unittest.TestCase):
 
     def test_changing_final_weights_is_separate_from_physical_removal(self):
         a,b,c,d=samples()
-        b["science"]["conditions"][0]["trialWeights"]=[1.,3.]
+        b["science"]["conditions"][1]["trialWeights"]=[1.,3.]
         d["postRemovalFinalSelectedTrialPzDifferenceUv"]=-.5
         x=assess(a,b,c,d,1.,1.,0.)
         self.assertAlmostEqual(x["actualICDeletionEffectDriftUv"],-1.)
