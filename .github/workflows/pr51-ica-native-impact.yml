@@ -1,0 +1,82 @@
+name: PR51 P2d native EEGLAB IC removal contribution vs final ERP (verified real EEG only)
+on:
+  push:
+    branches: [codex/pr51-ica-native-impact-20261113]
+    paths:
+      - benchmarks/ica_native_impact.py
+      - tests/test_ica_native_impact.py
+      - .github/workflows/pr51-ica-native-impact.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: No original ICA, Rank, Measure, or observer source edits
+        run: |
+          test -z "$(git diff --name-only 5d1b3e641636bfc5989066ea51f8dcb1f4502014 HEAD -- +pipecompare pop_pipecompare.m eegplugin_pipecompare.m)"
+          git diff --check
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Native retained component and trial-selection arithmetic regressions
+        run: |
+          python -m unittest discover -s tests -p test_ica_native_impact.py -v
+          python -m unittest discover -s tests -p test_ica_native_reconstruction.py -v
+          python -m unittest discover -s tests -p test_ica_stage_selection_decomp.py -v
+          python -m unittest discover -s tests -p test_ica_science.py -v
+  analyze:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Require exactly original complete real EEG native projection and unchanged Rank
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          for n in $(seq 1 160); do
+            status=$(gh api repos/abwoo/PipeCompare/actions/runs/43408389159 --jq '.status')
+            sha=$(gh api repos/abwoo/PipeCompare/actions/runs/43408389159 --jq '.head_sha')
+            test "$sha" = "5d1b3e641636bfc5989066ea51f8dcb1f4502014" || { echo 'Original real native source SHA changed'; exit 1; }
+            if test "$status" = "completed"; then
+              verdict=$(gh api repos/abwoo/PipeCompare/actions/runs/43408389159 --jq '.conclusion')
+              test "$verdict" = "success" || { echo "Invalid real native EEG source: $verdict"; exit 1; }
+              echo "Complete original source/science/native mixing evidence verified"
+              exit 0
+            fi
+            sleep 30
+          done
+          echo 'No complete scientifically valid original source within bounded horizon'
+          exit 1
+      - name: Download only the three unchanged Rank-calibrated real development EEG artifacts
+        uses: actions/download-artifact@v4
+        with:
+          repository: abwoo/PipeCompare
+          run-id: 43408389159
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: pr51-ica-science-dev-*-attempt-1
+          path: evidence
+      - name: Analyze native IC-removal stage vs fixed retained events and actual final ERP
+        run: |
+          python benchmarks/ica_native_impact.py \
+            --evidence evidence --out output/ica_native_impact.json
+      - name: Preserve all original scientific positive/negative evidence and limitations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-ica-native-impact-${{ github.run_id }}
+          path: output/
+          retention-days: 90
+          if-no-files-found: warn
