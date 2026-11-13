@@ -1,0 +1,64 @@
+name: PR51 ICA stage impact scientific audit on verified six-start real EEG
+on:
+  push:
+    branches: [codex/pr51-ica-stage-impact-audit-20261113]
+    paths:
+      - .github/workflows/pr51-ica-stage-impact-real.yml
+      - benchmarks/ica_stage_impact.py
+      - tests/test_ica_stage_impact.py
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Reject original EEG and Rank code changes relative to frozen development implementation
+        run: |
+          test -z "$(git diff --name-only 2608eeb1e97cc1459e7f506ee7f49b0a5b7c78b6 HEAD -- +pipecompare pop_pipecompare.m eegplugin_pipecompare.m)"
+          git diff --check
+      - name: Install pinned analytical dependencies
+        run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Verify every scientific stage and original source guard
+        run: |
+          python -m unittest discover -s tests -p test_ica_stage_impact.py -v
+          python -m unittest discover -s tests -p test_ica_contribution.py -v
+          python -m unittest discover -s tests -p test_ica_match_confidence.py -v
+          python -m unittest discover -s tests -p test_ica_science.py -v
+          python -m unittest discover -s tests -p test_ica_multimetric.py -v
+  real-archive:
+    needs: unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Fetch only verified original-Rank-matched development archives
+        uses: actions/download-artifact@v4
+        with:
+          repository: abwoo/PipeCompare
+          run-id: 43397978997
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: pr51-ica-science-dev-*-attempt-1
+          path: evidence
+      - name: Run frozen component-level Pz sensor-conservation, retained-trial, and downstream ERP comparison
+        run: |
+          python benchmarks/ica_stage_impact.py \
+            --evidence evidence --out output/ica_stage_impact.json
+      - name: Preserve complete positive, negative and ambiguous scientific findings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-ica-stage-impact-development-${{ github.run_id }}
+          path: output/
+          if-no-files-found: warn
+          retention-days: 90
