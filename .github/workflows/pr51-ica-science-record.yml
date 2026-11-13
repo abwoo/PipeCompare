@@ -118,13 +118,13 @@ jobs:
           python PipeCompare/benchmarks/validate_ica_contribution.py \
             --new result/result.json --old result/ica_science_validated.json \
             --out result/ica_contribution_validation.json
-      - name: Verify actual post-ICA sensor signal equals deletion of exactly observed removed components
+      - name: Validate native stored EEG.icawinv kept-signal projection, not the rejected old pinv hypothesis
         run: |
-          python PipeCompare/benchmarks/validate_ica_postremoval.py \
+          python PipeCompare/benchmarks/validate_ica_native_reconstruction.py \
             --new result/result.json \
             --old result/ica_science_validated.json \
             --pre result/ica_contribution_validation.json \
-            --out result/ica_postremoval_validated.json
+            --out result/ica_native_validated.json
       - name: Preserve results and failed scientific checks
         if: always()
         uses: actions/upload-artifact@v4
