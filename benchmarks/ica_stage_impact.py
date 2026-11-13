@@ -138,7 +138,7 @@ def matched_stage_delta(seed0,seedS,a,b):
         "sensorReconstructionResidualDeltaUv":residual_delta,
         "observedPreRemovalSensorPzDeltaUv":stage_delta,
         "absoluteRetainedWeakDeltaBudgetUv":sum(abs(z["stageContributionChangeUv"]) for z in retained_weak),
-        "absoluteOtherMatchedDeltaBudgetUv":sum(abs(z["stageContributionChangeUv"]) for z in rows if z not in retained_weak),
+        "absoluteOtherMatchedDeltaBudgetUv":sum(abs(z["stageContributionChangeUv"]) for z in rows if not (z["weakMap"] and z["retainedInBoth"])),
         "weakComponentDetails":weak,
         "matchedICCountDiff":int(xb.size-xa.size),
         "stageSensorResidualConserved":True,
