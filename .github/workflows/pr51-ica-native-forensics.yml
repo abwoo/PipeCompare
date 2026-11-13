@@ -1,0 +1,97 @@
+name: PR51 forensic original versus native EEGLAB ICA reconstruction (failed archived only)
+on:
+  push:
+    branches: [codex/pr51-ica-native-forensics-20261113]
+    paths:
+      - .github/workflows/pr51-ica-native-forensics.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Ensure no treatment/Rank file touched
+        run: |
+          test -z "$(git diff --name-only 5d1b3e641636bfc5989066ea51f8dcb1f4502014 HEAD -- +pipecompare pop_pipecompare.m)"
+          git diff --check
+      - run: python -m pip install numpy==2.2.6 scipy==1.15.3
+      - name: Download only subject15 actual real-EEG negative evidence (no new fit)
+        uses: actions/download-artifact@v4
+        with:
+          repository: abwoo/PipeCompare
+          run-id: 43408389159
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: pr51-ica-science-dev-15-attempt-1
+          path: evidence
+      - name: Quantify native icawinv-vs-pinv, per-event source residual and actual kept-Pz mismatch
+        run: |
+          python - <<'PYCODE'
+          import sys,json,numpy as np
+          from pathlib import Path
+          sys.path.insert(0,'benchmarks')
+          from validate_ica_postremoval import true_event_table,serial
+          from validate_ica_unseen_seeds import grid
+          f=list(Path('evidence').rglob('result.json'))
+          assert len(f)==1
+          x=json.loads(f[0].read_text())
+          assert x['subject']==15 and x['completed'] and not x['errors']
+          c=x['icaSeedCheck']
+          m=grid(c['candidateMeasurements'],len(c['ids']),'candidateMeasurements')
+          rows=[]
+          for candidate in [5,2,6]:
+            for seed in range(6):
+              item=m[c['ids'].index(candidate)][seed]
+              assert item['candidateId']==candidate and item['seed']==seed
+              z=item['science']
+              pre=serial(z.get('preRemovalContributions'))
+              post=serial(z.get('postRemovalSignals'))
+              dec=serial(z.get('decompositions'))
+              assert len(pre)==len(post)==len(dec)==1
+              pre=pre[0];post=post[0];dec=dec[0]
+              before=true_event_table(pre,'pre')
+              after=true_event_table(post,'post')
+              ids=serial(pre['eventIds'])
+              assert set(before)==set(after)
+              n=int(pre['nComponents'])
+              native=np.asarray(pre['nativeICComponentUv'],dtype=float)
+              pinv=np.asarray(pre['componentUv'],dtype=float)
+              res=np.asarray(pre['nativeResidualPzUv'],dtype=float)
+              removed=serial(dec['removed'])
+              keep=[k for k in range(n) if k+1 not in removed]
+              target=native[keep].sum(axis=0) if removed else np.asarray([before[i][1] for i in ids])
+              actual=np.asarray([after[i][1] for i in ids])
+              err=actual-target
+              row={'subject':15,'candidate':candidate,'seed':seed,
+                   'removed':removed,
+                   'nativeVsPinvMixingMaxAbs':pre['nativeVsPinvMixingMaxAbs'],
+                   'nativeVsPinvComponentUvMaxAbs':float(np.max(np.abs(native-pinv))),
+                   'nativeResidualMaxAbsUv':pre['nativeMaxAbsResidualUv'],
+                   'nativeMinusActualPostMaxAbsUv':float(np.max(np.abs(err))),
+                   'nativeMinusActualPostRMSEUv':float(np.sqrt(np.mean(err**2))),
+                   'nativeMinusActualPostMeanUv':float(np.mean(err)),
+                   'nativeMinusActualPostStdevUv':float(np.std(err))}
+              rows.append(row)
+              print('PR51_NATIVE_FAILURE_DIAGNOSTIC',json.dumps(row))
+          Path('output').mkdir(exist_ok=True)
+          Path('output/native_failure_diagnostic.json').write_text(json.dumps({
+              'sourceRun':43408389159,'realParticipants':[15],
+              'thresholdModified':False,'original20SubjectVerdict':'PARTIAL',
+              'originalFrozenRankChanged':False,'hypothesisFailed':True,
+              'newPromotionAuthorized':False,'results':rows},indent=2))
+          PYCODE
+      - name: Archive read-only negative scientific evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr51-ica-native-failure-diagnostic-${{ github.run_id }}
+          path: output/
+          retention-days: 90
+          if-no-files-found: warn
